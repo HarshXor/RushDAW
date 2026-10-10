@@ -60,11 +60,11 @@ const DRUM_PRESETS = {
   'Empty': {},
 };
 const SYNTH_PRESETS = {
-  // --- natural plucked strings (engine 'string' = Karplus-Strong string model + body resonance) ---
-  'Clean Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
-  'Acoustic Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.2, cutoff: 5500, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.55, sustain: 0.65, pick: 0.12, body: 0.85 },
-  'Finger Bass': { engine: 'string', wave: 'sawtooth', attack: 0.004, release: 0.1, cutoff: 2200, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, brightness: 0.3, sustain: 0.7, pick: 0.25, body: 0.35 },
-  'Pick Bass': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.08, cutoff: 3000, detune: 0, gain: 0.7, drive: 0, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.6, pick: 0.1, body: 0.3 },
+  // --- real instruments (engine 'sample' = recorded guitar / bass, FluidR3_GM soundfont) ---
+  'Clean Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.25, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0 },
+  'Acoustic Guitar': { engine: 'sample', sample: 'acoustic_guitar_steel', wave: 'sawtooth', attack: 0.001, release: 0.35, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0 },
+  'Finger Bass': { engine: 'sample', sample: 'electric_bass_finger', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0 },
+  'Pick Bass': { engine: 'sample', sample: 'electric_bass_pick', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0 },
   // --- synth sounds (oscillators) ---
   'Keys': { wave: 'triangle', attack: 0.005, release: 0.4, cutoff: 5000, detune: 4, gain: 0.5 },
   'Synth Bass': { wave: 'sawtooth', attack: 0.005, release: 0.15, cutoff: 900, detune: 0, gain: 0.55 },
@@ -72,11 +72,13 @@ const SYNTH_PRESETS = {
   'Pad': { wave: 'sawtooth', attack: 0.5, release: 1.2, cutoff: 2200, detune: 12, gain: 0.3 },
   'Pluck': { wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 2600, detune: 5, gain: 0.4 },
   'Sub 808': { wave: 'sine', attack: 0.003, release: 0.6, cutoff: 400, detune: 0, gain: 0.8 },
-  // --- amped guitars: the same plucked string through amp distortion + cabinet ---
-  'Crunch Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.15, cutoff: 3800, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.6, pick: 0.13, body: 0.4 },
-  'Distortion Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3500, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.75, pick: 0.13, body: 0.3 },
-  'Power Chord Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3400, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, brightness: 0.45, sustain: 0.75, pick: 0.13, body: 0.3 },
-  'Palm Mute Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, brightness: 0.35, sustain: 0.12, pick: 0.13, body: 0.3 },
+  // --- amped guitars: the real clean guitar recording through amp distortion + cabinet ---
+  'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0 },
+  'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0 },
+  'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0 },
+  'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0.12 },
+  // --- modeled string (Karplus-Strong), kept for experimenting ---
+  'Modeled String': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
 };
 const MASTER_PRESETS = {
   'Flat (off)': { eqLow: 0, eqMid: 0, eqHigh: 0, compThr: 0, compRatio: 1, makeup: 0, ceiling: -0.3 },
@@ -372,23 +374,36 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
   return srcs;
 }
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
-const SYNTH_DEFAULTS = { engine: 'osc', drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
+const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
 const DEFAULT_GUITAR_PRESET = 'Clean Guitar', DEFAULT_BASS_PRESET = 'Finger Bass';
+/* older projects stored guitar/bass as oscillator synths (no 'engine' key) or modeled strings:
+   switch them to the real recorded instruments (same preset name when it exists, else the default) */
+function migrateStringTrack(t) {
+  if (t.type !== 'synth' || !t.synth) return;
+  if (!t.instrument && t.synth.preset === 'Bass') t.instrument = 'bass';
+  if (t.instrument !== 'guitar' && t.instrument !== 'bass') return;
+  const known = SYNTH_PRESETS[t.synth.preset];
+  if (!('engine' in t.synth) || (t.synth.engine === 'string' && known?.engine === 'sample')) {
+    const p = known?.engine === 'sample' ? t.synth.preset : t.instrument === 'guitar' ? DEFAULT_GUITAR_PRESET : DEFAULT_BASS_PRESET;
+    t.synth = { preset: p, ...SYNTH_DEFAULTS, ...SYNTH_PRESETS[p] };
+  }
+}
 
 /* Karplus-Strong plucked string: a short burst of (filtered) noise circulating in a delay line
    with a gentle lowpass + loss in the loop. Rendered once per (note, params) and cached. */
 const stringCache = new Map();
-function stringBuffer(c, freq, seconds, s) {
+const STRING_VARIANTS = 4;  // every pluck picks one of several excitations, so repeated notes are never identical
+function stringBuffer(c, freq, seconds, s, variant = 0) {
   const sr = c.sampleRate, exact = sr / freq, N = Math.max(2, Math.round(exact));
   const bright = clamp(s.brightness ?? 0.5, 0.05, 1), sus = clamp(s.sustain ?? 0.5, 0, 1), pick = clamp(s.pick ?? 0.13, 0.02, 0.5);
   const t60 = 0.25 + sus * sus * 9;                         // ring time of a low note (higher notes die faster, like real strings)
   const len = Math.min(Math.ceil(Math.min(seconds, t60 * 1.2) * 4) / 4, 8);
-  const key = [sr, N, bright.toFixed(2), sus.toFixed(2), pick.toFixed(2), len].join('|');
+  const key = [sr, N, bright.toFixed(2), sus.toFixed(2), pick.toFixed(2), len, variant].join('|');
   let entry = stringCache.get(key);
   if (!entry) {
     const L = Math.max(N * 2, Math.floor(len * sr)), buf = c.createBuffer(1, L, sr), y = buf.getChannelData(0);
     // excitation: noise softened by brightness, comb-filtered by the pick position (where the string is plucked)
-    const ex = new Float32Array(N); let lp = 0, seed = N * 9301 + 49297;
+    const ex = new Float32Array(N); let lp = 0, seed = N * 9301 + 49297 + variant * 7919;
     const rnd = () => ((seed = (seed * 233280 + 49297) % 2147483647) / 2147483647) * 2 - 1;
     const exA = 0.05 + 0.9 * bright * bright;                // pluck softness: lower = rounder attack (finger), higher = pick
     for (let i = 0; i < N; i++) { lp += exA * (rnd() - lp); ex[i] = lp; }
@@ -417,7 +432,51 @@ function distCurve(k) {
   for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = Math.tanh(k * x) / Math.tanh(k); }
   distCache.set(k, cv); return cv;
 }
+/* Real recorded instruments (engine 'sample'): FluidR3_GM soundfont recordings (CC-BY 3.0, see static/samples/NOTICE.txt),
+   one recording every 3 semitones; the nearest one is re-pitched by at most +-1.5 semitones. */
+const SAMPLE_SETS = {
+  electric_guitar_clean: { name: 'Electric Guitar (clean)', lo: 40, hi: 88 },
+  acoustic_guitar_steel: { name: 'Acoustic Guitar (steel)', lo: 40, hi: 88 },
+  electric_bass_finger: { name: 'Electric Bass (finger)', lo: 28, hi: 67 },
+  electric_bass_pick: { name: 'Electric Bass (pick)', lo: 28, hi: 67 },
+};
+const SAMPLE_STEP = 3;
+const sampleBank = new Map();   // set id -> Map(midi -> { buf, off })  (AudioBuffers are shared by all contexts)
+const sampleLoads = new Map();  // set id -> Promise
+let sampleDecoder = null;
+function loadSampleSet(id) {
+  const set = SAMPLE_SETS[id]; if (!set) return Promise.resolve();
+  if (sampleLoads.has(id)) return sampleLoads.get(id);
+  sampleDecoder = sampleDecoder || new OfflineAudioContext(1, 1, 48000);
+  const bank = new Map(), jobs = [];
+  for (let m = set.lo; m <= set.hi; m += SAMPLE_STEP) {
+    jobs.push(fetch(`samples/${id}/${m}.mp3`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(a => sampleDecoder.decodeAudioData(a)).then(buf => {
+        // skip the mp3 encoder delay / leading silence so notes start exactly on the beat
+        const y = buf.getChannelData(0); let pk = 0; for (const v of y) pk = Math.max(pk, Math.abs(v));
+        let i = 0; while (i < y.length && Math.abs(y[i]) < pk * 0.02) i++;
+        bank.set(m, { buf, off: Math.max(0, i - 24) / buf.sampleRate, peak: pk });
+      }).catch(e => console.warn('sample', id, m, e)));
+  }
+  const p = Promise.all(jobs).then(() => { sampleBank.set(id, bank); });
+  sampleLoads.set(id, p); return p;
+}
+const loadAllSamples = () => Promise.all(Object.keys(SAMPLE_SETS).map(loadSampleSet));
+// before an offline render/export: make sure every sample set used by the project is decoded
+async function samplesReady() {
+  const ids = new Set(P.tracks.filter(t => t.synth?.engine === 'sample').map(t => t.synth.sample));
+  await Promise.all([...ids].map(loadSampleSet));
+}
+function nearestSample(id, m) {
+  const set = SAMPLE_SETS[id], bank = sampleBank.get(id); if (!set || !bank) return null;
+  const k = clamp(set.lo + Math.round((m - set.lo) / SAMPLE_STEP) * SAMPLE_STEP, set.lo, set.hi);
+  const e = bank.get(k); return e ? { ...e, rate: Math.pow(2, (m - k) / 12) } : null;
+}
 function playSynth(c, dest, s, midi, t, dur, vel = 1) {
+  if (s.engine === 'sample' && !sampleBank.has(s.sample)) {
+    // recordings still loading (first seconds after start): use the modeled string meanwhile
+    loadSampleSet(s.sample); s = { ...s, engine: 'string' };
+  }
   const f = c.createBiquadFilter(), g = c.createGain(); f.type = 'lowpass'; f.frequency.value = s.cutoff; f.Q.value = 1.2;
   const drive = s.drive || 0;
   if (drive > 0) {
@@ -430,12 +489,30 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   g.connect(dest);
   const isString = s.engine === 'string';
   let input = f;
+  const isBass = /bass/i.test(s.preset || ''), extra = [];
+  if (s.engine === 'sample') { t += Math.random() * 0.006; vel *= 0.92 + Math.random() * 0.08; }  // humanize timing + dynamics
   if (isString) {
-    // instrument body: low resonance (wood / cabinet) + a little presence; deeper for low (bass) notes
-    const body = c.createBiquadFilter(), pres = c.createBiquadFilter();
-    body.type = 'peaking'; body.frequency.value = midi < 48 ? 90 : 180; body.Q.value = 0.9; body.gain.value = (s.body ?? 0.5) * 7;
-    pres.type = 'peaking'; pres.frequency.value = midi < 48 ? 900 : 2600; pres.Q.value = 0.8; pres.gain.value = 1.5;
-    body.connect(pres); pres.connect(f); input = body;
+    // humanize like a real player: small random timing (+-4 ms) and dynamics (+-10%)
+    t += Math.random() * 0.008; vel *= 0.9 + Math.random() * 0.1;
+    // instrument body: several wood resonances (air / top / back) + presence, deeper for bass;
+    // plus a gentle "boxy" mid cut so it doesn't sound like a raw oscillator
+    const bd = s.body ?? 0.5;
+    const peaks = isBass ? [[85, 1.1, 6], [190, 1.4, 2.5], [700, 0.7, -2], [1100, 0.8, 1.5]]
+                         : [[100, 1.2, 5], [210, 1.5, 4], [420, 1.3, 2], [1000, 0.7, -2.5], [2800, 0.8, 1.5]];
+    let first = null, prev = null;
+    peaks.forEach(([fr, q, gdb]) => {
+      const p = c.createBiquadFilter(); p.type = 'peaking'; p.frequency.value = fr; p.Q.value = q;
+      p.gain.value = gdb < 0 ? gdb : gdb * (0.4 + bd * 1.2);
+      if (prev) prev.connect(p); else first = p; prev = p;
+    });
+    prev.connect(f); input = first;
+    // attack transient: pick hitting the string (guitar) or finger/thumb thump (bass)
+    const s0 = c.createBufferSource(), nf = c.createBiquadFilter(), ng = c.createGain();
+    s0.buffer = noise(c); nf.type = 'bandpass'; nf.Q.value = 0.8;
+    nf.frequency.value = isBass ? 380 + (s.brightness ?? 0.5) * 900 : 1800 + (s.brightness ?? 0.5) * 3000;
+    const tk = (isBass ? 0.3 : 0.22) * (0.6 + (s.brightness ?? 0.5) * 0.8);  // relative to the normalized string (1.0)
+    ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(tk, t + 0.001); ng.gain.exponentialRampToValueAtTime(0.0001, t + (isBass ? 0.03 : 0.015));
+    s0.connect(nf); nf.connect(ng); ng.connect(input); s0.start(t, Math.random()); s0.stop(t + 0.05); extra.push(s0);
   }
   const peak = s.gain * vel, rel = Math.max(0.01, s.release), att = Math.max(0.001, s.attack), hold = Math.max(att, dur);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + att);
@@ -443,14 +520,30 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   else { g.gain.setValueAtTime(peak, t + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + hold + rel); }
   const end = t + hold + rel + 0.05;
   const intervals = s.chord === 'power' ? [0, 7, 12] : [0];
-  const oscs = [];
-  if (isString) {
+  const oscs = extra;
+  if (s.engine === 'sample') {
+    // real recording: re-pitch the nearest sample, tiny random tuning (+-3 cents) like a real player
     intervals.forEach((iv, k) => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
-      const { buf, rate } = stringBuffer(c, midiFreq(midi + iv), end - t, s);
-      const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate; src.detune.value = d;
-      const sg = c.createGain(); sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1);
-      src.connect(sg); sg.connect(input); src.start(t + k * 0.004); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
+      const smp = nearestSample(s.sample, midi + iv); if (!smp) return;
+      const src = c.createBufferSource(), sg = c.createGain();
+      src.buffer = smp.buf; src.playbackRate.value = smp.rate; src.detune.value = d + (Math.random() * 6 - 3);
+      sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1) / Math.max(0.05, smp.peak);  // recordings normalized to 1.0
+      src.connect(sg); sg.connect(input);
+      src.start(t + k * (0.006 + Math.random() * 0.006), smp.off); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
     }));
+    return oscs;
+  }
+  if (isString) {
+    // a real string vibrates in two planes with very slightly different pitch/decay -> subtle natural beating.
+    // Each pluck uses random excitations, so repeated notes never sound copy-pasted.
+    const planes = [[0, 0.78], [1.2 + Math.random() * 1.2, 0.3]];  // [cents, gain]
+    intervals.forEach((iv, k) => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => planes.forEach(([pc, pg]) => {
+      const v = Math.floor(Math.random() * STRING_VARIANTS);
+      const { buf, rate } = stringBuffer(c, midiFreq(midi + iv), end - t, s, v);
+      const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate; src.detune.value = d + pc;
+      const sg = c.createGain(); sg.gain.value = pg * (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1);
+      src.connect(sg); sg.connect(input); src.start(t + k * (0.006 + Math.random() * 0.006)); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
+    })));
     return oscs;
   }
   intervals.forEach(iv => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
@@ -873,9 +966,13 @@ function renderEditor() {
     const s = t.synth;
     const setS = (k, v) => { s[k] = v; };
     tools.append('Sound', el('select', { onchange: e => { Object.assign(s, SYNTH_DEFAULTS, SYNTH_PRESETS[e.target.value], { preset: e.target.value }); renderEditor(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
-      'Engine', el('select', { title: 'String = natural plucked string (guitar/bass), Synth = oscillators', onchange: e => { setS('engine', e.target.value); renderEditor(); } },
-        [['string', 'String (natural)'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
-      ...(s.engine === 'string' ? [
+      'Engine', el('select', { title: 'Real instrument = recorded guitar/bass, Modeled string = simulated plucked string, Synth = oscillators', onchange: e => { setS('engine', e.target.value); if (e.target.value === 'sample') loadSampleSet(s.sample || 'electric_guitar_clean'); renderEditor(); } },
+        [['sample', 'Real instrument'], ['string', 'Modeled string'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
+      ...(s.engine === 'sample' ? [
+        el('select', { title: 'Recorded instrument', onchange: e => { setS('sample', e.target.value); loadSampleSet(e.target.value); } },
+          Object.entries(SAMPLE_SETS).map(([v, o]) => el('option', { value: v, selected: v === s.sample }, o.name))),
+        slider('Pluck decay', 0, 3, 0.01, s.pluck || 0, v => v ? v.toFixed(2) + 's' : 'off', v => setS('pluck', v)),
+      ] : s.engine === 'string' ? [
         slider('Brightness', 0.05, 1, 0.01, s.brightness ?? 0.5, v => Math.round(v * 100) + '%', v => setS('brightness', v)),
         slider('Sustain', 0, 1, 0.01, s.sustain ?? 0.5, v => Math.round(v * 100) + '%', v => setS('sustain', v)),
         slider('Body', 0, 1, 0.01, s.body ?? 0.5, v => Math.round(v * 100) + '%', v => setS('body', v)),
@@ -1024,6 +1121,7 @@ function encodeWAV(buf, bits = 16) {
   return new Blob([ab], { type: 'audio/wav' });
 }
 async function renderMix() {
+  await samplesReady();
   const end = songEndBeats(); if (end <= 0) throw new Error('Nothing to export – add some clips first');
   const sr = 44100, secs = end * spb() + 2.5;
   const oc = new OfflineAudioContext(2, Math.ceil(sr * secs), sr);
@@ -1122,7 +1220,7 @@ async function loadProjectData(j) {
     buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
   }
   Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
-  P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); });
+  P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); });
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
   selTrackId = P.tracks[0]?.id || null; syncGraph(); render();
 }
@@ -1337,6 +1435,7 @@ function newBassTrack(startBeat = 0) {
 
 /* ------------------------------------------------------------------ wiring */
 function init() {
+  loadAllSamples();  // real guitar/bass recordings (~1 MB) decoded in the background right away
   $('#btnPlay').onclick = togglePlay;
   $('#btnRewind').onclick = () => seek(0);
   $('#btnRecord').onclick = startRecording;

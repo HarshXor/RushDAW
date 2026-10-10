@@ -43,15 +43,16 @@ DRUM_PRESETS = {
     'Reggaeton': {'kick': 'x...x...x...x...', 'snare': '...x..x....x..x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Empty': {},
 }
-SYNTH_DEFAULTS = {'engine': 'osc', 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
+SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
 DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
-_STR = {'engine': 'string', 'wave': 'sawtooth', 'detune': 0, 'pluck': 0}
+SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick']
+_SMP = {'engine': 'sample', 'wave': 'sawtooth', 'attack': 0.001, 'detune': 0, 'pluck': 0}
 SYNTH_PRESETS = {
-    # natural plucked strings (Karplus-Strong string model + body resonance)
-    'Clean Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3800, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'brightness': 0.4, 'sustain': 0.55, 'pick': 0.14, 'body': 0.5},
-    'Acoustic Guitar': {**_STR, 'attack': 0.002, 'release': 0.2, 'cutoff': 5500, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'brightness': 0.55, 'sustain': 0.65, 'pick': 0.12, 'body': 0.85},
-    'Finger Bass': {**_STR, 'attack': 0.004, 'release': 0.1, 'cutoff': 2200, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'brightness': 0.3, 'sustain': 0.7, 'pick': 0.25, 'body': 0.35},
-    'Pick Bass': {**_STR, 'attack': 0.002, 'release': 0.08, 'cutoff': 3000, 'gain': 0.7, 'drive': 0, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.6, 'pick': 0.1, 'body': 0.3},
+    # real instruments: recorded guitar / bass (FluidR3_GM soundfont)
+    'Clean Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.25, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none'},
+    'Acoustic Guitar': {**_SMP, 'sample': 'acoustic_guitar_steel', 'release': 0.35, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none'},
+    'Finger Bass': {**_SMP, 'sample': 'electric_bass_finger', 'release': 0.15, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none'},
+    'Pick Bass': {**_SMP, 'sample': 'electric_bass_pick', 'release': 0.12, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none'},
     # synth sounds (oscillators)
     'Keys': {'wave': 'triangle', 'attack': 0.005, 'release': 0.4, 'cutoff': 5000, 'detune': 4, 'gain': 0.5},
     'Synth Bass': {'wave': 'sawtooth', 'attack': 0.005, 'release': 0.15, 'cutoff': 900, 'detune': 0, 'gain': 0.55},
@@ -59,14 +60,16 @@ SYNTH_PRESETS = {
     'Pad': {'wave': 'sawtooth', 'attack': 0.5, 'release': 1.2, 'cutoff': 2200, 'detune': 12, 'gain': 0.3},
     'Pluck': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 2600, 'detune': 5, 'gain': 0.4},
     'Sub 808': {'wave': 'sine', 'attack': 0.003, 'release': 0.6, 'cutoff': 400, 'detune': 0, 'gain': 0.8},
-    # amped guitars: plucked string -> amp distortion -> cabinet
-    'Crunch Guitar': {**_STR, 'attack': 0.002, 'release': 0.15, 'cutoff': 3800, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.6, 'pick': 0.13, 'body': 0.4},
-    'Distortion Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3500, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.75, 'pick': 0.13, 'body': 0.3},
-    'Power Chord Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3400, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'brightness': 0.45, 'sustain': 0.75, 'pick': 0.13, 'body': 0.3},
-    'Palm Mute Guitar': {**_STR, 'attack': 0.002, 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'brightness': 0.35, 'sustain': 0.12, 'pick': 0.13, 'body': 0.3},
+    # amped guitars: real clean guitar recording -> amp distortion -> cabinet
+    'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.15, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none'},
+    'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.12, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none'},
+    'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.12, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power'},
+    'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'pluck': 0.12},
+    # modeled string (Karplus-Strong), kept for experimenting
+    'Modeled String': {'engine': 'string', 'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 3800, 'detune': 0, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.4, 'sustain': 0.55, 'pick': 0.14, 'body': 0.5},
 }
 SYNTH_PARAMS = {  # name: (min, max) or list of choices
-    'engine': ['string', 'osc'], 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
+    'engine': ['sample', 'string', 'osc'], 'sample': list(SAMPLE_SETS), 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
     'cutoff': (100, 12000), 'detune': (0, 50), 'gain': (0, 1.5), 'drive': (0, 1), 'pluck': (0, 3), 'chord': ['none', 'power'],
     'brightness': (0.05, 1), 'sustain': (0, 1), 'pick': (0.02, 0.5), 'body': (0, 1),
 }
@@ -221,6 +224,22 @@ def migrate_drums(proj):
         n = len(grid[0]) if grid else pat_steps(proj, t)
         t['pattern']['grid'] = [list(grid[ids.index(pid)]) if pid in ids and ids.index(pid) < len(grid) else [0] * n for pid in DRUM_IDS]
         t['pattern']['ids'] = list(DRUM_IDS)
+
+
+def migrate_strings(proj):
+    """Older projects stored guitar/bass as oscillator synths (no 'engine' key): switch them to natural string defaults."""
+    for t in proj.get('tracks', []):
+        s = t.get('synth')
+        if t.get('type') != 'synth' or not s:
+            continue
+        if not t.get('instrument') and s.get('preset') == 'Bass':
+            t['instrument'] = 'bass'
+        if t.get('instrument') not in ('guitar', 'bass'):
+            continue
+        known = SYNTH_PRESETS.get(s.get('preset')) or {}
+        if 'engine' not in s or (s['engine'] == 'string' and known.get('engine') == 'sample'):
+            p = s['preset'] if known.get('engine') == 'sample' else DEFAULT_GUITAR_PRESET if t['instrument'] == 'guitar' else DEFAULT_BASS_PRESET
+            t['synth'] = {'preset': p, **SYNTH_DEFAULTS, **SYNTH_PRESETS[p]}
 
 
 def apply_drum_preset(proj, t, preset):

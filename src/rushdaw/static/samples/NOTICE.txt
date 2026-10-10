@@ -1,0 +1,18 @@
+RushDAW instrument samples
+==========================
+
+The recorded guitar and bass notes in this folder come from the
+Fluid (R3) General MIDI SoundFont (FluidR3_GM.sf2) by Frank Wen,
+as pre-rendered to MP3 by the "MIDI.js Soundfonts" project
+(https://github.com/gleitz/midi-js-soundfonts).
+
+License: Creative Commons Attribution 3.0
+         https://creativecommons.org/licenses/by/3.0/us/
+
+Instruments used (one note every 3 semitones; file name = MIDI note number):
+  electric_guitar_clean/   Electric Guitar (clean)   MIDI 40-88
+  acoustic_guitar_steel/   Acoustic Guitar (steel)   MIDI 40-88
+  electric_bass_finger/    Electric Bass (finger)    MIDI 28-67
+  electric_bass_pick/      Electric Bass (pick)      MIDI 28-67
+
+The files are unmodified copies; RushDAW re-pitches and processes them at playback.

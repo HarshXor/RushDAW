@@ -177,7 +177,7 @@ class McpTest(unittest.TestCase):
         self.assertEqual([t["type"] for t in p["tracks"]], ["drum", "bass", "guitar", "audio"])
         full = self.call("get_project", project_id=pid)["tracks"]
         self.assertEqual([(t["synth"]["preset"], t["synth"]["engine"]) for t in full if t["type"] in ("bass", "guitar")],
-                         [("Finger Bass", "string"), ("Clean Guitar", "string")])
+                         [("Finger Bass", "sample"), ("Clean Guitar", "sample")])
         b2 = self.call("add_track", project_id=pid, type="bass")["track"]
         self.assertEqual((b2["type"], b2["synth"]["preset"]), ("bass", "Finger Bass"))
         self.call("set_synth", project_id=pid, track=b2["id"], params={"brightness": 0.2, "sustain": 0.9, "body": 0.6})
@@ -265,6 +265,38 @@ class MigrationTest(unittest.TestCase):
         for r, pid in enumerate(M.DRUM_IDS):
             want = legacy.index(pid) if pid in legacy else None
             self.assertEqual(p["grid"][r].index(1) if 1 in p["grid"][r] else None, want, pid)
+
+    def test_old_synth_guitar_and_bass_become_natural_strings(self):
+        old = {"wave": "sawtooth", "attack": 0.003, "release": 0.12, "cutoff": 3200, "detune": 7, "gain": 0.22}
+        proj = {"tracks": [
+            {"type": "synth", "instrument": "guitar", "synth": {"preset": "Power Chord Guitar", **old}},
+            {"type": "synth", "name": "Bass", "synth": {"preset": "Bass", **old}},
+            {"type": "synth", "synth": {"preset": "Lead", **old}},                                  # real synth: untouched
+            {"type": "synth", "instrument": "guitar", "synth": {"preset": "Lead Guitar", "engine": "osc"}},  # user's choice: untouched
+            {"type": "synth", "instrument": "guitar", "synth": {"preset": "Clean Guitar", "engine": "string", "brightness": 0.4}},  # modeled -> real
+        ]}
+        M.migrate_strings(proj)
+        g, b, lead, chosen, modeled = proj["tracks"]
+        self.assertEqual((modeled["synth"]["engine"], modeled["synth"]["sample"]), ("sample", "electric_guitar_clean"))
+        self.assertEqual((g["synth"]["preset"], g["synth"]["engine"]), ("Power Chord Guitar", "sample"))
+        self.assertEqual((b["instrument"], b["synth"]["preset"], b["synth"]["engine"]), ("bass", "Finger Bass", "sample"))
+        self.assertEqual(lead["synth"]["preset"], "Lead")
+        self.assertNotIn("engine", lead["synth"])
+        self.assertEqual(chosen["synth"]["engine"], "osc")
+        with open(APP_JS, encoding="utf-8") as f:
+            self.assertIn("function migrateStringTrack", f.read())
+
+    def test_sample_files_exist_for_every_set(self):
+        base = os.path.join(os.path.dirname(APP_JS), "samples")
+        with open(APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        for sid in M.SAMPLE_SETS:
+            m = re.search(sid + r": \{ name: '[^']+', lo: (\d+), hi: (\d+) \}", js)
+            self.assertIsNotNone(m, sid)
+            for note in range(int(m.group(1)), int(m.group(2)) + 1, 3):
+                path = os.path.join(base, sid, f"{note}.mp3")
+                self.assertTrue(os.path.getsize(path) > 1000, path)
+        self.assertTrue(os.path.exists(os.path.join(base, "NOTICE.txt")))
 
 
 class ModelSyncTest(unittest.TestCase):

@@ -34,4 +34,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-rushdaw = ["static/*"]
+rushdaw = ["static/*", "static/samples/*", "static/samples/*/*"]

@@ -68,6 +68,7 @@ class RushDAWMCP:
             raise ToolError(str(e))
         doc = json.loads(data)
         M.migrate_drums(doc.get("project") or {})
+        M.migrate_strings(doc.get("project") or {})
         return doc, r, meta
 
     def _edit(self, pid, message, fn):
@@ -431,7 +432,7 @@ class RushDAWMCP:
                 t["notes"] = keep + new
             return self._track_edit(a, "notes", fn)
 
-        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (engine string|osc, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
+        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (engine sample|string|osc — 'sample' = real recorded guitar/bass, sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
               _S(project_id=PID, track=TRACK, preset=("string", "Synth preset (see get_reference)."), params=("object", "Parameters to change.")))
         def set_synth(a):
             def fn(proj, t):
