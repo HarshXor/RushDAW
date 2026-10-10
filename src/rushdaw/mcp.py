@@ -122,6 +122,10 @@ class RushDAWMCP:
         return self._edit(a["project_id"], message + (f" [region {cid}]" if cid else ""), run)
 
     @staticmethod
+    def _region_track(proj, c):
+        return next(t for t in proj["tracks"] if any(x is c for x in t["clips"]))
+
+    @staticmethod
     def _drum(t):
         if t["type"] != "drum":
             raise M.ModelError(f"track '{t['name']}' is not a drum track")
@@ -449,7 +453,8 @@ class RushDAWMCP:
                 t["kit"][pid] = kit
             return self._track_edit(a, f"tune {a['part']}", fn)
 
-        @tool("set_pattern_length", "Set the pattern length in bars (1, 2, 4 or 8) of a drum or synth/guitar track. Longer patterns keep existing pads; shorter ones cut them.",
+        @tool("set_pattern_length", "Set the length in bars (1, 2, 4 or 8) of a region (clip_id) or of every region of the track. Regions are linear, not loops: "
+              "extending adds EMPTY bars at the end, shortening cuts the end.",
               _S(project_id=PID, track=TRACK, bars=("integer", "1, 2, 4 or 8", True, {"enum": [1, 2, 4, 8]}), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_pattern_length(a):
             def fn(proj, t):
@@ -504,18 +509,31 @@ class RushDAWMCP:
               "(or of another region with copy_from) – later edits to one region never change the others. Its pattern loops inside it. "
               "Beats are quarter notes from the song start (bar 2 starts at beat 4 in 4/4).",
               _S(project_id=PID, track=TRACK, start_beat=("number", "Start beat (0 = song start).", True), length_beats=("number", "Length in beats (default 4 bars)."),
-                 copy_from=("string", "Optional region (clip id) whose pattern the new region starts with.")))
+                 copy_from=("string", "Optional region (clip id) whose pads/notes the new region starts with (extra length stays empty)."),
+                 empty=("boolean", "Create an EMPTY region (no pads / notes) – e.g. to add a new bar to write from scratch.")))
         def add_region(a):
             def fn(proj, t):
                 if t["type"] == "audio":
                     raise M.ModelError("audio tracks get clips by importing/recording audio in the UI")
+                if a.get("empty") and a.get("copy_from"):
+                    raise M.ModelError("give either empty or copy_from, not both")
                 src = t
                 if a.get("copy_from"):
                     src = next((c for c in M.midi_regions(t) if c["id"] == a["copy_from"]), None)
                     if src is None:
                         raise M.ModelError(f"region '{a['copy_from']}' not found on track '{t['name']}'")
-                c = {"id": M.nid("c"), "kind": "midi", "start": M.num(a["start_beat"], "start_beat", 0, 100000),
-                     "len": M.num(a.get("length_beats", proj["sig"] * 4), "length_beats", 0.25, 100000), **M.region_data(t, src)}
+                default_len = src["len"] if src is not t else proj["sig"] * (1 if a.get("empty") else 4)
+                ln = round(M.num(a.get("length_beats", default_len), "length_beats", 0.25, 100000) * 4) / 4
+                c = {"id": M.nid("c"), "kind": "midi", "start": M.num(a["start_beat"], "start_beat", 0, 100000), "len": ln}
+                if a.get("empty"):
+                    c.update(M.empty_region_data(t, ln / proj["sig"], proj["sig"]))
+                elif src is t:
+                    c.update(M.region_data(t, t))
+                    M.linearize(proj, t, c, M.pat_steps(proj, t))      # template content written out over the region
+                else:
+                    c.update(M.region_data(t, src))
+                    c["linear"] = True
+                    M.fit_region(proj, t, c)                         # extra length stays empty
                 t["clips"].append(c)
                 return {"clip_id": c["id"]}
             return self._track_edit(a, "add region", fn)
@@ -533,7 +551,8 @@ class RushDAWMCP:
                 if "length_beats" in a:
                     if c["kind"] != "midi":
                         raise M.ModelError("length_beats is for MIDI regions; use duration_sec for audio clips")
-                    c["len"] = M.num(a["length_beats"], "length_beats", 0.25, 100000)
+                    c["len"] = round(M.num(a["length_beats"], "length_beats", 0.25, 100000) * 4) / 4
+                    M.fit_region(proj, t, c)  # longer = empty steps added, shorter = end cut (no looping)
                 if "duration_sec" in a:
                     if c["kind"] != "audio":
                         raise M.ModelError("duration_sec is for audio clips")
@@ -564,7 +583,11 @@ class RushDAWMCP:
         bars = int(bars)
         if bars not in (1, 2, 4, 8):
             raise M.ModelError("bars must be 1, 2, 4 or 8")
-        if "pattern" in t:  # drum track template or drum region
+        if t.get("kind") == "midi":  # a region: change its length – new bars are empty, nothing loops
+            t["len"] = bars * proj.get("sig", 4)
+            M.fit_region(proj, self._region_track(proj, t), t)
+            return
+        if "pattern" in t:  # drum track template
             t["pattern"]["bars"] = bars
             M.resize_grid(proj, t)
         else:

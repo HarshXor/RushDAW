@@ -135,19 +135,53 @@ function newTrack(type) {
   P.tracks.push(t);
   return t;
 }
-/* Every MIDI region (clip) owns its pattern: drum regions have c.pattern {bars, grid, ids}, synth/guitar/bass
-   regions have c.bars + c.notes. Editing one region never changes another (copies are independent).
-   The track's own t.pattern / t.notes is only the starting template for regions of a track without any. */
-const patBars = h => h.pattern ? h.pattern.bars : (h.bars || 1);
-const patSteps = h => patBars(h) * stepsPerBar();
+/* MIDI regions are LINEAR, not loops: every MIDI region (clip) owns its pads/notes for its whole length – step k of
+   the region (16th notes from the region start) sounds exactly where it is, nothing repeats. Drum regions keep
+   c.pattern {bars, grid, ids} with one grid column per 16th of the region; synth/guitar/bass regions keep c.notes.
+   Extending a region adds EMPTY steps, shortening cuts the end. The track's own t.pattern / t.notes is only the
+   template used when a track has no region yet (and by whole-track MCP edits). */
+const regionSteps = c => Math.max(1, Math.round(c.len * 4));
+const patBars = h => h.kind === 'midi' ? h.len / P.sig : h.pattern ? h.pattern.bars : (h.bars || 1);
+const patSteps = h => h.kind === 'midi' ? regionSteps(h) : patBars(h) * stepsPerBar();
 const isPatHolder = (t, c) => c && c.kind === 'midi' && (t.type === 'drum' ? !!c.pattern : Array.isArray(c.notes));
 const regionData = (t, src) => t.type === 'drum'
   ? { pattern: JSON.parse(JSON.stringify(src.pattern)) }
   : { bars: src.bars || 1, notes: JSON.parse(JSON.stringify(src.notes || [])) };
-// give regions created without their own data (old projects, templates) a private copy of the track template
-function ensureRegions() {
-  P.tracks.forEach(t => { if (t.type === 'drum' || t.type === 'synth') t.clips.forEach(c => { if (c.kind === 'midi' && !isPatHolder(t, c)) Object.assign(c, regionData(t, t)); }); });
+// unroll a looping pattern (older projects / the track template) into literal steps over the region length
+function linearize(t, c, srcSteps) {
+  const n = regionSteps(c), m = Math.max(1, srcSteps);
+  if (t.type === 'drum') c.pattern.grid = c.pattern.grid.map(r => Array.from({ length: n }, (_, i) => r.length ? (r[i % m] || 0) : 0));
+  else {
+    const out = [];
+    for (let off = 0; off < n; off += m) c.notes.forEach(x => { if (x.s < m && off + x.s < n) out.push({ ...x, s: off + x.s, l: Math.min(x.l, n - off - x.s) }); });
+    c.notes = out;
+  }
+  c.linear = true; fitRegion(t, c);
 }
+// make the region's data exactly as long as the region: new steps are empty, steps past the end are cut
+function fitRegion(t, c) {
+  const n = regionSteps(c);
+  if (t.type === 'drum') {
+    c.pattern.grid = c.pattern.grid.map(r => r.length === n ? r : r.slice(0, n).concat(Array(Math.max(0, n - r.length)).fill(0)));
+    c.pattern.bars = c.len / P.sig;
+  } else {
+    c.notes = c.notes.filter(x => x.s < n).map(x => x.s + x.l > n ? { ...x, l: n - x.s } : x);
+    c.bars = c.len / P.sig;
+  }
+}
+// every region owns literal data: fill regions without data from the template, unroll old looping regions once
+function ensureRegions() {
+  P.tracks.forEach(t => {
+    if (t.type !== 'drum' && t.type !== 'synth') return;
+    t.clips.forEach(c => {
+      if (c.kind !== 'midi') return;
+      if (!isPatHolder(t, c)) { Object.assign(c, regionData(t, t)); linearize(t, c, patBars(t) * stepsPerBar()); }
+      else if (!c.linear) linearize(t, c, Math.round((c.pattern ? c.pattern.bars : (c.bars || 1)) * stepsPerBar()));
+      else if (t.type === 'drum' ? (c.pattern.grid[0] || []).length !== regionSteps(c) : false) fitRegion(t, c);
+    });
+  });
+}
+const nextFreeBar = t => { const last = t.clips.reduce((a, c) => Math.max(a, c.start + clipLenBeats(c)), 0); return t.clips.length ? Math.ceil(last / P.sig - 1e-9) * P.sig : Math.floor(T.pos / P.sig) * P.sig; };
 const midiRegions = t => t.clips.filter(c => c.kind === 'midi').sort((a, b) => a.start - b.start);
 // the region shown in the editor: the selected region of this track, else its first region, else the track template
 function edHolder(t) {
@@ -155,10 +189,20 @@ function edHolder(t) {
   if (sel && sel.kind === 'midi') return sel;
   return midiRegions(t)[0] || t;
 }
-// new region = independent copy of the pattern currently shown in the editor
-function newRegion(t, start, src = edHolder(t)) {
-  const c = { id: nid('c'), kind: 'midi', start, len: patBars(src) * P.sig, ...regionData(t, src) };
+// empty region (blank pads / no notes), length in bars
+function newEmptyRegion(t, start, bars = 1) {
+  const len = bars * P.sig, n = Math.round(len * 4);
+  const c = { id: nid('c'), kind: 'midi', start, len, linear: true,
+    ...(t.type === 'drum' ? { pattern: { bars, grid: DRUMS.map(() => Array(n).fill(0)), ids: DRUM_IDS.slice() } } : { bars, notes: [] }) };
   t.clips.push(c); return c;
+}
+// region that starts as an exact (independent) copy of another region or of the track template
+function newRegion(t, start, src = edHolder(t)) {
+  const isReg = src.kind === 'midi';
+  const c = { id: nid('c'), kind: 'midi', start, len: isReg ? src.len : patBars(src) * P.sig, ...regionData(t, src) };
+  t.clips.push(c);
+  if (isReg) { c.linear = true; fitRegion(t, c); } else linearize(t, c, patSteps(src));
+  return c;
 }
 function resizeGrid(t) {
   const n = patSteps(t);
@@ -168,7 +212,7 @@ function resizeGrid(t) {
 function applyDrumPreset(t, name) {
   const pr = DRUM_PRESETS[name];
   const need = Math.ceil(Math.max(16, ...Object.values(pr).map(s => s.length)) / 16);
-  if (t.pattern.bars < need) t.pattern.bars = need;
+  if (t.kind !== 'midi' && t.pattern.bars < need) t.pattern.bars = need;  // regions keep their own length
   const n = patSteps(t);
   t.pattern.grid = DRUMS.map(d => Array.from({ length: n }, (_, i) => { const s = pr[d.id]; return s && s[i % s.length] === 'x' ? 1 : 0; }));
 }
@@ -625,7 +669,8 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         const from = Math.max(b0, clip.start), to = Math.min(b1, clip.start + clip.len);
         if (to <= from) continue;
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
-          const beat = clip.start + k / 4, i = k % steps, when = tOf(beat);
+          if (k >= steps) break;                                         // linear region: nothing repeats
+          const beat = clip.start + k / 4, i = k, when = tOf(beat);
           if (t.type === 'drum') DRUMS.forEach((d, r) => {
             if (!h.pattern.grid[r][i]) return;
             // hi-hat choke: closing the hats (closed / pedal) cuts a ringing open hi-hat
@@ -828,8 +873,9 @@ function renderArrange() {
     lane.addEventListener('dblclick', e => {
       if (e.target !== lane || t.type === 'audio') return;
       const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig;
-      const c = newRegion(t, beat); selClipId = c.id; lastFocus = 'clip'; render(); showTab('editor');
+      const c = newEmptyRegion(t, beat); selClipId = c.id; lastFocus = 'clip'; render(); showTab('editor');  // empty bar
     });
+    lane.addEventListener('contextmenu', e => { if (e.target !== lane) return; e.preventDefault(); laneMenu(e, t, lane); });
     lane.addEventListener('dragover', e => e.preventDefault());
     lane.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files], t, snapBeat(xToBeat(e, lane))); });
     t.clips.forEach(c => lane.append(clipEl(t, c)));
@@ -861,6 +907,7 @@ function clipEl(t, c) {
   requestAnimationFrame(() => drawClip(cv, t, c));
   d.addEventListener('pointerdown', e => clipMouseDown(e, t, c, d));
   d.addEventListener('dblclick', () => { if (c.kind === 'midi') { selectTrack(t.id); showTab('editor'); } });
+  d.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); clipMenu(e, t, c); });
   return d;
 }
 function getPeaks(id) {
@@ -877,9 +924,11 @@ function drawClip(cv, t, c) {
     const pk = getPeaks(c.buf), p0 = c.offset * 200, pn = c.dur * 200;
     for (let x = 0; x < W; x++) { const i = Math.floor(p0 + (x / W) * pn); const v = (pk[i] || 0) * (H / 2 - 8); g.fillRect(x, H / 2 + 4 - v, 1, Math.max(1, v * 2)); }
   } else {
-    const h = isPatHolder(t, c) ? c : t, steps = patSteps(h), cols = Math.round(c.len * 4), cw = W / cols;
-    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r][k % steps]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
-    else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); for (let k = 0; k < cols; k++) h.notes.forEach(n => { if (n.s === k % steps) g.fillRect(k * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
+    const h = isPatHolder(t, c) ? c : t, cols = Math.round(c.len * 4), cw = W / cols;
+    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r][k]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
+    else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); h.notes.forEach(n => { if (n.s < cols) g.fillRect(n.s * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
+    // bar lines inside the region
+    g.fillStyle = 'rgba(255,255,255,.18)'; for (let k = stepsPerBar(); k < cols; k += stepsPerBar()) g.fillRect(k * cw, 0, 1, H);
   }
 }
 function clipMouseDown(e, t, c, d) {
@@ -907,6 +956,7 @@ function clipMouseDown(e, t, c, d) {
   const mu = () => {
     window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu);
     if (target !== t) { t.clips = t.clips.filter(x => x !== c); target.clips.push(c); selectTrack(target.id, false); }
+    if (resize && c.kind === 'midi') { c.len = Math.max(0.25, Math.round(c.len * 4) / 4); fitRegion(target, c); }
     if (moved) render();
   };
   window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
@@ -977,6 +1027,75 @@ function renderMixer() {
     el('button', { onclick: () => showTab('master') }, 'Mastering →')));
 }
 
+/* ------------------------------------------------------------ context menus */
+function closeCtxMenu() { const m = document.getElementById('ctxmenu'); if (m) m.remove(); }
+// items: { label, run, disabled } or '-' for a separator
+function showCtxMenu(x, y, title, items) {
+  closeCtxMenu();
+  const m = el('div', { id: 'ctxmenu', className: 'ctxmenu', role: 'menu', oncontextmenu: e => e.preventDefault() }, el('div', { className: 'ctxtitle' }, title),
+    items.filter(Boolean).map(it => it === '-' ? el('div', { className: 'ctxsep' })
+      : el('button', { role: 'menuitem', disabled: !!it.disabled, onclick: () => { closeCtxMenu(); it.run(); } }, it.label)));
+  document.body.append(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+}
+document.addEventListener('pointerdown', e => { if (!e.target.closest || !e.target.closest('#ctxmenu')) closeCtxMenu(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
+window.addEventListener('blur', closeCtxMenu);
+const clipFits = (t, cb) => cb && cb.kind === 'clip' && cb.data.trackType === t.type;
+function pasteAt(t, beat) { selTrackId = t.id; T.pos = beat; pasteClipboard(); }
+function pickAudioFile(t, beat) {
+  const inp = el('input', { type: 'file', accept: 'audio/*,video/*', multiple: true, style: { display: 'none' } });
+  inp.onchange = () => { if (inp.files.length) importFiles([...inp.files], t, beat); inp.remove(); };
+  document.body.append(inp); inp.click();
+}
+// right-click on an empty spot of a lane: MIDI tracks add bars, audio tracks add audio
+function laneMenu(e, t, lane) {
+  const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig, bar = beat / P.sig + 1;
+  selectTrack(t.id); lastFocus = 'track';
+  const sel = t.clips.find(c => c.id === selClipId && c.kind === 'midi');
+  const add = (bars) => () => { const c = newEmptyRegion(t, beat, bars); selClipId = c.id; lastFocus = 'clip'; render(); showTab('editor'); };
+  if (t.type === 'audio') {
+    showCtxMenu(e.clientX, e.clientY, `${t.name} · bar ${bar}`, [
+      { label: '🎵 Add audio here (import file)…', run: () => pickAudioFile(t, beat) },
+      { label: '● Record here', run: () => { P.tracks.forEach(x => { x.arm = x === t; }); seek(beat); startRecording(); } },
+      { label: '📋 Paste here', disabled: !clipFits(t, clipboard), run: () => pasteAt(t, beat) },
+    ]);
+    return;
+  }
+  showCtxMenu(e.clientX, e.clientY, `${t.name} · bar ${bar}`, [
+    { label: '➕ Add empty bar here', run: add(1) },
+    { label: '➕ Add 2 empty bars here', run: add(2) },
+    { label: '➕ Add 4 empty bars here', run: add(4) },
+    { label: '⧉ Add copy of the selected region here', disabled: !sel, run: () => { const c = newRegion(t, beat, sel); selClipId = c.id; lastFocus = 'clip'; render(); } },
+    '-',
+    { label: '📋 Paste here', disabled: !clipFits(t, clipboard), run: () => pasteAt(t, beat) },
+  ]);
+}
+// right-click on a clip / region
+function clipMenu(e, t, c) {
+  selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
+  document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel'));
+  if (e.currentTarget && e.currentTarget.classList) e.currentTarget.classList.add('sel');
+  if (c.kind === 'midi') renderEditor();
+  const inside = currentBeat() > c.start && currentBeat() < c.start + clipLenBeats(c);
+  const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
+  const items = c.kind === 'midi' ? [
+    { label: '✎ Edit pads / notes', run: () => { showTab('editor'); renderEditor(); } },
+    { label: '➕ Extend by 1 empty bar', run: () => { c.len += P.sig; fitRegion(t, c); render(); } },
+    { label: '➖ Shorten by 1 bar', disabled: c.len <= P.sig, run: () => { c.len = Math.max(P.sig, c.len - P.sig); fitRegion(t, c); render(); } },
+    { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
+    { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
+    '-', { label: '🗑 Delete region', run: remove },
+  ] : [
+    { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
+    { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
+    '-', { label: '🗑 Delete clip', run: remove },
+  ];
+  showCtxMenu(e.clientX, e.clientY, c.kind === 'midi' ? `Region · bar ${Math.floor(c.start / P.sig) + 1} · ${+(c.len / P.sig).toFixed(2)} bar(s)` : (bufNames.get(c.buf) || 'Audio clip'), items);
+}
+
 /* ------------------------------------------------------------------ editor */
 let paintVal = null, noteLen = 1;
 function renderEditor() {
@@ -988,8 +1107,14 @@ function renderEditor() {
   }
   const h = edHolder(t);  // the region being edited (each region has its own pattern)
   const steps = patSteps(h), spbar = stepsPerBar();
-  const barsSel = el('select', { onchange: e => { const b = +e.target.value; if (t.type === 'drum') { h.pattern.bars = b; resizeGrid(h); } else { h.bars = b; h.notes = h.notes.filter(n => n.s < patSteps(h)); } render(); } },
-    [1, 2, 4, 8].map(b => el('option', { value: b, selected: b === (t.type === 'drum' ? h.pattern.bars : h.bars) }, b + ' bar' + (b > 1 ? 's' : ''))));
+  // region length in bars: longer = new EMPTY bars at the end, shorter = the end is cut (nothing loops)
+  const curBars = patBars(h), barOpts = [...new Set([1, 2, 3, 4, 6, 8, 12, 16, curBars])].sort((x, y) => x - y);
+  const barsSel = el('select', { title: 'Region length – extending adds empty bars, nothing repeats', onchange: e => {
+    const b = +e.target.value;
+    if (h.kind === 'midi') { h.len = b * P.sig; fitRegion(t, h); }
+    else if (t.type === 'drum') { h.pattern.bars = b; resizeGrid(h); } else { h.bars = b; h.notes = h.notes.filter(n => n.s < patSteps(h)); }
+    render(); } },
+    barOpts.map(b => el('option', { value: b, selected: Math.abs(b - curBars) < 1e-9 }, (Number.isInteger(b) ? b : b.toFixed(2)) + ' bar' + (b === 1 ? '' : 's'))));
   // region navigator: which region is being edited, step through the regions of this track
   const regs = midiRegions(t), ri = regs.indexOf(h);
   const goRegion = d => { const c = regs[(ri + d + regs.length) % regs.length]; if (!c) return; selClipId = c.id; lastFocus = 'clip'; render(); };
@@ -999,18 +1124,23 @@ function renderEditor() {
   const tools = el('div', { className: 'edtools' }, el('b', {}, t.name),
     el('button', { title: 'Previous region', disabled: regs.length < 2, onclick: () => goRegion(-1) }, '◀'), regionInfo,
     el('button', { title: 'Next region', disabled: regs.length < 2, onclick: () => goRegion(1) }, '▶'),
-    'Pattern length', barsSel,
-    el('button', { title: 'New region after the last one, starting as a copy of this pattern (independent)', onclick: () => {
-      const last = t.clips.reduce((a, c) => Math.max(a, c.start + clipLenBeats(c)), 0);
-      const st = t.clips.length ? Math.ceil(last / P.sig) * P.sig : Math.floor(T.pos / P.sig) * P.sig;
-      const c = newRegion(t, st, h); selClipId = c.id; lastFocus = 'clip'; render(); } }, '+ Add region'),
+    'Length', barsSel,
+    el('button', { title: 'Add an empty 1-bar region after the last one', onclick: () => {
+      const c = newEmptyRegion(t, nextFreeBar(t)); selClipId = c.id; lastFocus = 'clip'; render(); } }, '+ Empty bar'),
+    el('button', { title: 'Copy this region (independent copy) right after the last region', disabled: h.kind !== 'midi', onclick: () => {
+      const c = newRegion(t, nextFreeBar(t), h); selClipId = c.id; lastFocus = 'clip'; render(); } }, '⧉ Duplicate region'),
     el('button', { title: 'Copy this pattern into every region of this track', disabled: regs.length < 2 || ri < 0, onclick: () => {
-      regs.forEach(c => { if (c !== h) Object.assign(c, regionData(t, h)); }); render(); status(`Copied this pattern to all ${regs.length} regions of ${t.name}`); } }, 'Apply to all regions'));
+      regs.forEach(c => { if (c !== h) { Object.assign(c, regionData(t, h)); c.linear = true; fitRegion(t, c); } }); render(); status(`Copied this pattern to all ${regs.length} regions of ${t.name}`); } }, 'Apply to all regions'));
   ed.append(tools);
   const grid = el('div', { className: 'grid ' + (t.type === 'drum' ? 'drumgrid' : 'rollgrid'), style: { gridTemplateColumns: `${t.type === 'drum' ? 200 : 64}px repeat(${steps}, 28px)` } });
   // step ruler: beat numbers above the grid
   grid.append(el('div', { className: 'gcorner' }, t.type === 'drum' ? 'Part · tuning' : 'Note'));
-  for (let i = 0; i < steps; i++) grid.append(el('div', { className: 'ghead' + (i % 4 === 0 ? ' beat' : '') }, i % 4 === 0 ? String(Math.floor(i / 4) % P.sig + 1) : '·'));
+  const bar0 = h.kind === 'midi' ? Math.floor(h.start / P.sig) : 0;
+  for (let i = 0; i < steps; i++) {
+    const barStart = i % spbar === 0;
+    grid.append(el('div', { className: 'ghead' + (i % 4 === 0 ? ' beat' : '') + (barStart ? ' bar' : ''), title: barStart ? `Bar ${bar0 + i / spbar + 1}` : '' },
+      barStart ? 'B' + (bar0 + i / spbar + 1) : i % 4 === 0 ? String(Math.floor(i / 4) % P.sig + 1) : '·'));
+  }
   const up = () => { paintVal = null; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); renderArrange(); };
   grid.addEventListener('pointermove', e => { if (paintVal === null) return; const x = document.elementFromPoint(e.clientX, e.clientY); if (x && x._apply) x._apply(); });
   if (t.type === 'drum') {
@@ -1041,7 +1171,7 @@ function renderEditor() {
         knob('Volume', 'level', KIT_RANGES.level[0], KIT_RANGES.level[1], 0.01, v => v <= 0 ? 'off' : Math.round(v * 100) + '%'));
       grid.append(lbl);
       for (let i = 0; i < steps; i++) {
-        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (h.pattern.grid[r][i] ? ' on' : '') });
+        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (i && i % spbar === 0 ? ' barline' : '') + (h.pattern.grid[r][i] ? ' on' : '') });
         cell.dataset.col = i;
         const apply = () => { h.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
         cell._apply = apply;
@@ -1081,7 +1211,7 @@ function renderEditor() {
       grid.append(el('div', { className: 'rowlbl' + (black ? ' black' : ''), onclick: () => { ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.3); } }, nm + (Math.floor(p / 12) - 1)));
       for (let i = 0; i < steps; i++) {
         const n = covering(p, i);
-        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (n ? ' on' : ''), style: n && n.s !== i ? { opacity: 0.6 } : {} });
+        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i && i % spbar === 0 ? ' barline' : '') + (n ? ' on' : ''), style: n && n.s !== i ? { opacity: 0.6 } : {} });
         cell.dataset.col = i;
         cell.addEventListener('pointerdown', e => {
           e.preventDefault(); const ex = covering(p, i);
@@ -1093,7 +1223,6 @@ function renderEditor() {
       }
     }
   }
-  void spbar;
   ed.append(grid);
 }
 function highlightStep() {
@@ -1473,7 +1602,7 @@ function pasteClipboard() {
     if (!t || t.type !== 'drum') { status('Select a drum track to paste the part into'); return; }
     const row = selPart && selPart.trackId === t.id ? selPart.row : DRUMS.findIndex(d => d.id === cb.data.id);
     const h = edHolder(t), n = patSteps(h), src = cb.data.steps;
-    h.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i % src.length]);
+    h.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i] || 0);  // copied as-is, the rest stays empty (no repeating)
     t.kit = t.kit || {}; t.kit[DRUMS[row].id] = { ...cb.data.kit };
     render(); status(`Pasted “${cb.data.name}” into ${DRUMS[row].name} on ${t.name}`); return;
   }
@@ -1508,18 +1637,17 @@ function splitClip() {
   const b = currentBeat(), len = clipLenBeats(c); if (b <= c.start || b >= c.start + len) return;
   const cut = b - c.start, nc = { ...deepCopy(c), id: nid('c'), start: b };  // deep copy: the halves are independent
   if (c.kind === 'audio') { nc.offset = c.offset + cut * spb(); nc.dur = c.dur - cut * spb(); c.dur = cut * spb(); }
-  else { nc.len = c.len - cut; c.len = cut; if (isPatHolder(t, nc)) rotatePattern(t, nc, Math.round(cut * 4)); }
+  else { const k = Math.round(cut * 4); nc.len = c.len - cut; c.len = cut; if (isPatHolder(t, nc)) { shiftLeft(t, nc, k); fitRegion(t, c); fitRegion(t, nc); } }
   t.clips.push(nc); render();
 }
 function duplicateClip() {
   const [t, c] = findClip(selClipId); if (!c) return;
   const nc = { ...deepCopy(c), id: nid('c'), start: c.start + clipLenBeats(c) }; t.clips.push(nc); selClipId = nc.id; render();  // independent copy
 }
-// shift a region's pattern left by k steps (used by split so the right half sounds exactly as before)
-function rotatePattern(t, h, k) {
-  const n = patSteps(h); k = ((k % n) + n) % n; if (!k) return;
-  if (t.type === 'drum') h.pattern.grid = h.pattern.grid.map(r => r.slice(k).concat(r.slice(0, k)));
-  else h.notes = h.notes.map(x => ({ ...x, s: (x.s - k + n) % n })).map(x => ({ ...x, l: Math.min(x.l, n - x.s) }));
+// drop the first k steps of a region (split: the right half starts where the cut was)
+function shiftLeft(t, h, k) {
+  if (t.type === 'drum') h.pattern.grid = h.pattern.grid.map(r => r.slice(k));
+  else h.notes = h.notes.filter(x => x.s >= k).map(x => ({ ...x, s: x.s - k }));
 }
 
 /* MIDI guitar track = synth track with a guitar preset + starter power-chord riff */

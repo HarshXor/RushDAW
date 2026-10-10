@@ -43,7 +43,9 @@ If port 8765 is busy: when RushDAW is already running there, `rushdaw` just open
 ### Keyboard shortcuts
 `Space` play/stop · `Ctrl/Cmd+C / X / V` copy / cut / paste the selected clip, track (layer) or drum part · `R` record · `Home`/`Enter` back to start · `S` split · `Ctrl/Cmd+D` duplicate · `Delete` remove clip · `M` metronome toggle · `Shift + drag` on the ruler sets the loop region · double-click a Drum/Synth lane to add a pattern region.
 
-**Every pattern region is independent.** Each MIDI region (drum, guitar, bass, synth) stores its own pattern, so copy/paste, `Ctrl/Cmd+D` duplicate and `S` split create independent copies – editing one region never changes another. Click a region to edit it; the Editor shows *Region n/m · bar x* with ◀ ▶ to step through the regions, **+ Add region** (starts as a copy of the shown pattern) and **Apply to all regions**. Older projects are converted automatically (every region gets its own copy).
+**MIDI regions are linear, not loops.** Each MIDI region (drum, guitar, bass, synth) stores its own pads/notes for its whole length: a pad sounds exactly where it is placed and nothing repeats, so deleting one pad deletes only that pad. Extending a region (drag its right edge, *Length* in the Editor, or right-click → *Extend by 1 empty bar*) adds **empty** bars; shortening cuts the end. Copy/paste, `Ctrl/Cmd+D` duplicate and `S` split create independent copies. The Editor shows the whole region with bar numbers (B1, B2, …), *Region n/m · bar x* with ◀ ▶, **+ Empty bar**, **⧉ Duplicate region** and **Apply to all regions**. Older projects are converted automatically (looping regions are written out once, so they sound the same).
+
+**Right-click menus.** Right-click an empty spot of a lane: MIDI tracks → *Add empty bar / 2 / 4 bars here*, *Add copy of the selected region here*, *Paste here*; audio tracks → *Add audio here (import file)…*, *Record here*, *Paste here*. Right-click a region/clip → edit, extend / shorten by a bar, duplicate, split at playhead, delete. Double-clicking an empty spot of a MIDI lane also adds an empty bar.
 
 ## Data storage
 
@@ -100,7 +102,7 @@ Example client config:
 | Effects | `set_track_effects`, `add_effect`, `update_effect` (params / bypass / remove) |
 | Drum pads | `set_drum_pads` (turn steps on/off), `set_drum_pattern` (`"x...x..."` strings), `apply_drum_preset`, `clear_drum_pads`, `set_drum_tuning` (`tune_percent` / `decay_percent` / `volume_percent`, or raw pitch / decay / level / `volume_db`), `set_pattern_length` |
 | Synth / guitar | `set_notes` (e.g. `{"note": "E2", "step": 1, "length": 2}`), `set_synth` |
-| Clips / regions | `add_region` (own copy of the track pattern, or `copy_from` another region), `update_clip`, `delete_clip`. Pattern tools (`set_drum_pads`, `set_drum_pattern`, `apply_drum_preset`, `clear_drum_pads`, `set_pattern_length`, `set_notes`) take an optional `clip_id` to edit only that region; without it they edit the whole track (all regions) |
+| Clips / regions | `add_region` (`empty: true` for a blank bar, `copy_from` another region, or the track pattern written out), `update_clip`, `delete_clip`. Pattern tools (`set_drum_pads`, `set_drum_pattern`, `apply_drum_preset`, `clear_drum_pads`, `set_pattern_length`, `set_notes`) take an optional `clip_id` to edit only that region; without it they edit the whole track (all regions). Regions are linear: `update_clip length_beats` / `set_pattern_length` extend with empty steps or cut the end |
 
 Every MCP edit is saved as a **new revision** (`MCP: …` in History), so it can always be restored. An editor open in the browser reloads automatically when MCP changes the project. If you have unsaved changes, it shows a warning instead.
 

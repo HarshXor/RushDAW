@@ -179,6 +179,8 @@ button,select,input{touch-action:manipulation}
 .gcorner,.ghead{position:sticky;top:-10px;z-index:3;background:var(--panel);font:10px ui-monospace,Menlo,monospace;color:var(--mut);display:flex;align-items:flex-end;padding:2px 0 4px;height:22px}
 .gcorner{left:0;z-index:4;padding-left:4px;text-transform:uppercase;letter-spacing:.5px}
 .ghead{justify-content:center}.ghead.beat{color:var(--acc);font-weight:700}
+.ghead.bar{color:#fff;background:rgba(0,229,255,.18);border-radius:3px}
+.cell.barline{box-shadow:inset 2px 0 0 rgba(255,255,255,.55)}
 .cell.bstart{box-shadow:inset 2px 0 0 rgba(0,229,255,.25)}
 .cell.on.bstart{box-shadow:none}
 .drumgrid .cell{height:100%;min-height:56px;align-self:stretch}
@@ -194,3 +196,10 @@ button,select,input{touch-action:manipulation}
 .kval{font:9px ui-monospace,Menlo,monospace;color:var(--acc);text-align:right;white-space:nowrap}
 .rollgrid .rowlbl{position:sticky;left:0;z-index:2;background:var(--panel);justify-content:flex-start;padding-left:6px;height:24px;cursor:pointer}
 .rollgrid .rowlbl.black{background:#111}
+/* right-click context menu */
+.ctxmenu{position:fixed;z-index:1000;min-width:230px;background:#0b0f12;border:1px solid var(--acc);border-radius:8px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,.6);display:flex;flex-direction:column}
+.ctxmenu .ctxtitle{font:11px ui-monospace,Menlo,monospace;color:var(--acc);padding:4px 8px 6px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:3px;white-space:nowrap}
+.ctxmenu button{all:unset;cursor:pointer;padding:7px 10px;border-radius:5px;color:#fff;font-size:13px;white-space:nowrap}
+.ctxmenu button:hover:not(:disabled){background:rgba(0,229,255,.16)}
+.ctxmenu button:disabled{opacity:.35;cursor:default}
+.ctxmenu .ctxsep{height:1px;background:rgba(255,255,255,.12);margin:3px 4px}

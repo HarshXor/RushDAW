@@ -196,35 +196,49 @@ class McpTest(unittest.TestCase):
     def test_regions_are_independent(self):
         pid = self.call("create_project", name="Regions", template="metal")["project_id"]
         drums = self.call("get_project", project_id=pid)["tracks"][0]
-        r1 = drums["clips"][0]["id"]
-        self.assertIn("pads", drums["clips"][0])                     # every region reports its own pattern
+        r1 = drums["clips"][0]
+        self.assertEqual((r1["pattern_bars"], len(r1["pads"]["kick"])), (4, 64))   # 4-bar region = 64 literal steps
+        r1 = r1["id"]
         r2 = self.call("add_region", project_id=pid, track=drums["id"], start_beat=16, length_beats=4, copy_from=r1)["clip_id"]
-        r3 = self.call("add_region", project_id=pid, track=drums["id"], start_beat=20, length_beats=4)["clip_id"]
+        r3 = self.call("add_region", project_id=pid, track=drums["id"], start_beat=20, empty=True)["clip_id"]
+        regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
+        self.assertEqual(regs[r2]["pads"]["kick"], regs[r1]["pads"]["kick"][:16])   # copy cut to 1 bar
+        self.assertTrue(all(set(v) == {"."} for v in regs[r3]["pads"].values()))     # empty bar
         # edit only region 2
         res = self.call("set_drum_pattern", project_id=pid, track=drums["id"], clip_id=r2, patterns={"kick": "x..............."}, clear_others=True)
         self.assertEqual(res["edited"], f"region {r2}")
         regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
         self.assertEqual(regs[r2]["pads"]["kick"], "x" + "." * 15)
-        self.assertEqual(set(regs[r2]["pads"]["snare"]), {"."})
-        self.assertEqual(regs[r1]["pads"], regs[r3]["pads"])           # the others are untouched
-        self.assertNotEqual(regs[r1]["pads"]["kick"], regs[r2]["pads"]["kick"])
-        # region-only length change
+        self.assertNotEqual(regs[r1]["pads"]["kick"][:16], regs[r2]["pads"]["kick"])
+        # NOT a loop: clearing one step in bar 1 of region 1 leaves the same step in bars 2-4 alone
+        self.call("set_drum_pads", project_id=pid, track=drums["id"], clip_id=r1, part="kick", steps=[1], on=False)
+        k = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}[r1]["pads"]["kick"]
+        self.assertEqual((k[0], k[16], k[32], k[48]), (".", "x", "x", "x"))
+        # extending a region adds EMPTY bars (the old content is not repeated)
+        self.call("update_clip", project_id=pid, clip_id=r2, length_beats=12)
+        p2 = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}[r2]["pads"]
+        self.assertEqual((p2["kick"], len(p2["snare"])), ("x" + "." * 47, 48))
         self.call("set_pattern_length", project_id=pid, track=drums["id"], clip_id=r3, bars=2)
         regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
-        self.assertEqual((regs[r1]["pattern_bars"], regs[r3]["pattern_bars"]), (1, 2))
+        self.assertEqual((regs[r3]["pattern_bars"], regs[r3]["length_beats"]), (2, 8))
+        # shortening cuts the end
+        self.call("update_clip", project_id=pid, clip_id=r2, length_beats=2)
+        self.assertEqual({c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}[r2]["pads"]["kick"], "x.......")
         # whole-track edit (no clip_id) still changes every region
         self.call("set_drum_pads", project_id=pid, track=drums["id"], part="crash", steps=[1])
         regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
         self.assertTrue(all(r["pads"]["crash"][0] == "x" for r in regs.values()))
-        # synth/guitar regions too
+        # synth/guitar regions too: notes are literal positions over the region
         g = self.call("get_project", project_id=pid)["tracks"][2]
-        g1 = g["clips"][0]["id"]
-        g2 = self.call("add_region", project_id=pid, track=g["id"], start_beat=16, copy_from=g1)["clip_id"]
-        self.call("set_notes", project_id=pid, track=g["id"], clip_id=g2, notes=[{"note": "A2", "step": 1, "length": 4}])
+        g1 = g["clips"][0]
+        self.assertEqual(max(n["step"] for n in g1["notes"]) > 16, True)               # riff written out over 4 bars
+        g2 = self.call("add_region", project_id=pid, track=g["id"], start_beat=16, copy_from=g1["id"])["clip_id"]
+        self.call("set_notes", project_id=pid, track=g["id"], clip_id=g2, notes=[{"note": "A2", "step": 33, "length": 4}])
         gr = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][2]["clips"]}
-        self.assertEqual([n["note"] for n in gr[g2]["notes"]], ["A2"])
-        self.assertGreater(len(gr[g1]["notes"]), 1)
+        self.assertEqual([(n["note"], n["step"]) for n in gr[g2]["notes"]], [("A2", 33)])
+        self.assertEqual(len(gr[g1["id"]]["notes"]), len(g1["notes"]))
         self.assertIn("not found", self.call("set_notes", ok=False, project_id=pid, track=g["id"], clip_id="nope", notes=[])["error"])
+        self.assertIn("either", self.call("add_region", ok=False, project_id=pid, track=g["id"], start_beat=0, empty=True, copy_from=g2)["error"])
 
     def test_old_regions_get_their_own_copy(self):
         proj = {"sig": 4, "tracks": [
@@ -233,16 +247,26 @@ class McpTest(unittest.TestCase):
             {"type": "synth", "bars": 1, "notes": [{"p": 40, "s": 0, "l": 2}], "clips": [{"id": "c", "kind": "midi", "start": 0, "len": 4}]}]}
         M.fill_regions(proj)
         a, b = proj["tracks"][0]["clips"]
-        self.assertEqual(a["pattern"], proj["tracks"][0]["pattern"])
+        self.assertEqual(a["pattern"]["grid"], proj["tracks"][0]["pattern"]["grid"])  # 1-bar region = the 1-bar template
         a["pattern"]["grid"][0][5] = 1                                   # editing a ...
         self.assertEqual(b["pattern"]["grid"][0][5], 0)                  # ... never changes b
         self.assertEqual(proj["tracks"][0]["pattern"]["grid"][0][5], 0)  # nor the template
         c = proj["tracks"][1]["clips"][0]
         self.assertEqual((c["bars"], c["notes"]), (1, [{"p": 40, "s": 0, "l": 2}]))
+        # an old LOOPING region longer than its pattern is unrolled once into literal steps (same sound, no loop)
+        old = {"sig": 4, "tracks": [{"type": "drum", "pattern": {"bars": 1, "grid": [[1, 0, 0, 0] * 4 for _ in M.DRUMS], "ids": list(M.DRUM_IDS)},
+                                     "clips": [{"id": "x", "kind": "midi", "start": 0, "len": 8,
+                                                "pattern": {"bars": 1, "grid": [[1] + [0] * 15 for _ in M.DRUMS], "ids": list(M.DRUM_IDS)}}]}]}
+        M.fill_regions(old)
+        x = old["tracks"][0]["clips"][0]
+        self.assertEqual(x["pattern"]["grid"][0], ([1] + [0] * 15) * 2)
+        self.assertTrue(x["linear"])
+        M.fill_regions(old)                                              # idempotent
+        self.assertEqual(len(x["pattern"]["grid"][0]), 32)
         self.assertIsNot(c["notes"], proj["tracks"][1]["notes"])
         with open(APP_JS, encoding="utf-8") as f:
             js = f.read()
-        for fn in ("function ensureRegions", "function edHolder", "function newRegion", "function rotatePattern"):
+        for fn in ("function ensureRegions", "function edHolder", "function newRegion", "function shiftLeft", "function fitRegion", "function linearize", "function laneMenu", "function clipMenu"):
             self.assertIn(fn, js)
 
     def test_edit_flow(self):

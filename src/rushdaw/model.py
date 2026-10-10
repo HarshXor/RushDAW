@@ -164,9 +164,38 @@ def steps_per_bar(proj):
 
 
 def pat_steps(proj, t):
-    # works on a track (its template pattern) or on a MIDI region that owns its pattern
+    # a MIDI region is LINEAR: one step per 16th over its whole length (nothing loops);
+    # a track's template pattern uses its bar count
+    if t.get('kind') == 'midi':
+        return region_steps(t)
     bars = t['pattern']['bars'] if 'pattern' in t else t.get('bars', 1)
     return int(bars) * steps_per_bar(proj)
+
+
+def region_steps(c):
+    return max(1, int(round(c['len'] * 4)))
+
+
+def fit_region(proj, t, c):
+    """Make a region's data exactly as long as the region: new steps are empty, steps past the end are cut."""
+    n = region_steps(c)
+    if t['type'] == 'drum':
+        c['pattern']['grid'] = [(list(r) + [0] * n)[:n] for r in c['pattern']['grid']]
+        c['pattern']['bars'] = c['len'] / proj.get('sig', 4)
+    else:
+        c['notes'] = [dict(x, l=min(x['l'], n - x['s'])) for x in c['notes'] if x['s'] < n]
+        c['bars'] = c['len'] / proj.get('sig', 4)
+
+
+def linearize(proj, t, c, src_steps):
+    """Unroll a looping pattern (old projects / the track template) into literal steps over the region (= linearize in app.js)."""
+    n, m = region_steps(c), max(1, int(src_steps))
+    if t['type'] == 'drum':
+        c['pattern']['grid'] = [[(r[i % m] if i % m < len(r) else 0) if r else 0 for i in range(n)] for r in c['pattern']['grid']]
+    else:
+        c['notes'] = [dict(x, s=off + x['s'], l=min(x['l'], n - off - x['s'])) for off in range(0, n, m) for x in c['notes'] if x['s'] < m and off + x['s'] < n]
+    c['linear'] = True
+    fit_region(proj, t, c)
 
 
 def midi_regions(t):
@@ -184,13 +213,31 @@ def region_data(t, src):
     return {'bars': src.get('bars', 1), 'notes': json.loads(json.dumps(src.get('notes') or []))}
 
 
+def empty_region_data(t, bars, sig):
+    n = int(round(bars * sig * 4))
+    if t['type'] == 'drum':
+        return {'pattern': {'bars': bars, 'grid': [[0] * n for _ in DRUM_IDS], 'ids': list(DRUM_IDS)}, 'linear': True}
+    return {'bars': bars, 'notes': [], 'linear': True}
+
+
 def fill_regions(proj):
-    """Regions without their own pattern (older projects, new regions) get a copy of the track template (= ensureRegions in app.js)."""
+    """Every MIDI region owns LITERAL pads/notes for its whole length (= ensureRegions in app.js): regions without data
+    get the track template unrolled over their length, old looping regions are unrolled once, lengths are fitted."""
+    spb = steps_per_bar(proj)
     for t in proj.get('tracks', []):
-        if t.get('type') in ('drum', 'synth'):
-            for c in t.get('clips', []):
-                if c.get('kind') == 'midi' and not has_own_pattern(t, c):
-                    c.update(region_data(t, t))
+        if t.get('type') not in ('drum', 'synth'):
+            continue
+        for c in t.get('clips', []):
+            if c.get('kind') != 'midi':
+                continue
+            if not has_own_pattern(t, c):
+                c.update(region_data(t, t))
+                linearize(proj, t, c, pat_steps(proj, t))
+            elif not c.get('linear'):
+                bars = c['pattern']['bars'] if t['type'] == 'drum' else c.get('bars', 1)
+                linearize(proj, t, c, round(bars * spb))
+            else:
+                fit_region(proj, t, c)
 
 
 def pattern_to_row(pattern, steps):
@@ -291,7 +338,7 @@ def apply_drum_preset(proj, t, preset):
         raise ModelError(f"unknown drum preset '{preset}'. Presets: " + ', '.join(DRUM_PRESETS))
     pr = DRUM_PRESETS[preset]
     need = -(-max([16] + [len(v) for v in pr.values()]) // 16)  # 2-bar presets extend a 1-bar pattern
-    if t['pattern'].get('bars', 1) < need:
+    if t.get('kind') != 'midi' and t['pattern'].get('bars', 1) < need:  # regions keep their own length
         t['pattern']['bars'] = need
     n = pat_steps(proj, t)
     t['pattern']['grid'] = [[1 if pr.get(pid) and pr[pid][i % len(pr[pid])] == 'x' else 0 for i in range(n)] for pid in DRUM_IDS]
