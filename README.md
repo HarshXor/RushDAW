@@ -19,6 +19,8 @@ rushdaw --port 9000 --no-browser
 python3 -m rushdaw      # alternative
 ```
 
+If port 8765 is busy: when RushDAW is already running there, `rushdaw` just opens it in the browser; when another program uses it, the next free port (8766, 8767, …) is used. With an explicit `--port`, a busy port gives a clear error instead.
+
 `ffmpeg` is installed automatically through the `imageio-ffmpeg` dependency, so you don't need to install it yourself to export MP3/MP4.
 
 ## Features

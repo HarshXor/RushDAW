@@ -277,11 +277,16 @@ def make_server(host="127.0.0.1", port=8765, home=None, api_key=None):
 
 class RushDAWServer(ThreadingHTTPServer):
     daemon_threads = True
+    sse_stop = None  # set by make_server(); may still be None if binding the port failed inside __init__
+
+    def _stop_sse(self):
+        if self.sse_stop is not None:
+            self.sse_stop.set()  # end open SSE streams so their threads exit
 
     def shutdown(self):
-        self.sse_stop.set()  # end open SSE streams so their threads exit
+        self._stop_sse()
         super().shutdown()
 
     def server_close(self):
-        self.sse_stop.set()
+        self._stop_sse()
         super().server_close()
