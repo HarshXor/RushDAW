@@ -11,20 +11,26 @@ import time
 
 COLORS = ['#00e5ff', '#ffffff', '#7fffd4', '#00b8d4', '#b2f5ff', '#4dd0e1', '#d9d9d9', '#1de9b6']
 DRUMS = [  # (id, display name) – order == row order of the drum grid
-    ('kick', 'Metal Kick'), ('snare', 'Hi-Tuned Snare'), ('ride', 'Ride'), ('chh', 'Closed HH'), ('ohh', 'Open HH'),
-    ('tomh', 'Tom Hi'), ('toml', 'Tom Low'), ('rim', 'China'), ('crash', 'Crash'),
+    ('kick', 'Kick'), ('snare', 'Snare'), ('chh', 'Closed Hi-Hat'), ('ohh', 'Open Hi-Hat'), ('tomh', 'High Tom'),
+    ('tomm', 'Mid Tom'), ('toml', 'Floor Tom'), ('crash', 'Crash Cymbal'), ('ride', 'Ride Cymbal'), ('phh', 'Pedal Hi-Hat'),
 ]
 DRUM_IDS = [d[0] for d in DRUMS]
-DRUM_ALIASES = {'china': 'rim', 'hihat': 'chh', 'hh': 'chh', 'closedhh': 'chh', 'openhh': 'ohh', 'bass': 'kick',
-                'bd': 'kick', 'sd': 'snare', 'tom': 'tomh', 'floortom': 'toml', 'cymbal': 'crash'}
+# row order of projects saved before pattern['ids'] existed (old 9-part kit)
+LEGACY_DRUM_IDS = ['kick', 'snare', 'ride', 'chh', 'ohh', 'tomh', 'toml', 'rim', 'crash']
+DRUM_ALIASES = {'hihat': 'chh', 'hh': 'chh', 'closedhh': 'chh', 'closedhat': 'chh', 'openhh': 'ohh', 'openhat': 'ohh',
+                'pedal': 'phh', 'pedalhh': 'phh', 'pedalhat': 'phh', 'hhpedal': 'phh', 'footHH': 'phh',
+                'bass': 'kick', 'bassdrum': 'kick', 'bd': 'kick', 'sd': 'snare', 'tom': 'tomm', 'hitom': 'tomh',
+                'tom1': 'tomh', 'tom2': 'tomm', 'tom3': 'toml', 'midtom': 'tomm', 'floor': 'toml', 'lowtom': 'toml',
+                'crash': 'crash', 'cymbal': 'crash', 'ride': 'ride'}
+DRUM_ALIASES = {k.lower(): v for k, v in DRUM_ALIASES.items()}
 DEFAULT_DRUM_PRESET = 'Metal Double Bass'
 DRUM_PRESETS = {
     'Metal Double Bass': {'kick': 'xxxxxxxxxxxxxxxx', 'snare': '....x.......x...', 'crash': 'x...............', 'ride': 'x...x...x...x...'},
     'Metal Gallop': {'kick': 'x.xxx.xxx.xxx.xx', 'snare': '....x.......x...', 'crash': 'x...x...x...x...'},
     'Blast Beat': {'kick': 'x.x.x.x.x.x.x.x.', 'snare': '.x.x.x.x.x.x.x.x', 'crash': 'x.......x.......'},
-    'Hammer Blast': {'kick': 'x.x.x.x.x.x.x.x.', 'snare': 'x.x.x.x.x.x.x.x.', 'rim': 'x...x...x...x...'},
+    'Hammer Blast': {'kick': 'x.x.x.x.x.x.x.x.', 'snare': 'x.x.x.x.x.x.x.x.', 'ride': 'x...x...x...x...'},
     'Thrash Skank': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'crash': 'x.x.x.x.x.x.x.x.'},
-    'Hardcore Breakdown': {'kick': 'x..x..x...x..x..', 'snare': '........x.......', 'rim': 'x.......x.......', 'toml': '......x.......x.'},
+    'Hardcore Breakdown': {'kick': 'x..x..x...x..x..', 'snare': '........x.......', 'crash': 'x.......x.......', 'toml': '......x.......x.', 'phh': '..x...x...x...x.'},
     'Hardcore Two-Step': {'kick': 'x.xx....x.xx....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'D-Beat': {'kick': 'x.xx..x.x.xx..x.', 'snare': '....x.......x...', 'crash': 'x.x.x.x.x.x.x.x.'},
     'Punk Beat': {'kick': 'x.x...x.x.x...x.', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
@@ -32,28 +38,37 @@ DRUM_PRESETS = {
     'Pop-Punk Drive': {'kick': 'x.....x.x.......', 'snare': '....x.......x...', 'ohh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'Four on the floor': {'kick': 'x...x...x...x...', 'snare': '....x.......x...', 'chh': '..x...x...x...x.', 'ohh': '......x.......x.'},
     'Rock': {'kick': 'x.......x.x.....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
-    'Hip-Hop': {'kick': 'x......x..x.....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.xxx.', 'rim': '...........x....'},
+    'Hip-Hop': {'kick': 'x......x..x.....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.xxx.', 'ohh': '...........x....'},
     'Trap': {'kick': 'x.....x...x.....', 'snare': '........x.......', 'chh': 'xxxxxxxxx.xxxxxx', 'ohh': '.......x........'},
     'Reggaeton': {'kick': 'x...x...x...x...', 'snare': '...x..x....x..x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Empty': {},
 }
-SYNTH_DEFAULTS = {'drive': 0, 'chord': 'none', 'pluck': 0}
+SYNTH_DEFAULTS = {'engine': 'osc', 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
+DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
+_STR = {'engine': 'string', 'wave': 'sawtooth', 'detune': 0, 'pluck': 0}
 SYNTH_PRESETS = {
+    # natural plucked strings (Karplus-Strong string model + body resonance)
+    'Clean Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3800, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'brightness': 0.4, 'sustain': 0.55, 'pick': 0.14, 'body': 0.5},
+    'Acoustic Guitar': {**_STR, 'attack': 0.002, 'release': 0.2, 'cutoff': 5500, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'brightness': 0.55, 'sustain': 0.65, 'pick': 0.12, 'body': 0.85},
+    'Finger Bass': {**_STR, 'attack': 0.004, 'release': 0.1, 'cutoff': 2200, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'brightness': 0.3, 'sustain': 0.7, 'pick': 0.25, 'body': 0.35},
+    'Pick Bass': {**_STR, 'attack': 0.002, 'release': 0.08, 'cutoff': 3000, 'gain': 0.7, 'drive': 0, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.6, 'pick': 0.1, 'body': 0.3},
+    # synth sounds (oscillators)
     'Keys': {'wave': 'triangle', 'attack': 0.005, 'release': 0.4, 'cutoff': 5000, 'detune': 4, 'gain': 0.5},
-    'Bass': {'wave': 'sawtooth', 'attack': 0.005, 'release': 0.15, 'cutoff': 900, 'detune': 0, 'gain': 0.55},
+    'Synth Bass': {'wave': 'sawtooth', 'attack': 0.005, 'release': 0.15, 'cutoff': 900, 'detune': 0, 'gain': 0.55},
     'Lead': {'wave': 'square', 'attack': 0.01, 'release': 0.2, 'cutoff': 3500, 'detune': 8, 'gain': 0.35},
     'Pad': {'wave': 'sawtooth', 'attack': 0.5, 'release': 1.2, 'cutoff': 2200, 'detune': 12, 'gain': 0.3},
     'Pluck': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 2600, 'detune': 5, 'gain': 0.4},
     'Sub 808': {'wave': 'sine', 'attack': 0.003, 'release': 0.6, 'cutoff': 400, 'detune': 0, 'gain': 0.8},
-    'Power Chord Guitar': {'wave': 'sawtooth', 'attack': 0.003, 'release': 0.12, 'cutoff': 3200, 'detune': 7, 'gain': 0.22, 'drive': 0.8, 'chord': 'power', 'pluck': 0},
-    'Distortion Guitar': {'wave': 'sawtooth', 'attack': 0.003, 'release': 0.12, 'cutoff': 3400, 'detune': 7, 'gain': 0.28, 'drive': 0.8, 'chord': 'none', 'pluck': 0},
-    'Palm Mute Guitar': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.06, 'cutoff': 900, 'detune': 5, 'gain': 0.3, 'drive': 0.75, 'chord': 'power', 'pluck': 0.12},
-    'Crunch Guitar': {'wave': 'sawtooth', 'attack': 0.003, 'release': 0.2, 'cutoff': 2600, 'detune': 5, 'gain': 0.32, 'drive': 0.35, 'chord': 'none', 'pluck': 1.2},
-    'Clean Guitar': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.3, 'cutoff': 2400, 'detune': 3, 'gain': 0.45, 'drive': 0, 'chord': 'none', 'pluck': 0.6},
+    # amped guitars: plucked string -> amp distortion -> cabinet
+    'Crunch Guitar': {**_STR, 'attack': 0.002, 'release': 0.15, 'cutoff': 3800, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.6, 'pick': 0.13, 'body': 0.4},
+    'Distortion Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3500, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'brightness': 0.45, 'sustain': 0.75, 'pick': 0.13, 'body': 0.3},
+    'Power Chord Guitar': {**_STR, 'attack': 0.002, 'release': 0.12, 'cutoff': 3400, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'brightness': 0.45, 'sustain': 0.75, 'pick': 0.13, 'body': 0.3},
+    'Palm Mute Guitar': {**_STR, 'attack': 0.002, 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'brightness': 0.35, 'sustain': 0.12, 'pick': 0.13, 'body': 0.3},
 }
 SYNTH_PARAMS = {  # name: (min, max) or list of choices
-    'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3), 'cutoff': (100, 12000),
-    'detune': (0, 50), 'gain': (0, 1.5), 'drive': (0, 1), 'pluck': (0, 3), 'chord': ['none', 'power'],
+    'engine': ['string', 'osc'], 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
+    'cutoff': (100, 12000), 'detune': (0, 50), 'gain': (0, 1.5), 'drive': (0, 1), 'pluck': (0, 3), 'chord': ['none', 'power'],
+    'brightness': (0.05, 1), 'sustain': (0, 1), 'pick': (0.02, 0.5), 'body': (0, 1),
 }
 MASTER_DEFAULT = {'vol': 1, 'eqLow': 0, 'eqMid': 0, 'eqHigh': 0, 'compThr': -18, 'compRatio': 2.5, 'compAtk': 0.01,
                   'compRel': 0.25, 'makeup': 3, 'ceiling': -1, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
@@ -79,8 +94,8 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
     'reverb': {'size': (2, 0.2, 8), 'tone': (8000, 1000, 16000), 'mix': (0.3, 0, 1)},
 }
 KIT_DEFAULT = {'pitch': 0, 'decay': 1, 'level': 1}
-KIT_RANGES = {'pitch': (-12, 12), 'decay': (0.3, 2), 'level': (0, 1.5)}
-TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar')
+KIT_RANGES = {'pitch': (-24, 24), 'decay': (0.1, 4), 'level': (0, 2)}  # wide: ±2 octaves, 10-400% decay, 0-200% level
+TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar', 'bass')
 LOW_NOTE, HIGH_NOTE = 36, 84
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 _counter = itertools.count(1)
@@ -194,6 +209,20 @@ def find_clip(proj, clip_id):
     raise ModelError(f"clip '{clip_id}' not found")
 
 
+def migrate_drums(proj):
+    """Re-map drum grids of older projects to the current kit row order (adds pattern['ids'])."""
+    for t in proj.get('tracks', []):
+        if t.get('type') != 'drum' or not t.get('pattern'):
+            continue
+        ids = t['pattern'].get('ids') or LEGACY_DRUM_IDS
+        if list(ids) == DRUM_IDS:
+            continue
+        grid = t['pattern'].get('grid') or []
+        n = len(grid[0]) if grid else pat_steps(proj, t)
+        t['pattern']['grid'] = [list(grid[ids.index(pid)]) if pid in ids and ids.index(pid) < len(grid) else [0] * n for pid in DRUM_IDS]
+        t['pattern']['ids'] = list(DRUM_IDS)
+
+
 def apply_drum_preset(proj, t, preset):
     if preset not in DRUM_PRESETS:
         raise ModelError(f"unknown drum preset '{preset}'. Presets: " + ', '.join(DRUM_PRESETS))
@@ -210,25 +239,28 @@ def resize_grid(proj, t):
 def new_track(proj, kind, name=None):
     if kind not in TRACK_TYPES:
         raise ModelError(f"type must be one of {', '.join(TRACK_TYPES)}")
-    ttype = 'synth' if kind == 'guitar' else kind
+    ttype = 'synth' if kind in ('guitar', 'bass') else kind
     tracks = proj['tracks']
-    n = sum(1 for x in tracks if x['type'] == ttype and (x.get('instrument') == 'guitar') == (kind == 'guitar')) + 1
-    default = {'audio': 'Audio ', 'drum': 'Drums ', 'synth': 'Synth ', 'guitar': 'Guitar '}[kind] + str(n)
+    inst = kind if kind in ('guitar', 'bass') else None
+    n = sum(1 for x in tracks if x['type'] == ttype and x.get('instrument') == inst) + 1
+    default = {'audio': 'Audio ', 'drum': 'Drums ', 'synth': 'Synth ', 'guitar': 'Guitar ', 'bass': 'Bass '}[kind] + str(n)
+    if kind == 'bass' and n == 1:
+        default = 'Bass'
     t = {'id': nid('t'), 'type': ttype, 'name': (name or default)[:60], 'color': COLORS[len(tracks) % len(COLORS)],
          'vol': 0.8, 'pan': 0, 'mute': False, 'solo': False, 'arm': False, 'eq': {'low': 0, 'mid': 0, 'high': 0},
          'comp': {'thr': 0, 'ratio': 1}, 'rev': 0, 'dly': 0, 'fx': [], 'clips': []}
     if ttype == 'drum':
-        t['pattern'] = {'bars': 1, 'grid': []}
+        t['pattern'] = {'bars': 1, 'grid': [], 'ids': list(DRUM_IDS)}
         apply_drum_preset(proj, t, DEFAULT_DRUM_PRESET)
         t['rev'] = 0.12
         t['kit'] = {}
     if ttype == 'synth':
-        preset = 'Power Chord Guitar' if kind == 'guitar' else 'Keys'
+        preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET}.get(kind, 'Keys')
         t['synth'] = {'preset': preset, **SYNTH_DEFAULTS, **SYNTH_PRESETS[preset]}
         t['bars'] = 1
         t['notes'] = []
-        if kind == 'guitar':
-            t['instrument'] = 'guitar'
+        if inst:
+            t['instrument'] = inst
     if ttype == 'audio':
         t['arm'] = not any(x.get('arm') for x in tracks)
     tracks.append(t)
@@ -254,7 +286,7 @@ def new_fx(fx_type, params=None, on=True):
 
 # ------------------------------------------------------------------ summaries
 def track_summary(proj, t, detail=True):
-    out = {'id': t['id'], 'name': t['name'], 'type': 'guitar' if t.get('instrument') == 'guitar' else t['type'],
+    out = {'id': t['id'], 'name': t['name'], 'type': t.get('instrument') or t['type'],
            'volume': t['vol'], 'pan': t['pan'], 'mute': t['mute'], 'solo': t['solo'],
            'eq': t['eq'], 'comp': t['comp'], 'reverb_send': t['rev'], 'delay_send': t['dly'],
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],

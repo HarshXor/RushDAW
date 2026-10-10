@@ -52,7 +52,7 @@ def _S(**props):
 
 PID = ("string", "Project id (from list_projects / create_project).", True)
 TRACK = (None, "Track (layer): id, exact name, or 1-based position.", True, {"type": ["string", "integer"]})
-PART = ("string", "Drum part: kick, snare, ride, chh (closed hi-hat), ohh (open hi-hat), tomh, toml, rim/china, crash.", True)
+PART = ("string", "Drum part: kick, snare, chh (closed hi-hat), ohh (open hi-hat), tomh (high tom), tomm (mid tom), toml (floor tom), crash, ride, phh (pedal hi-hat).", True)
 
 
 class RushDAWMCP:
@@ -66,7 +66,9 @@ class RushDAWMCP:
             data, r, meta = self.st.read_revision(pid, rev)
         except StorageError as e:
             raise ToolError(str(e))
-        return json.loads(data), r, meta
+        doc = json.loads(data)
+        M.migrate_drums(doc.get("project") or {})
+        return doc, r, meta
 
     def _edit(self, pid, message, fn):
         """Load head revision, run fn(doc) -> result, save as new revision."""
@@ -220,8 +222,8 @@ class RushDAWMCP:
             return self._edit(a["project_id"], "master " + (a.get("preset") or "params"), run)
 
         # ---------------- tracks / layers
-        @tool("add_track", "Add a track (layer): audio, drum, synth or guitar. MIDI tracks get a pattern region by default.",
-              _S(project_id=PID, type=("string", "audio | drum | synth | guitar", True, {"enum": list(M.TRACK_TYPES)}),
+        @tool("add_track", "Add a track (layer): audio, drum, synth, guitar (natural clean guitar) or bass (natural finger bass). MIDI tracks get a pattern region by default.",
+              _S(project_id=PID, type=("string", "audio | drum | synth | guitar | bass", True, {"enum": list(M.TRACK_TYPES)}),
                  name=("string", "Track name."), region_start_beat=("number", "Start beat of the first pattern region (default 0)."),
                  region_length_beats=("number", "Length in beats of the first region (default 4 bars)."),
                  add_region=("boolean", "Add a pattern region for drum/synth/guitar (default true).")))
@@ -388,8 +390,8 @@ class RushDAWMCP:
                     t["pattern"]["grid"][r] = [0] * n
             return self._track_edit(a, "clear pads", fn)
 
-        @tool("set_drum_tuning", "Tune a drum part: pitch in semitones (-12..12), decay multiplier (0.3..2), level (0..1.5).",
-              _S(project_id=PID, track=TRACK, part=PART, pitch=("number", "-12..12 semitones"), decay=("number", "0.3..2 (1 = default length)"), level=("number", "0..1.5")))
+        @tool("set_drum_tuning", "Tune a drum part: pitch in semitones (-24..24), decay multiplier (0.1..4), level (0..2).",
+              _S(project_id=PID, track=TRACK, part=PART, pitch=("number", "-24..24 semitones (0.5 steps allowed)"), decay=("number", "0.1..4 (1 = default length)"), level=("number", "0..2")))
         def set_drum_tuning(a):
             def fn(proj, t):
                 self._drum(t)
@@ -429,7 +431,7 @@ class RushDAWMCP:
                 t["notes"] = keep + new
             return self._track_edit(a, "notes", fn)
 
-        @tool("set_synth", "Change the sound of a synth/guitar track: preset (e.g. Bass, Lead, Power Chord Guitar, Palm Mute Guitar...) and/or params (wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
+        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (engine string|osc, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
               _S(project_id=PID, track=TRACK, preset=("string", "Synth preset (see get_reference)."), params=("object", "Parameters to change.")))
         def set_synth(a):
             def fn(proj, t):
@@ -525,9 +527,8 @@ class RushDAWMCP:
             return
         d = M.new_track(proj, "drum")
         d["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
-        b = M.new_track(proj, "synth", "Bass")
-        b["synth"] = {"preset": "Bass", **M.SYNTH_DEFAULTS, **M.SYNTH_PRESETS["Bass"]}
-        b["notes"] = [{"p": p, "s": s, "l": l} for p, s, l in [(36, 0, 3), (36, 6, 2), (43, 10, 2), (41, 12, 4)]]
+        b = M.new_track(proj, "bass")
+        b["notes"] = [{"p": p, "s": s, "l": l} for p, s, l in [(40, 0, 2), (40, 4, 2), (43, 8, 2), (45, 12, 4)]]
         b["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
         g = M.new_track(proj, "guitar")
         g["notes"] = [{"p": p, "s": s, "l": l} for p, s, l in [(40, 0, 2), (40, 2, 1), (40, 3, 1), (43, 4, 2), (45, 6, 2), (40, 8, 2), (46, 10, 1), (45, 11, 1), (43, 12, 4)]]

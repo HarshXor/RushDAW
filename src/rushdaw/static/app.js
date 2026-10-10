@@ -20,19 +20,32 @@ const nid = p => `${p}${Date.now().toString(36)}${(uidN++).toString(36)}`;
 
 const COLORS = ['#00e5ff', '#ffffff', '#7fffd4', '#00b8d4', '#b2f5ff', '#4dd0e1', '#d9d9d9', '#1de9b6'];
 const DRUMS = [
-  { id: 'kick', name: 'Metal Kick' }, { id: 'snare', name: 'Hi-Tuned Snare' }, { id: 'ride', name: 'Ride' },
-  { id: 'chh', name: 'Closed HH' }, { id: 'ohh', name: 'Open HH' }, { id: 'tomh', name: 'Tom Hi' },
-  { id: 'toml', name: 'Tom Low' }, { id: 'rim', name: 'China' }, { id: 'crash', name: 'Crash' },
+  { id: 'kick', name: 'Kick' }, { id: 'snare', name: 'Snare' }, { id: 'chh', name: 'Closed Hi-Hat' },
+  { id: 'ohh', name: 'Open Hi-Hat' }, { id: 'tomh', name: 'High Tom' }, { id: 'tomm', name: 'Mid Tom' },
+  { id: 'toml', name: 'Floor Tom' }, { id: 'crash', name: 'Crash Cymbal' }, { id: 'ride', name: 'Ride Cymbal' },
+  { id: 'phh', name: 'Pedal Hi-Hat' },
 ];
+const DRUM_IDS = DRUMS.map(d => d.id);
+// row order used by projects saved before pattern.ids existed (9-part kit)
+const LEGACY_DRUM_IDS = ['kick', 'snare', 'ride', 'chh', 'ohh', 'tomh', 'toml', 'rim', 'crash'];
+// re-map a drum track's grid rows to the current kit order (keeps old projects intact)
+function migrateDrumTrack(t) {
+  if (t.type !== 'drum' || !t.pattern) return;
+  const ids = t.pattern.ids || LEGACY_DRUM_IDS;
+  if (ids.join() === DRUM_IDS.join()) return;
+  const n = (t.pattern.grid[0] || []).length || t.pattern.bars * 16;
+  t.pattern.grid = DRUM_IDS.map(id => { const i = ids.indexOf(id); return i >= 0 && t.pattern.grid[i] ? t.pattern.grid[i].slice() : Array(n).fill(0); });
+  t.pattern.ids = DRUM_IDS.slice();
+}
 const DEFAULT_DRUM_PRESET = 'Metal Double Bass';
 const DRUM_PRESETS = {
   // --- metal / hardcore / punk (16 steps = one 4/4 bar of 16th notes) ---
   'Metal Double Bass': { kick: 'xxxxxxxxxxxxxxxx', snare: '....x.......x...', crash: 'x...............', ride: 'x...x...x...x...' },
   'Metal Gallop': { kick: 'x.xxx.xxx.xxx.xx', snare: '....x.......x...', crash: 'x...x...x...x...' },
   'Blast Beat': { kick: 'x.x.x.x.x.x.x.x.', snare: '.x.x.x.x.x.x.x.x', crash: 'x.......x.......' },
-  'Hammer Blast': { kick: 'x.x.x.x.x.x.x.x.', snare: 'x.x.x.x.x.x.x.x.', rim: 'x...x...x...x...' },
+  'Hammer Blast': { kick: 'x.x.x.x.x.x.x.x.', snare: 'x.x.x.x.x.x.x.x.', ride: 'x...x...x...x...' },
   'Thrash Skank': { kick: 'x...x...x...x...', snare: '..x...x...x...x.', crash: 'x.x.x.x.x.x.x.x.' },
-  'Hardcore Breakdown': { kick: 'x..x..x...x..x..', snare: '........x.......', rim: 'x.......x.......', toml: '......x.......x.' },
+  'Hardcore Breakdown': { kick: 'x..x..x...x..x..', snare: '........x.......', crash: 'x.......x.......', toml: '......x.......x.', phh: '..x...x...x...x.' },
   'Hardcore Two-Step': { kick: 'x.xx....x.xx....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   'D-Beat': { kick: 'x.xx..x.x.xx..x.', snare: '....x.......x...', crash: 'x.x.x.x.x.x.x.x.' },
   'Punk Beat': { kick: 'x.x...x.x.x...x.', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
@@ -41,24 +54,29 @@ const DRUM_PRESETS = {
   // --- other genres ---
   'Four on the floor': { kick: 'x...x...x...x...', snare: '....x.......x...', chh: '..x...x...x...x.', ohh: '......x.......x.' },
   'Rock': { kick: 'x.......x.x.....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
-  'Hip-Hop': { kick: 'x......x..x.....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.xxx.', rim: '...........x....' },
+  'Hip-Hop': { kick: 'x......x..x.....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.xxx.', ohh: '...........x....' },
   'Trap': { kick: 'x.....x...x.....', snare: '........x.......', chh: 'xxxxxxxxx.xxxxxx', ohh: '.......x........' },
   'Reggaeton': { kick: 'x...x...x...x...', snare: '...x..x....x..x.', chh: 'x.x.x.x.x.x.x.x.' },
   'Empty': {},
 };
 const SYNTH_PRESETS = {
+  // --- natural plucked strings (engine 'string' = Karplus-Strong string model + body resonance) ---
+  'Clean Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
+  'Acoustic Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.2, cutoff: 5500, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.55, sustain: 0.65, pick: 0.12, body: 0.85 },
+  'Finger Bass': { engine: 'string', wave: 'sawtooth', attack: 0.004, release: 0.1, cutoff: 2200, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, brightness: 0.3, sustain: 0.7, pick: 0.25, body: 0.35 },
+  'Pick Bass': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.08, cutoff: 3000, detune: 0, gain: 0.7, drive: 0, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.6, pick: 0.1, body: 0.3 },
+  // --- synth sounds (oscillators) ---
   'Keys': { wave: 'triangle', attack: 0.005, release: 0.4, cutoff: 5000, detune: 4, gain: 0.5 },
-  'Bass': { wave: 'sawtooth', attack: 0.005, release: 0.15, cutoff: 900, detune: 0, gain: 0.55 },
+  'Synth Bass': { wave: 'sawtooth', attack: 0.005, release: 0.15, cutoff: 900, detune: 0, gain: 0.55 },
   'Lead': { wave: 'square', attack: 0.01, release: 0.2, cutoff: 3500, detune: 8, gain: 0.35 },
   'Pad': { wave: 'sawtooth', attack: 0.5, release: 1.2, cutoff: 2200, detune: 12, gain: 0.3 },
   'Pluck': { wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 2600, detune: 5, gain: 0.4 },
   'Sub 808': { wave: 'sine', attack: 0.003, release: 0.6, cutoff: 400, detune: 0, gain: 0.8 },
-  // --- MIDI guitar (sawtooth -> amp distortion -> cabinet filter) ---
-  'Power Chord Guitar': { wave: 'sawtooth', attack: 0.003, release: 0.12, cutoff: 3200, detune: 7, gain: 0.22, drive: 0.8, chord: 'power', pluck: 0 },
-  'Distortion Guitar': { wave: 'sawtooth', attack: 0.003, release: 0.12, cutoff: 3400, detune: 7, gain: 0.28, drive: 0.8, chord: 'none', pluck: 0 },
-  'Palm Mute Guitar': { wave: 'sawtooth', attack: 0.002, release: 0.06, cutoff: 900, detune: 5, gain: 0.3, drive: 0.75, chord: 'power', pluck: 0.12 },
-  'Crunch Guitar': { wave: 'sawtooth', attack: 0.003, release: 0.2, cutoff: 2600, detune: 5, gain: 0.32, drive: 0.35, chord: 'none', pluck: 1.2 },
-  'Clean Guitar': { wave: 'sawtooth', attack: 0.002, release: 0.3, cutoff: 2400, detune: 3, gain: 0.45, drive: 0, chord: 'none', pluck: 0.6 },
+  // --- amped guitars: the same plucked string through amp distortion + cabinet ---
+  'Crunch Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.15, cutoff: 3800, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.6, pick: 0.13, body: 0.4 },
+  'Distortion Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3500, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, brightness: 0.45, sustain: 0.75, pick: 0.13, body: 0.3 },
+  'Power Chord Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3400, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, brightness: 0.45, sustain: 0.75, pick: 0.13, body: 0.3 },
+  'Palm Mute Guitar': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, brightness: 0.35, sustain: 0.12, pick: 0.13, body: 0.3 },
 };
 const MASTER_PRESETS = {
   'Flat (off)': { eqLow: 0, eqMid: 0, eqHigh: 0, compThr: 0, compRatio: 1, makeup: 0, ceiling: -0.3 },
@@ -103,7 +121,7 @@ function newTrack(type) {
     color: COLORS[P.tracks.length % COLORS.length], vol: 0.8, pan: 0, mute: false, solo: false, arm: false,
     eq: { low: 0, mid: 0, high: 0 }, comp: { thr: 0, ratio: 1 }, rev: 0, dly: 0, fx: [], clips: [],
   };
-  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)) }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; /* a little room = acoustic kit feel */ }
+  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)), ids: DRUM_IDS.slice() }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; /* a little room = acoustic kit feel */ }
   if (type === 'synth') { t.synth = { preset: 'Keys', ...SYNTH_PRESETS.Keys }; t.bars = 1; t.notes = []; }
   if (type === 'audio') t.arm = !P.tracks.some(x => x.arm);
   P.tracks.push(t);
@@ -285,6 +303,8 @@ function env(c, gainParam, t, peak, decay) {
 }
 // per-part kit settings (stored on the drum track: t.kit[partId])
 const KIT_DEFAULT = { pitch: 0, decay: 1, level: 1 };
+// wide tuning ranges: ±24 semitones (two octaves), 10%..400% decay, 0..200% level
+const KIT_RANGES = { pitch: [-24, 24], decay: [0.1, 4], level: [0, 2] };
 function kitOf(track, id) {
   track.kit = track.kit || {};
   return (track.kit[id] = { ...KIT_DEFAULT, ...(track.kit[id] || {}) });
@@ -324,16 +344,16 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
       // gains scaled so the raw (pre-fader) kick peak stays <= 1.0
       osc('sine', 125, 52, 0.32, 0.42); mode(68, 0.22, 0.17, 0.85);
       nz('highpass', 2800, 0.018, 0.25, 0.8); osc('triangle', 1600, 900, 0.012, 0.15); break;
-    // high-tuned ringing snare: high fundamental + head modes that ring out, stick crack,
-    // and a clearly audible bottom snare-wire rattle (sizzle that trails the hit)
+    // standard acoustic snare (medium tuning, use the part's Tune knob for higher/lower):
+    // ~200 Hz head with natural overtones, stick crack, and a clear bottom snare-wire rattle
     case 'snare': {
-      const f0 = 345;
-      mode(f0, 0.7, 0.27, 0.975, 'triangle'); mode(f0 * 1.59, 0.5, 0.15); mode(f0 * 2.14, 0.36, 0.09); mode(f0 * 2.3, 0.3, 0.07);
-      nz('bandpass', 2600, 0.03, 0.32, 0.8);              // stick / rimshot crack
-      nz('bandpass', 4800, 0.3, 0.3, 0.55);               // bottom wires: main sizzle
-      nz('highpass', 2200, 0.24, 0.22, 0.7);              // wires: body of the rattle
-      nz('bandpass', 3300, 0.2, 0.14, 1.4, t + 0.008);    // wires: delayed buzz (wires react after the head)
-      nz('highpass', 8000, 0.12, 0.12, 0.7); break;       // air / brightness
+      const f0 = 200;  // gains leave headroom: raw peak stays < 1.0 even with random noise
+      mode(f0, 0.24, 0.32, 0.93, 'triangle'); mode(f0 * 1.59, 0.16, 0.15); mode(f0 * 2.14, 0.12, 0.08);
+      nz('bandpass', 2000, 0.03, 0.24, 0.8);              // stick crack
+      nz('bandpass', 4500, 0.26, 0.25, 0.55);             // bottom wires: main sizzle
+      nz('highpass', 2000, 0.2, 0.2, 0.7);                // wires: body of the rattle
+      nz('bandpass', 3200, 0.18, 0.13, 1.4, t + 0.008);   // wires: delayed buzz (wires react after the head)
+      nz('highpass', 8000, 0.1, 0.09, 0.7); break;        // air / brightness
     }
     // ride: stick ping + strong bell + metallic wash
     case 'ride': stick(3200, 0.38); mode(2350, 0.8, 0.14, 1); mode(3520, 0.55, 0.1, 1); metal(480, 'bandpass', 6000, 1.3, 0.2, 0.6); nz('highpass', 6500, 1.0, 0.14); break;
@@ -342,16 +362,54 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
     case 'ohh': stick(4200, 0.3); metal(420, 'highpass', 7000, 0.55, 0.2); nz('highpass', 7500, 0.6, 0.32); break;
     // toms: ringing heads with natural small pitch drop + stick attack
     case 'tomh': mode(205, 0.6, 0.6, 0.9); mode(205 * 1.5, 0.3, 0.18); nz('lowpass', 3500, 0.03, 0.22); break;
+    case 'tomm': mode(150, 0.7, 0.64, 0.89); mode(150 * 1.5, 0.35, 0.18); nz('lowpass', 3000, 0.032, 0.22); break;
     case 'toml': mode(105, 0.8, 0.68, 0.88); mode(105 * 1.5, 0.4, 0.18); nz('lowpass', 2500, 0.035, 0.22); break;
-    // china: hard stick hit + trashy, bright, mid-length body
-    case 'rim': stick(2800, 0.38); metal(330, 'bandpass', 3600, 1.0, 0.21, 0.5); nz('bandpass', 3200, 0.95, 0.38, 0.6); nz('highpass', 6000, 0.45, 0.25); break;
+    // pedal hi-hat: foot closes the hats -> short "chick" + small low thud, no stick tick
+    case 'phh': metal(420, 'highpass', 6500, 0.035, 0.2); nz('bandpass', 6000, 0.04, 0.3, 0.8); nz('bandpass', 900, 0.02, 0.1, 1); break;
     // crash: hard stick hit + loud metallic wash with a long tail
     case 'crash': stick(2600, 0.42); metal(380, 'highpass', 4200, 1.9, 0.16); nz('highpass', 3800, 2.1, 0.38); nz('bandpass', 6000, 0.45, 0.23, 0.8); break;
   }
   return srcs;
 }
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
-const SYNTH_DEFAULTS = { drive: 0, chord: 'none', pluck: 0 };
+const SYNTH_DEFAULTS = { engine: 'osc', drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
+const DEFAULT_GUITAR_PRESET = 'Clean Guitar', DEFAULT_BASS_PRESET = 'Finger Bass';
+
+/* Karplus-Strong plucked string: a short burst of (filtered) noise circulating in a delay line
+   with a gentle lowpass + loss in the loop. Rendered once per (note, params) and cached. */
+const stringCache = new Map();
+function stringBuffer(c, freq, seconds, s) {
+  const sr = c.sampleRate, exact = sr / freq, N = Math.max(2, Math.round(exact));
+  const bright = clamp(s.brightness ?? 0.5, 0.05, 1), sus = clamp(s.sustain ?? 0.5, 0, 1), pick = clamp(s.pick ?? 0.13, 0.02, 0.5);
+  const t60 = 0.25 + sus * sus * 9;                         // ring time of a low note (higher notes die faster, like real strings)
+  const len = Math.min(Math.ceil(Math.min(seconds, t60 * 1.2) * 4) / 4, 8);
+  const key = [sr, N, bright.toFixed(2), sus.toFixed(2), pick.toFixed(2), len].join('|');
+  let entry = stringCache.get(key);
+  if (!entry) {
+    const L = Math.max(N * 2, Math.floor(len * sr)), buf = c.createBuffer(1, L, sr), y = buf.getChannelData(0);
+    // excitation: noise softened by brightness, comb-filtered by the pick position (where the string is plucked)
+    const ex = new Float32Array(N); let lp = 0, seed = N * 9301 + 49297;
+    const rnd = () => ((seed = (seed * 233280 + 49297) % 2147483647) / 2147483647) * 2 - 1;
+    const exA = 0.05 + 0.9 * bright * bright;                // pluck softness: lower = rounder attack (finger), higher = pick
+    for (let i = 0; i < N; i++) { lp += exA * (rnd() - lp); ex[i] = lp; }
+    const pd = Math.max(1, Math.round(N * pick));
+    for (let i = N - 1; i >= pd; i--) ex[i] -= ex[i - pd];
+    const rho = Math.pow(10, -3 * (N / sr) / t60);          // loss per trip around the loop
+    const damp = 0.5 + 0.3 * bright;                        // loop lowpass: highs die faster than lows, like a real string
+    for (let n = 0; n < L; n++) {
+      const a = n >= N ? y[n - N] : 0, b = n >= N + 1 ? y[n - N - 1] : 0;
+      y[n] = (n < N ? ex[n] : 0) + rho * (damp * a + (1 - damp) * b);
+    }
+    let pk = 0; for (let n = 0; n < L; n++) pk = Math.max(pk, Math.abs(y[n]));
+    if (pk > 0) for (let n = 0; n < L; n++) y[n] /= pk;
+    // short fade-out at the very end of the rendered buffer
+    const fade = Math.min(L, Math.floor(sr * 0.02)); for (let n = 0; n < fade; n++) y[L - 1 - n] *= n / fade;
+    entry = { buf, rate: N / exact };                       // playbackRate corrects the integer delay length -> exact pitch
+    if (stringCache.size > 300) stringCache.delete(stringCache.keys().next().value);
+    stringCache.set(key, entry);
+  }
+  return entry;
+}
 const distCache = new Map();
 function distCurve(k) {
   if (distCache.has(k)) return distCache.get(k);
@@ -370,6 +428,15 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
     f.connect(ws); ws.connect(hp); hp.connect(cab); cab.connect(g);
   } else f.connect(g);
   g.connect(dest);
+  const isString = s.engine === 'string';
+  let input = f;
+  if (isString) {
+    // instrument body: low resonance (wood / cabinet) + a little presence; deeper for low (bass) notes
+    const body = c.createBiquadFilter(), pres = c.createBiquadFilter();
+    body.type = 'peaking'; body.frequency.value = midi < 48 ? 90 : 180; body.Q.value = 0.9; body.gain.value = (s.body ?? 0.5) * 7;
+    pres.type = 'peaking'; pres.frequency.value = midi < 48 ? 900 : 2600; pres.Q.value = 0.8; pres.gain.value = 1.5;
+    body.connect(pres); pres.connect(f); input = body;
+  }
   const peak = s.gain * vel, rel = Math.max(0.01, s.release), att = Math.max(0.001, s.attack), hold = Math.max(att, dur);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + att);
   if (s.pluck > 0) { g.gain.setTargetAtTime(0.0001, t + att, s.pluck / 3); g.gain.setTargetAtTime(0.0001, t + hold, rel / 4); }
@@ -377,6 +444,15 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   const end = t + hold + rel + 0.05;
   const intervals = s.chord === 'power' ? [0, 7, 12] : [0];
   const oscs = [];
+  if (isString) {
+    intervals.forEach((iv, k) => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
+      const { buf, rate } = stringBuffer(c, midiFreq(midi + iv), end - t, s);
+      const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate; src.detune.value = d;
+      const sg = c.createGain(); sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1);
+      src.connect(sg); sg.connect(input); src.start(t + k * 0.004); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
+    }));
+    return oscs;
+  }
   intervals.forEach(iv => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
     const o = c.createOscillator(); o.type = s.wave; o.frequency.value = midiFreq(midi + iv); o.detune.value = d;
     o.connect(f); o.start(t); o.stop(end); oscs.push(o);
@@ -415,7 +491,14 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         if (to <= from) continue;
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           const beat = clip.start + k / 4, i = k % steps, when = tOf(beat);
-          if (t.type === 'drum') DRUMS.forEach((d, r) => { if (t.pattern.grid[r][i]) keep(playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14, kitOf(t, d.id))); /* slight velocity variation = human feel */ });
+          if (t.type === 'drum') DRUMS.forEach((d, r) => {
+            if (!t.pattern.grid[r][i]) return;
+            // hi-hat choke: closing the hats (closed / pedal) cuts a ringing open hi-hat
+            if ((d.id === 'chh' || d.id === 'phh') && tn.openHat) { tn.openHat.forEach(v => { try { v.stop(when + 0.01); } catch (e) { /* already ended */ } }); tn.openHat = null; }
+            const v = playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14, kitOf(t, d.id)); /* slight velocity variation = human feel */
+            if (d.id === 'ohh') tn.openHat = v;
+            keep(v);
+          });
           else t.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
         }
       }
@@ -573,7 +656,7 @@ function renderArrange() {
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
         btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
         el('button', { title: 'Delete track', onclick: e => { stop(e); deleteTrack(t.id); } }, '✕')),
-      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : 'Synth / MIDI') : 'Audio')),
+      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : 'Synth / MIDI') : 'Audio')),
       el('div', { className: 'row ctl' }, el('span', { className: 'lab' }, 'Vol'),
         el('input', { type: 'range', min: 0, max: 1.5, step: 0.01, value: t.vol, title: 'Volume',
           oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
@@ -773,9 +856,9 @@ function renderEditor() {
           el('span', { className: 'dl-name', title: d.name }, d.name),
           el('button', { className: 'dl-mini', title: 'Copy part (pattern + tuning) · Ctrl/Cmd+C', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; copySelection(); } }, '⧉'),
           el('button', { className: 'dl-mini', title: 'Paste part here · Ctrl/Cmd+V', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; pasteClipboard(); } }, '📋')),
-        knob('Tune', 'pitch', -12, 12, 1, v => (v > 0 ? '+' : '') + v + ' st'),
-        knob('Decay', 'decay', 0.3, 2, 0.05, v => Math.round(v * 100) + '%'),
-        knob('Level', 'level', 0, 1.5, 0.01, v => Math.round(v * 100) + '%'));
+        knob('Tune', 'pitch', KIT_RANGES.pitch[0], KIT_RANGES.pitch[1], 0.5, v => (v > 0 ? '+' : '') + v + ' st'),
+        knob('Decay', 'decay', KIT_RANGES.decay[0], KIT_RANGES.decay[1], 0.05, v => Math.round(v * 100) + '%'),
+        knob('Level', 'level', KIT_RANGES.level[0], KIT_RANGES.level[1], 0.01, v => Math.round(v * 100) + '%'));
       grid.append(lbl);
       for (let i = 0; i < steps; i++) {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (t.pattern.grid[r][i] ? ' on' : '') });
@@ -790,12 +873,21 @@ function renderEditor() {
     const s = t.synth;
     const setS = (k, v) => { s[k] = v; };
     tools.append('Sound', el('select', { onchange: e => { Object.assign(s, SYNTH_DEFAULTS, SYNTH_PRESETS[e.target.value], { preset: e.target.value }); renderEditor(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
-      el('select', { onchange: e => setS('wave', e.target.value) }, ['sine', 'triangle', 'square', 'sawtooth'].map(w => el('option', { selected: w === s.wave }, w))),
-      slider('Attack', 0.001, 2, 0.001, s.attack, v => v.toFixed(3), v => setS('attack', v)),
+      'Engine', el('select', { title: 'String = natural plucked string (guitar/bass), Synth = oscillators', onchange: e => { setS('engine', e.target.value); renderEditor(); } },
+        [['string', 'String (natural)'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
+      ...(s.engine === 'string' ? [
+        slider('Brightness', 0.05, 1, 0.01, s.brightness ?? 0.5, v => Math.round(v * 100) + '%', v => setS('brightness', v)),
+        slider('Sustain', 0, 1, 0.01, s.sustain ?? 0.5, v => Math.round(v * 100) + '%', v => setS('sustain', v)),
+        slider('Body', 0, 1, 0.01, s.body ?? 0.5, v => Math.round(v * 100) + '%', v => setS('body', v)),
+        slider('Pick pos', 0.02, 0.5, 0.01, s.pick ?? 0.13, v => Math.round(v * 100) + '%', v => setS('pick', v)),
+      ] : [
+        el('select', { onchange: e => setS('wave', e.target.value) }, ['sine', 'triangle', 'square', 'sawtooth'].map(w => el('option', { selected: w === s.wave }, w))),
+        slider('Attack', 0.001, 2, 0.001, s.attack, v => v.toFixed(3), v => setS('attack', v)),
+        slider('Pluck decay', 0, 3, 0.01, s.pluck || 0, v => v ? v.toFixed(2) + 's' : 'off', v => setS('pluck', v)),
+      ]),
       slider('Release', 0.01, 3, 0.01, s.release, v => v.toFixed(2), v => setS('release', v)),
-      slider('Cutoff', 100, 12000, 10, s.cutoff, v => Math.round(v) + 'Hz', v => setS('cutoff', v)),
+      slider('Tone', 100, 12000, 10, s.cutoff, v => Math.round(v) + 'Hz', v => setS('cutoff', v)),
       slider('Drive', 0, 1, 0.01, s.drive || 0, v => Math.round(v * 100) + '%', v => setS('drive', v)),
-      slider('Pluck decay', 0, 3, 0.01, s.pluck || 0, v => v ? v.toFixed(2) + 's' : 'off', v => setS('pluck', v)),
       'Chord', el('select', { onchange: e => setS('chord', e.target.value) }, [['none', 'Single note'], ['power', 'Power chord (1-5-8)']].map(([v, l]) => el('option', { value: v, selected: v === (s.chord || 'none') }, l))),
       'Note length', el('select', { onchange: e => { noteLen = +e.target.value; } }, [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, '1 bar']].map(([v, l]) => el('option', { value: v, selected: v === noteLen }, l))),
       el('button', { onclick: () => { t.notes = []; render(); } }, 'Clear'));
@@ -1017,9 +1109,7 @@ function resetState() {
 function applyTemplate(tpl) {
   if (tpl === 'empty') { newTrack('audio'); return; }
   const d = newTrack('drum'); d.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
-  const s = newTrack('synth'); s.synth = { preset: 'Bass', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS.Bass }; s.name = 'Bass';
-  [[36, 0, 3], [36, 6, 2], [43, 10, 2], [41, 12, 4]].forEach(([p, st, l]) => s.notes.push({ p, s: st, l }));
-  s.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
+  newBassTrack(0).clips[0].len = 16;
   newGuitarTrack(0).clips[0].len = 16;
   const a = newTrack('audio'); if (tpl === 'band') { a.name = 'Vocal'; a.fx = FX_CHAIN_PRESETS.Vocal.map(([ty, o]) => newFx(ty, o)); }
   selTrackId = d.id;
@@ -1032,7 +1122,7 @@ async function loadProjectData(j) {
     buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
   }
   Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
-  P.tracks.forEach(t => { t.fx = t.fx || []; });
+  P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); });
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
   selTrackId = P.tracks[0]?.id || null; syncGraph(); render();
 }
@@ -1228,9 +1318,19 @@ function newGuitarTrack(startBeat = 0) {
   const t = newTrack('synth');
   t.instrument = 'guitar';
   t.name = 'Guitar ' + P.tracks.filter(x => x.instrument === 'guitar').length;
-  t.synth = { preset: 'Power Chord Guitar', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS['Power Chord Guitar'] };
+  t.synth = { preset: DEFAULT_GUITAR_PRESET, ...SYNTH_DEFAULTS, ...SYNTH_PRESETS[DEFAULT_GUITAR_PRESET] };
   [[40, 0, 2], [40, 2, 1], [40, 3, 1], [43, 4, 2], [45, 6, 2], [40, 8, 2], [46, 10, 1], [45, 11, 1], [43, 12, 4]]
     .forEach(([p, s, l]) => t.notes.push({ p, s, l }));
+  t.clips.push({ id: nid('c'), kind: 'midi', start: startBeat, len: P.sig * 4 });
+  return t;
+}
+/* MIDI bass track = synth track with a natural plucked bass string */
+function newBassTrack(startBeat = 0) {
+  const t = newTrack('synth');
+  t.instrument = 'bass';
+  t.name = 'Bass' + (P.tracks.filter(x => x.instrument === 'bass').length > 1 ? ' ' + P.tracks.filter(x => x.instrument === 'bass').length : '');
+  t.synth = { preset: DEFAULT_BASS_PRESET, ...SYNTH_DEFAULTS, ...SYNTH_PRESETS[DEFAULT_BASS_PRESET] };
+  [[40, 0, 2], [40, 4, 2], [43, 8, 2], [45, 12, 4]].forEach(([p, s, l]) => t.notes.push({ p, s, l }));
   t.clips.push({ id: nid('c'), kind: 'midi', start: startBeat, len: P.sig * 4 });
   return t;
 }
@@ -1252,6 +1352,7 @@ function init() {
   $('#zoom').oninput = () => renderArrange();
   $('#loop').onchange = drawLoop;
   $('#title').onchange = e => { P.title = e.target.value; };
+  $('#addBass').onclick = () => { const t = newBassTrack(Math.floor(T.pos / P.sig) * P.sig); selTrackId = t.id; syncGraph(); render(); showTab('editor'); };
   $('#addGuitar').onclick = () => { const t = newGuitarTrack(Math.floor(T.pos / P.sig) * P.sig); selTrackId = t.id; syncGraph(); render(); showTab('editor'); };
   ['addAudio', 'addDrum', 'addSynth'].forEach(id => { $('#' + id).onclick = () => {
     const t = newTrack(id.slice(3).toLowerCase());

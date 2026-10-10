@@ -174,7 +174,15 @@ class McpTest(unittest.TestCase):
     def test_edit_flow(self):
         p = self.call("create_project", name="MCP Song", bpm=190, template="metal")
         pid = p["project_id"]
-        self.assertEqual([t["type"] for t in p["tracks"]], ["drum", "synth", "guitar", "audio"])
+        self.assertEqual([t["type"] for t in p["tracks"]], ["drum", "bass", "guitar", "audio"])
+        full = self.call("get_project", project_id=pid)["tracks"]
+        self.assertEqual([(t["synth"]["preset"], t["synth"]["engine"]) for t in full if t["type"] in ("bass", "guitar")],
+                         [("Finger Bass", "string"), ("Clean Guitar", "string")])
+        b2 = self.call("add_track", project_id=pid, type="bass")["track"]
+        self.assertEqual((b2["type"], b2["synth"]["preset"]), ("bass", "Finger Bass"))
+        self.call("set_synth", project_id=pid, track=b2["id"], params={"brightness": 0.2, "sustain": 0.9, "body": 0.6})
+        self.assertIn("between", self.call("set_synth", ok=False, project_id=pid, track=b2["id"], params={"sustain": 2})["error"])
+        self.call("delete_track", project_id=pid, track=b2["id"])
         # layers
         g2 = self.call("add_track", project_id=pid, type="guitar", name="Lead Guitar")["track"]
         self.assertEqual(g2["type"], "guitar")
@@ -185,9 +193,11 @@ class McpTest(unittest.TestCase):
         # pads
         drums = "Drums 1"
         self.call("set_drum_pattern", project_id=pid, track=drums, patterns={"kick": "x..x", "snare": "....x.......x..."}, clear_others=True)
-        self.call("set_drum_pads", project_id=pid, track=drums, part="china", steps=[1, 9])
+        self.call("set_drum_pads", project_id=pid, track=drums, part="pedal", steps=[1, 9])
         self.call("set_drum_pads", project_id=pid, track=drums, part="kick", steps=[4], on=False)
         self.call("set_drum_tuning", project_id=pid, track=drums, part="snare", pitch=3, decay=1.4)
+        self.call("set_drum_tuning", project_id=pid, track=drums, part="Floor Tom", pitch=-20, decay=3.5, level=1.8)
+        self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", pitch=30)["error"])
         self.call("set_pattern_length", project_id=pid, track=drums, bars=2)
         # notes / synth / fx / master
         self.call("set_notes", project_id=pid, track="Guitar 1", notes=[{"note": "E2", "step": 1, "length": 2}, {"note": "G2", "step": 5}])
@@ -205,9 +215,11 @@ class McpTest(unittest.TestCase):
         self.assertEqual(d["pattern_bars"], 2)
         self.assertEqual(d["pads"]["kick"], "x...x..xx..xx..x" + "." * 16)  # "x..x" repeated, step 4 cleared, bar 2 empty
         self.assertEqual(d["pads"]["snare"][:16], "....x.......x...")
-        self.assertEqual(d["pads"]["rim"][:16], "x.......x.......")
+        self.assertEqual(d["pads"]["phh"][:16], "x.......x.......")
         self.assertEqual(d["pads"]["crash"], "." * 32)
         self.assertEqual(d["kit"]["snare"], {"pitch": 3, "decay": 1.4, "level": 1})
+        self.assertEqual(d["kit"]["toml"], {"pitch": -20, "decay": 3.5, "level": 1.8})
+        self.assertEqual(list(d["pads"]), ["kick", "snare", "chh", "ohh", "tomh", "tomm", "toml", "crash", "ride", "phh"])
         self.assertEqual([c["start_beat"] for c in d["clips"]], [0, 20])
         lead = tracks["Lead Guitar"]
         self.assertEqual((lead["pan"], lead["volume"], lead["mute"], lead["reverb_send"]), (-0.4, 0.7, True, 0.2))
@@ -242,6 +254,19 @@ class McpTest(unittest.TestCase):
         self.assertIn("invalid project id", self.call("get_project", ok=False, project_id="../../x")["error"])
 
 
+class MigrationTest(unittest.TestCase):
+    def test_legacy_kit_rows_are_remapped(self):
+        legacy = ["kick", "snare", "ride", "chh", "ohh", "tomh", "toml", "rim", "crash"]
+        grid = [[1 if j == i else 0 for j in range(16)] for i in range(len(legacy))]  # row i hits step i
+        proj = {"sig": 4, "tracks": [{"type": "drum", "pattern": {"bars": 1, "grid": grid}}]}
+        M.migrate_drums(proj)
+        p = proj["tracks"][0]["pattern"]
+        self.assertEqual(p["ids"], M.DRUM_IDS)
+        for r, pid in enumerate(M.DRUM_IDS):
+            want = legacy.index(pid) if pid in legacy else None
+            self.assertEqual(p["grid"][r].index(1) if 1 in p["grid"][r] else None, want, pid)
+
+
 class ModelSyncTest(unittest.TestCase):
     """The Python model must mirror static/app.js so MCP edits load correctly in the UI."""
 
@@ -254,6 +279,18 @@ class ModelSyncTest(unittest.TestCase):
         self.assertEqual(re.findall(r"^\s+'([^']+)':", block("SYNTH_PRESETS"), re.M), list(M.SYNTH_PRESETS))
         self.assertEqual(re.findall(r"^\s+'([^']+)':", block("MASTER_PRESETS"), re.M), list(M.MASTER_PRESETS))
         self.assertEqual(re.findall(r"^\s+(\w+): \{ name:", block("FX_TYPES"), re.M), list(M.FX_TYPES))
+        self.assertEqual(re.search(r"KIT_RANGES = \{ pitch: \[(-?\d+), (-?\d+)\], decay: \[([\d.]+), ([\d.]+)\], level: \[([\d.]+), ([\d.]+)\] \}", js).groups(),
+                         tuple(str(x) for k in ("pitch", "decay", "level") for x in M.KIT_RANGES[k]))
+        self.assertEqual(re.findall(r"'(\w+)'", js.split("const LEGACY_DRUM_IDS = ")[1].split(";")[0]), M.LEGACY_DRUM_IDS)
+        self.assertEqual(re.search(r"DEFAULT_GUITAR_PRESET = '([^']+)', DEFAULT_BASS_PRESET = '([^']+)'", js).groups(),
+                         (M.DEFAULT_GUITAR_PRESET, M.DEFAULT_BASS_PRESET))
+        # every preset's parameter values must match between JS and Python
+        for name, params in M.SYNTH_PRESETS.items():
+            line = next(l for l in block("SYNTH_PRESETS").splitlines() if l.strip().startswith(f"'{name}':"))
+            js_params = dict(re.findall(r"(\w+): ('[^']*'|[-\d.]+)", line.split("{", 1)[1]))
+            py_params = {k: (f"'{v}'" if isinstance(v, str) else repr(v)) for k, v in params.items()}
+            self.assertEqual({k: v.strip("'") if v.startswith("'") else float(v) for k, v in js_params.items()},
+                             {k: v.strip("'") if v.startswith("'") else float(v) for k, v in py_params.items()}, name)
         for preset, rows in M.DRUM_PRESETS.items():
             for part, pat in rows.items():
                 self.assertIn(f"{part}: '{pat}'", block("DRUM_PRESETS"), preset)
