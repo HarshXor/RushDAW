@@ -1,4 +1,5 @@
 import io
+import tempfile
 import json
 import math
 import struct
@@ -28,7 +29,8 @@ def sine_wav(seconds=0.5, sr=44100):
 class ServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.httpd = make_server("127.0.0.1", 0)
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.httpd = make_server("127.0.0.1", 0, cls.tmp.name)
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
 
@@ -36,6 +38,7 @@ class ServerTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        cls.tmp.cleanup()
 
     def test_static_files(self):
         for path in ("/", "/app.js", "/style.css"):

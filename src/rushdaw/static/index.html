@@ -34,10 +34,12 @@
     <input id="fileInput" type="file" accept="audio/*,video/*" multiple hidden>
   </div>
   <div class="group">
-    <input id="title" value="My Song" size="10" title="Song title">
-    <button id="btnSave">Save</button>
-    <button id="btnLoad">Open</button>
-    <input id="projInput" type="file" accept=".rushdaw,.json" hidden>
+    <button id="btnProjects" title="Back to project manager (auto-saves changes)">☰ Projects</button>
+    <input id="title" value="My Song" size="10" title="Project / song title">
+    <input id="revMsg" placeholder="Revision note (optional)" size="16" title="Note stored with the next saved revision">
+    <button id="btnSave" title="Save a new revision (Ctrl/Cmd+S)">💾 Save</button>
+    <button id="btnHistory" title="Revision history">🕘 History</button>
+    <span id="dirtyDot" title="Unsaved changes"></span>
     <select id="exportFmt"><option value="wav">WAV</option></select>
     <label class="toggle"><input id="normalize" type="checkbox" checked> Normalize</label>
     <button id="btnExport" class="primary">Export</button>
@@ -59,6 +61,7 @@
   </div>
 </main>
 
+<div id="splitter" title="Drag to resize the panel"></div>
 <section id="bottom">
   <nav class="tabs">
     <button data-tab="mixer" class="active">Mixer</button>
@@ -74,6 +77,41 @@
 </section>
 
 <div id="dropOverlay">Drop audio files to import</div>
+
+<!-- project manager (start screen) -->
+<section id="home">
+  <div class="home-inner">
+    <header class="home-head">
+      <div class="logo big">Rush<span>DAW</span></div>
+      <div class="home-path" id="homePath"></div>
+    </header>
+    <div class="home-new">
+      <h3>New project</h3>
+      <div class="row">
+        <input id="npName" placeholder="Project name" value="New Song">
+        <label>BPM <input id="npBpm" type="number" min="40" max="240" value="180"></label>
+        <label>Template <select id="npTpl"><option value="demo">Metal demo (drums, bass, guitar)</option><option value="band">Band (drums, bass, guitar, vocal)</option><option value="empty">Empty</option></select></label>
+        <button id="npCreate" class="primary">+ Create</button>
+        <button id="npImport" title="Import a .rushdaw file as a new project">Import .rushdaw…</button>
+        <input id="npImportFile" type="file" accept=".rushdaw,.json" hidden>
+      </div>
+    </div>
+    <div class="home-bar">
+      <h3 id="homeTitle">Projects</h3>
+      <input id="projSearch" placeholder="Search…">
+      <button id="btnTrash">🗑 Trash</button>
+    </div>
+    <div id="projList"></div>
+  </div>
+</section>
+
+<!-- revision history dialog -->
+<div id="historyDlg" class="dlg">
+  <div class="dlg-box">
+    <div class="dlg-head"><b id="historyTitle">History</b><button id="historyClose">✕</button></div>
+    <div id="historyList"></div>
+  </div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>

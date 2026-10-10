@@ -26,7 +26,7 @@ python3 -m rushdaw      # alternative
 | Area | Features |
 |---|---|
 | **Mixing** (main focus) | A mixer channel per track: volume fader (dB), pan, mute/solo, 3-band EQ, compressor, Reverb & Delay sends, peak meter |
-| **Drum machine** | Metal / hardcore / punk kit: clicky Metal Kick (for double bass), **Tight / High-Tuned Snare**, China, Crash, hi-hats, toms, clap. Step sequencer 1–8 bars. Presets: Metal Double Bass (default), Metal Gallop, Blast Beat, Hammer Blast, Thrash Skank, Hardcore Breakdown, Hardcore Two-Step, D-Beat, Punk Beat, Punk Polka, Pop-Punk Drive, plus Rock, Hip-Hop, Trap, House, Reggaeton. Default tempo 180 BPM |
+| **Drum machine** | Metal / hardcore / punk kit: acoustic underground-metal kit: triggered Metal Kick (low thump + beater click), **high-tuned ringing snare**, Ride, China, Crash, hi-hats, ringing toms, light room reverb + velocity variation. Step sequencer 1–8 bars. Presets: Metal Double Bass (default), Metal Gallop, Blast Beat, Hammer Blast, Thrash Skank, Hardcore Breakdown, Hardcore Two-Step, D-Beat, Punk Beat, Punk Polka, Pop-Punk Drive, plus Rock, Hip-Hop, Trap, House, Reggaeton. Default tempo 180 BPM |
 | **Per-track insert FX** | **Effects** tab / `FX…` button on each mixer strip: EQ, Compressor, Distortion, Filter (LP/HP/BP), Chorus, Tremolo, Delay (BPM sync), Reverb. Unlimited effects per track, on/off bypass, reordering, chain presets: Vocal, Guitar Amp, Metal Guitar, Drum Bus, Bass, Lo-Fi. Included in exports and saved projects |
 | **Guitar MIDI** | `+ Guitar` track: sawtooth → amp distortion → cabinet filter. Presets Power Chord / Distortion / Palm Mute / Crunch / Clean Guitar, Drive, Pluck decay, Chord mode (single note or power chord 1-5-8) |
 | **Synth / MIDI** | Piano roll C2–C6, presets Keys / Bass / Lead / Pad / Pluck / 808, wave, attack, release, filter cutoff, note length |
@@ -35,10 +35,30 @@ python3 -m rushdaw      # alternative
 | **Import** | Import audio/video files (button or drag & drop onto a track). Clips can be dragged to change their position or move to another track, trimmed, split (S), duplicated (Ctrl/Cmd+D) |
 | **Mastering** | Master chain EQ → Bus Compressor → Make-up → Limiter → Output, presets (Balanced, Loud Pop, Warm, Bass Boost, Bright), dBFS meter |
 | **Export** | WAV, MP3, MP4 (video with waveform visualizer), M4A, AAC, OGG, OPUS, FLAC, with optional normalization |
-| **Project** | Save/Open `.rushdaw` files (including audio) |
+| **Project manager** | Start screen listing all projects: create (templates Metal demo / Band / Empty), open, rename, search, delete to Trash + restore, import `.rushdaw` |
+| **Revision history** | Every 💾 Save (Ctrl/Cmd+S) creates a new revision with an optional note; History lets you open any old revision, restore it (non-destructive, becomes a new revision) or download it. Unsaved changes are auto-saved as a revision when you go back to Projects |
 
 ### Keyboard shortcuts
 `Space` play/stop · `R` record · `Home`/`Enter` back to start · `S` split · `Ctrl/Cmd+D` duplicate · `Delete` remove clip · `M` metronome toggle · `Shift + drag` on the ruler sets the loop region · double-click a Drum/Synth lane to add a pattern region.
+
+## Data storage
+
+All data stays on your computer in `~/.rushdaw/` (change with `rushdaw --home PATH` or `RUSHDAW_HOME`):
+
+```
+~/.rushdaw/
+├── db.sql                          # SQLite – important metadata only
+└── file/
+    └── <project_id>/
+        ├── rev-0001.rushdaw        # full project snapshot (tracks, notes, FX, embedded audio)
+        ├── rev-0002.rushdaw
+        └── ...
+```
+
+- `db.sql` table `projects`: id, name, bpm, time signature, created/updated time, latest revision, deleted time (soft delete).
+- `db.sql` table `revisions`: project, revision number, note, file name, size, SHA-256, track count, time.
+- Project content (including audio) is **not** stored in the database. It lives in the `.rushdaw` files, written atomically.
+- Deleting a project only moves it to the Trash. Its files and history stay on disk.
 
 ## Uploading to PyPI
 

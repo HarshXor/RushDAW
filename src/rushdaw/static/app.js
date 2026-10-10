@@ -20,14 +20,14 @@ const nid = p => `${p}${Date.now().toString(36)}${(uidN++).toString(36)}`;
 
 const COLORS = ['#00e5ff', '#ffffff', '#7fffd4', '#00b8d4', '#b2f5ff', '#4dd0e1', '#d9d9d9', '#1de9b6'];
 const DRUMS = [
-  { id: 'kick', name: 'Metal Kick' }, { id: 'snare', name: 'Tight Snare' }, { id: 'clap', name: 'Clap' },
+  { id: 'kick', name: 'Metal Kick' }, { id: 'snare', name: 'Hi-Tuned Snare' }, { id: 'ride', name: 'Ride' },
   { id: 'chh', name: 'Closed HH' }, { id: 'ohh', name: 'Open HH' }, { id: 'tomh', name: 'Tom Hi' },
   { id: 'toml', name: 'Tom Low' }, { id: 'rim', name: 'China' }, { id: 'crash', name: 'Crash' },
 ];
 const DEFAULT_DRUM_PRESET = 'Metal Double Bass';
 const DRUM_PRESETS = {
   // --- metal / hardcore / punk (16 steps = one 4/4 bar of 16th notes) ---
-  'Metal Double Bass': { kick: 'xxxxxxxxxxxxxxxx', snare: '....x.......x...', crash: 'x.......x.......', chh: '..x...x...x...x.' },
+  'Metal Double Bass': { kick: 'xxxxxxxxxxxxxxxx', snare: '....x.......x...', crash: 'x...............', ride: 'x...x...x...x...' },
   'Metal Gallop': { kick: 'x.xxx.xxx.xxx.xx', snare: '....x.......x...', crash: 'x...x...x...x...' },
   'Blast Beat': { kick: 'x.x.x.x.x.x.x.x.', snare: '.x.x.x.x.x.x.x.x', crash: 'x.......x.......' },
   'Hammer Blast': { kick: 'x.x.x.x.x.x.x.x.', snare: 'x.x.x.x.x.x.x.x.', rim: 'x...x...x...x...' },
@@ -39,7 +39,7 @@ const DRUM_PRESETS = {
   'Punk Polka': { kick: 'x...x...x...x...', snare: '..x...x...x...x.', chh: 'x.x.x.x.x.x.x.x.' },
   'Pop-Punk Drive': { kick: 'x.....x.x.......', snare: '....x.......x...', ohh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   // --- other genres ---
-  'Four on the floor': { kick: 'x...x...x...x...', clap: '....x.......x...', chh: '..x...x...x...x.', ohh: '......x.......x.' },
+  'Four on the floor': { kick: 'x...x...x...x...', snare: '....x.......x...', chh: '..x...x...x...x.', ohh: '......x.......x.' },
   'Rock': { kick: 'x.......x.x.....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   'Hip-Hop': { kick: 'x......x..x.....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.xxx.', rim: '...........x....' },
   'Trap': { kick: 'x.....x...x.....', snare: '........x.......', chh: 'xxxxxxxxx.xxxxxx', ohh: '.......x........' },
@@ -103,7 +103,7 @@ function newTrack(type) {
     color: COLORS[P.tracks.length % COLORS.length], vol: 0.8, pan: 0, mute: false, solo: false, arm: false,
     eq: { low: 0, mid: 0, high: 0 }, comp: { thr: 0, ratio: 1 }, rev: 0, dly: 0, fx: [], clips: [],
   };
-  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)) }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); }
+  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)) }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; /* a little room = acoustic kit feel */ }
   if (type === 'synth') { t.synth = { preset: 'Keys', ...SYNTH_PRESETS.Keys }; t.bars = 1; t.notes = []; }
   if (type === 'audio') t.arm = !P.tracks.some(x => x.arm);
   P.tracks.push(t);
@@ -297,21 +297,44 @@ function playDrum(c, dest, kind, t, vel = 1) {
     const tt = t; env(c, g.gain, start, peak, dur); void tt;
     s.connect(f); f.connect(g); g.connect(out); s.start(start, Math.random()); s.stop(start + dur + 0.05); srcs.push(s);
   };
+  // acoustic drumhead mode: sine with a small pitch drop and natural exponential ring
+  const mode = (f, dur, peak, drop = 0.96, type = 'sine') => osc(type, f, f * drop, dur, peak);
+  // metallic partials (inharmonic square bank) through a filter -> cymbal shimmer
+  const metal = (base, ftype, ffreq, dur, peak, q = 0.7) => {
+    const f = c.createBiquadFilter(), g = c.createGain(); f.type = ftype; f.frequency.value = ffreq; f.Q.value = q;
+    env(c, g.gain, t, peak, dur); f.connect(g); g.connect(out);
+    [1, 1.342, 1.2312, 1.6532, 1.9523, 2.1523].forEach(r => {
+      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = base * r; o.connect(f); o.start(t); o.stop(t + dur + 0.05); srcs.push(o);
+    });
+  };
   switch (kind) {
-    // metal kick: short punchy body + strong beater click so fast double-bass stays defined
-    case 'kick': osc('sine', 190, 48, 0.22, 1.0); nz('highpass', 3500, 0.012, 0.55, 0.7); osc('square', 2200, 1500, 0.008, 0.18); break;
-    // tight / high-tuned snare: high fundamental + overtone, crisp short wires, rimshot crack
-    case 'snare':
-      osc('triangle', 420, 330, 0.07, 0.6); osc('sine', 680, 560, 0.05, 0.3);
-      nz('bandpass', 5200, 0.11, 0.75, 0.9); nz('highpass', 8000, 0.05, 0.35); osc('square', 1800, 1700, 0.006, 0.2); break;
-    case 'clap': [0, 0.012, 0.024].forEach(d => nz('bandpass', 1500, 0.03, 0.6, 1.2, t + d)); nz('bandpass', 1400, 0.2, 0.5, 1.0, t + 0.035); break;
-    case 'chh': nz('highpass', 7500, 0.05, 0.35); break;
-    case 'ohh': nz('highpass', 7000, 0.35, 0.3); break;
-    case 'tomh': osc('sine', 260, 150, 0.3, 0.8); break;
-    case 'toml': osc('sine', 140, 80, 0.4, 0.9); break;
-    // china cymbal: trashy, bright, mid-length
-    case 'rim': nz('bandpass', 3800, 0.6, 0.45, 0.6); nz('highpass', 6000, 0.25, 0.25); osc('square', 470, 430, 0.15, 0.06); break;
-    case 'crash': nz('highpass', 4500, 1.4, 0.35); break;
+    // metal kick (triggered, underground style): low thump + punchy body + hard beater click
+    case 'kick':
+      // gains scaled so the raw (pre-fader) kick peak stays <= 1.0
+      osc('sine', 125, 52, 0.32, 0.45); mode(68, 0.22, 0.18, 0.85);
+      nz('highpass', 2800, 0.018, 0.29, 0.8); osc('triangle', 1600, 900, 0.012, 0.16); break;
+    // high-tuned ringing snare ("ping"): high fundamental + inharmonic head modes that ring out,
+    // stick crack, and bright but not dominant wires
+    case 'snare': {
+      const f0 = 345;
+      // gains scaled so the raw (pre-fader) snare peak stays <= 1.0 even with random noise
+      mode(f0, 0.75, 0.34, 0.975, 'triangle'); mode(f0 * 1.59, 0.55, 0.19); mode(f0 * 2.14, 0.4, 0.11); mode(f0 * 2.3, 0.32, 0.08);
+      nz('bandpass', 2600, 0.035, 0.4, 0.8);    // stick / rimshot crack
+      nz('highpass', 3200, 0.18, 0.25, 0.7);     // snare wires
+      nz('bandpass', 6500, 0.09, 0.2, 1.2); break;
+    }
+    // ride: bell ping + metallic wash
+    case 'ride': mode(2350, 0.7, 0.07, 1); mode(3520, 0.5, 0.05, 1); metal(480, 'bandpass', 6500, 1.1, 0.1, 0.6); nz('highpass', 7500, 0.8, 0.07); break;
+    // hi-hats: metallic partials + bright noise (acoustic-ish, not 808)
+    case 'chh': metal(420, 'highpass', 8000, 0.05, 0.16); nz('highpass', 9000, 0.06, 0.28); nz('bandpass', 4200, 0.02, 0.15, 1); break;
+    case 'ohh': metal(420, 'highpass', 7500, 0.45, 0.13); nz('highpass', 8000, 0.5, 0.22); break;
+    // toms: ringing heads with natural small pitch drop + stick attack
+    case 'tomh': mode(205, 0.6, 0.6, 0.9); mode(205 * 1.5, 0.3, 0.18); nz('lowpass', 3500, 0.03, 0.22); break;
+    case 'toml': mode(105, 0.8, 0.68, 0.88); mode(105 * 1.5, 0.4, 0.18); nz('lowpass', 2500, 0.035, 0.22); break;
+    // china: trashy, bright, mid-length
+    case 'rim': metal(330, 'bandpass', 3800, 0.9, 0.16, 0.5); nz('bandpass', 3500, 0.85, 0.4, 0.6); nz('highpass', 6500, 0.4, 0.2); break;
+    // crash: long metallic wash
+    case 'crash': metal(380, 'highpass', 5000, 1.6, 0.1); nz('highpass', 4500, 1.9, 0.33); nz('bandpass', 3000, 0.08, 0.2, 0.8); break;
   }
   return srcs;
 }
@@ -380,7 +403,7 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         if (to <= from) continue;
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           const beat = clip.start + k / 4, i = k % steps, when = tOf(beat);
-          if (t.type === 'drum') DRUMS.forEach((d, r) => { if (t.pattern.grid[r][i]) keep(playDrum(g.c, tn.in, d.id, when)); });
+          if (t.type === 'drum') DRUMS.forEach((d, r) => { if (t.pattern.grid[r][i]) keep(playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14)); /* slight velocity variation = human feel */ });
           else t.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
         }
       }
@@ -525,18 +548,27 @@ function renderArrange() {
   for (let bar = 0; bar * P.sig < timelineBeats(); bar += every) ruler.append(el('span', { style: { left: bar * barPx + 'px' } }, String(bar + 1)));
   P.tracks.forEach(t => {
     const sel = t.id === selTrackId;
-    const btn = (txt, key, cls = '') => el('button', { className: cls + (t[key] ? ' on' : ''), title: key, onclick: e => { e.stopPropagation(); t[key] = !t[key]; if (key === 'arm' && t.arm) P.tracks.forEach(x => { if (x !== t) x.arm = false; }); syncGraph(); render(); } }, txt);
-    hdr.append(el('div', { className: 'thead' + (sel ? ' sel' : ''), style: { '--c': t.color }, onclick: () => selectTrack(t.id) },
+    const titles = { mute: 'Mute this track (silence)', solo: 'Solo: hear only soloed tracks', arm: 'Arm for recording' };
+    const btn = (txt, key, cls = '') => el('button', { className: cls + (t[key] ? ' on' : ''), title: titles[key], onclick: e => { e.stopPropagation(); t[key] = !t[key]; if (key === 'arm' && t.arm) P.tracks.forEach(x => { if (x !== t) x.arm = false; }); syncGraph(); render(); } }, txt);
+    const stop = e => e.stopPropagation();
+    const volOut = el('span', { className: 'val' }, fmtDb(t.vol) + ' dB');
+    const panOut = el('span', { className: 'val', 'data-pan': t.id }, panLabel(t.pan));
+    const panIn = el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100), title: 'Pan: drag left/right · double-click = center',
+      oninput: e => setPan(t, +e.target.value / 100, panOut), ondblclick: e => { e.target.value = 0; setPan(t, 0, panOut); }, onclick: stop, onpointerdown: stop });
+    const quick = (txt, v) => el('button', { className: 'pq', title: v === 0 ? 'Center' : (v < 0 ? 'Hard left' : 'Hard right'), onclick: e => { stop(e); panIn.value = v * 100; setPan(t, v, panOut); } }, txt);
+    hdr.append(el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => selectTrack(t.id) },
       el('div', { className: 'row' },
-        el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: e => e.stopPropagation() }),
-        el('button', { title: 'Delete track', onclick: e => { e.stopPropagation(); deleteTrack(t.id); } }, '✕')),
-      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : 'Synth / MIDI') : 'Audio'),
-        btn('M', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null),
-      el('div', { className: 'row' }, el('input', { type: 'range', min: 0, max: 1.5, step: 0.01, value: t.vol, style: { width: '100%' }, title: 'Volume',
-        oninput: e => { t.vol = +e.target.value; syncGraph(); renderMixer(); }, onclick: e => e.stopPropagation() }))));
-    const lane = el('div', { className: 'lane' + (sel ? ' sel' : ''), style: { backgroundSize: barPx + 'px 100%' } });
+        el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
+        btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
+        el('button', { title: 'Delete track', onclick: e => { stop(e); deleteTrack(t.id); } }, '✕')),
+      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : 'Synth / MIDI') : 'Audio')),
+      el('div', { className: 'row ctl' }, el('span', { className: 'lab' }, 'Vol'),
+        el('input', { type: 'range', min: 0, max: 1.5, step: 0.01, value: t.vol, title: 'Volume',
+          oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
+      el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut)));
+    const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundSize: barPx + 'px 100%' } });
     lane.dataset.track = t.id;
-    lane.addEventListener('mousedown', e => { if (e.target === lane) { selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
+    lane.addEventListener('pointerdown', e => { if (e.target === lane) { selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
     lane.addEventListener('dblclick', e => {
       if (e.target !== lane || t.type === 'audio') return;
       const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig;
@@ -550,6 +582,19 @@ function renderArrange() {
   });
   drawLoop(); drawPlayhead();
 }
+/* pan: -1 = hard left, 0 = center, +1 = hard right */
+function panLabel(v) {
+  const n = Math.round(Math.abs(v) * 100);
+  if (n === 0) return 'C';
+  return (v < 0 ? 'L ' : 'R ') + n + (n === 100 ? ' max' : '');
+}
+function setPan(t, v, outEl) {
+  t.pan = clamp(Math.round(v * 100) / 100, -1, 1);
+  if (outEl) outEl.textContent = panLabel(t.pan);
+  syncGraph();
+  // keep the other pan controls (header <-> mixer) in sync without a full re-render
+  document.querySelectorAll(`[data-pan="${t.id}"]`).forEach(x => { if (x.tagName === 'INPUT') x.value = Math.round(t.pan * 100); else x.textContent = panLabel(t.pan); });
+}
 function xToBeat(e, ref) { return Math.max(0, (e.clientX - ref.getBoundingClientRect().left) / pxB()); }
 function snapBeat(b, grid = 1) { return $('#snap').checked ? Math.round(b / grid) * grid : b; }
 
@@ -559,7 +604,7 @@ function clipEl(t, c) {
   const d = el('div', { className: 'clip' + (c.id === selClipId ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
   const cv = el('canvas'); cv.width = Math.min(Math.ceil(w), 8000); cv.height = 60; d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
   requestAnimationFrame(() => drawClip(cv, t, c));
-  d.addEventListener('mousedown', e => clipMouseDown(e, t, c, d));
+  d.addEventListener('pointerdown', e => clipMouseDown(e, t, c, d));
   d.addEventListener('dblclick', () => { if (c.kind === 'midi') { selectTrack(t.id); showTab('editor'); } });
   return d;
 }
@@ -603,11 +648,11 @@ function clipMouseDown(e, t, c, d) {
     void y0;
   };
   const mu = () => {
-    window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu);
+    window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu);
     if (target !== t) { t.clips = t.clips.filter(x => x !== c); target.clips.push(c); selectTrack(target.id, false); }
     if (moved) render();
   };
-  window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+  window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
 }
 function selectTrack(id, rerender = true) {
   if (selTrackId === id) return;
@@ -635,17 +680,25 @@ function slider(label, min, max, step, val, fmt, on) {
   const out = el('span', {}, fmt(val));
   return el('label', {}, label, el('input', { type: 'range', min, max, step, value: val, oninput: e => { const v = +e.target.value; out.textContent = fmt(v); on(v); } }), out);
 }
+function panControl(t) {
+  const out = el('span', { className: 'val', 'data-pan': t.id }, panLabel(t.pan));
+  return el('div', { className: 'panbox' },
+    el('div', { className: 'panhd' }, el('span', {}, 'L'), el('span', {}, 'Pan'), el('span', {}, 'R')),
+    el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100),
+      title: 'Drag left/right · double-click = center', oninput: e => setPan(t, +e.target.value / 100, out), ondblclick: e => { e.target.value = 0; setPan(t, 0, out); } }),
+    out);
+}
 function renderMixer() {
   const m = $('#mixer'); m.innerHTML = '';
   P.tracks.forEach(t => {
     const set = fn => v => { fn(v); syncGraph(); };
-    m.append(el('div', { className: 'strip', style: { '--c': t.color } },
+    m.append(el('div', { className: 'strip' + (t.mute ? ' muted' : ''), style: { '--c': t.color } },
       el('div', { className: 't', title: t.name }, t.name),
       el('div', { className: 'meter' }, el('div', { id: 'meter-' + t.id })),
       slider('Vol', 0, 1.5, 0.01, t.vol, fmtDb, set(v => { t.vol = v; })),
-      slider('Pan', -1, 1, 0.01, t.pan, v => v === 0 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100), set(v => { t.pan = v; })),
+      panControl(t),
       el('div', { className: 'btns' },
-        el('button', { className: t.mute ? 'on' : '', onclick: () => { t.mute = !t.mute; syncGraph(); render(); } }, 'Mute'),
+        el('button', { className: 'mute' + (t.mute ? ' on' : ''), title: 'Mute this track', onclick: () => { t.mute = !t.mute; syncGraph(); render(); } }, t.mute ? '🔇 Muted' : '🔊 Mute'),
         el('button', { className: t.solo ? 'on' : '', onclick: () => { t.solo = !t.solo; syncGraph(); render(); } }, 'Solo')),
       el('div', { className: 'fx' }, 'EQ'),
       slider('Low', -15, 15, 0.5, t.eq.low, v => v.toFixed(1), set(v => { t.eq.low = v; })),
@@ -683,7 +736,8 @@ function renderEditor() {
     el('button', { onclick: () => { const len = (t.type === 'drum' ? t.pattern.bars : t.bars) * P.sig; const last = t.clips.reduce((a, c) => Math.max(a, c.start + c.len), 0); const st = t.clips.length ? Math.ceil(last / P.sig) * P.sig : Math.floor(T.pos / P.sig) * P.sig; t.clips.push({ id: nid('c'), kind: 'midi', start: st, len }); render(); } }, '+ Add region'));
   ed.append(tools);
   const grid = el('div', { className: 'grid', style: { gridTemplateColumns: `90px repeat(${steps}, 26px)` } });
-  const up = () => { paintVal = null; window.removeEventListener('mouseup', up); renderArrange(); };
+  const up = () => { paintVal = null; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); renderArrange(); };
+  grid.addEventListener('pointermove', e => { if (paintVal === null) return; const x = document.elementFromPoint(e.clientX, e.clientY); if (x && x._apply) x._apply(); });
   if (t.type === 'drum') {
     tools.append('Preset', el('select', { onchange: e => { applyDrumPreset(t, e.target.value); render(); } }, el('option', {}, '— choose —'), Object.keys(DRUM_PRESETS).map(k => el('option', {}, k))));
     DRUMS.forEach((d, r) => {
@@ -692,8 +746,8 @@ function renderEditor() {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (t.pattern.grid[r][i] ? ' on' : '') });
         cell.dataset.col = i;
         const apply = () => { t.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
-        cell.addEventListener('mousedown', e => { e.preventDefault(); paintVal = t.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01); } window.addEventListener('mouseup', up); });
-        cell.addEventListener('mouseenter', () => { if (paintVal !== null) apply(); });
+        cell._apply = apply;
+        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = t.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01); } window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
         grid.append(cell);
       }
     });
@@ -718,7 +772,7 @@ function renderEditor() {
         const n = covering(p, i);
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (n ? ' on' : ''), style: n && n.s !== i ? { opacity: 0.6 } : {} });
         cell.dataset.col = i;
-        cell.addEventListener('mousedown', e => {
+        cell.addEventListener('pointerdown', e => {
           e.preventDefault(); const ex = covering(p, i);
           if (ex) t.notes = t.notes.filter(x => x !== ex);
           else { t.notes.push({ p, s: i, l: Math.min(noteLen, steps - i) }); ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25); }
@@ -849,9 +903,12 @@ async function renderMix() {
   const g = createGraph(oc, false);
   scheduleRange(g, 0, end, { t: 0, b: 0 }, { first: true });
   const out = await oc.startRendering();
-  if ($('#normalize').checked) {
-    let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
-    const target = dbToGain(Math.min(-0.3, P.master.ceiling)); if (pk > 0) { const k = target / pk; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= k; } }
+  let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
+  const target = dbToGain(Math.min(-0.3, P.master.ceiling));
+  // Normalize: bring the peak to the ceiling. Without normalize: still never exceed the ceiling
+  // (the Web Audio limiter is not a true brickwall, so this guard prevents clipped exports).
+  if (pk > 0 && ($('#normalize').checked || pk > target)) {
+    const k = target / pk; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= k; }
   }
   return out;
 }
@@ -874,32 +931,173 @@ async function exportSong() {
   finally { btn.disabled = false; }
 }
 
-/* ------------------------------------------------------------- save / load */
+/* ------------------------------------------- projects: save / load / history */
+// Projects live on the local server: metadata in ~/.rushdaw/db.sql (SQLite),
+// every saved revision as a full .rushdaw file in ~/.rushdaw/file/<project_id>/.
 const blobToB64 = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.readAsDataURL(b); });
-async function saveProject() {
-  status('Saving project…');
+const DEFAULT_MASTER = JSON.parse(JSON.stringify(P.master));
+let currentProject = null;   // { id, name, head_revision, ... }
+let savedSnapshot = '';      // state at last save/load, used for the unsaved-changes indicator
+let saving = false;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error || m; } catch (e) { /* not json */ } throw new Error(m); }
+  return r;
+}
+const snapshot = () => JSON.stringify(P) + '|' + [...buffers.keys()].join(',');
+const isDirty = () => !!currentProject && snapshot() !== savedSnapshot;
+function markClean() { savedSnapshot = snapshot(); updateDirty(); }
+function updateDirty() { const d = $('#dirtyDot'); if (d) d.classList.toggle('on', isDirty()); }
+
+async function serializeProject() {
   P.title = $('#title').value;
   const used = new Set(); P.tracks.forEach(t => t.clips.forEach(c => c.kind === 'audio' && used.add(c.buf)));
   const audio = {};
   for (const id of used) if (buffers.has(id)) audio[id] = { name: bufNames.get(id) || '', wav: await blobToB64(encodeWAV(buffers.get(id))) };
-  download(new Blob([JSON.stringify({ app: 'rushdaw', version: 1, project: P, audio })], { type: 'application/json' }), (P.title || 'project') + '.rushdaw');
-  status('Project saved');
+  return JSON.stringify({ app: 'rushdaw', version: 1, project: P, audio });
 }
-async function loadProject(file) {
+async function saveRevision(message) {
+  if (!currentProject || saving) return null;
+  saving = true; status('Saving revision…');
   try {
-    ensureCtx(); stopTransport();
-    const j = JSON.parse(await file.text()); if (j.app !== 'rushdaw') throw new Error('not a RushDAW project');
-    buffers.clear(); bufNames.clear(); peaksCache.clear();
-    for (const [id, a] of Object.entries(j.audio || {})) {
-      const bin = Uint8Array.from(atob(a.wav), ch => ch.charCodeAt(0));
-      buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
-    }
-    Object.assign(P, j.project); P.master = { ...P.master, ...j.project.master };
-    P.tracks.forEach(t => { t.fx = t.fx || []; });
-    if (rt) { rt.tracks.forEach(n => { n.pan.disconnect(); n.fxUnits.forEach(disposeFxUnit); }); rt.tracks.clear(); }
-    $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title; T.pos = 0;
-    selTrackId = P.tracks[0]?.id || null; syncGraph(); render(); status('Project loaded');
-  } catch (e) { status('Load failed: ' + e.message); }
+    const body = await serializeProject();
+    const r = await (await api(`/api/projects/${currentProject.id}/revisions?message=${encodeURIComponent(message || '')}`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })).json();
+    currentProject.head_revision = r.number; currentProject.name = P.title;
+    markClean(); $('#revMsg').value = '';
+    status(`Saved revision ${r.number} (${(r.size / 1048576).toFixed(2)} MB) → ~/.rushdaw/file/${currentProject.id.slice(0, 8)}…/${r.file_name}`);
+    return r;
+  } catch (e) { status('Save failed: ' + e.message); return null; }
+  finally { saving = false; }
+}
+async function autoSave() { if (isDirty()) await saveRevision('Auto-save'); }
+
+function resetState() {
+  stopTransport();
+  if (rt) { rt.tracks.forEach(n => { n.pan.disconnect(); n.fxUnits.forEach(disposeFxUnit); }); rt.tracks.clear(); }
+  buffers.clear(); bufNames.clear(); peaksCache.clear();
+  P.tracks = []; P.master = JSON.parse(JSON.stringify(DEFAULT_MASTER)); P.loop = { start: 0, end: 16 }; P.sig = 4;
+  selTrackId = null; selClipId = null; T.pos = 0;
+}
+function applyTemplate(tpl) {
+  if (tpl === 'empty') { newTrack('audio'); return; }
+  const d = newTrack('drum'); d.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
+  const s = newTrack('synth'); s.synth = { preset: 'Bass', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS.Bass }; s.name = 'Bass';
+  [[36, 0, 3], [36, 6, 2], [43, 10, 2], [41, 12, 4]].forEach(([p, st, l]) => s.notes.push({ p, s: st, l }));
+  s.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
+  newGuitarTrack(0).clips[0].len = 16;
+  const a = newTrack('audio'); if (tpl === 'band') { a.name = 'Vocal'; a.fx = FX_CHAIN_PRESETS.Vocal.map(([ty, o]) => newFx(ty, o)); }
+  selTrackId = d.id;
+}
+async function loadProjectData(j) {
+  ensureCtx(); resetState();
+  if (j.app !== 'rushdaw') throw new Error('not a RushDAW project');
+  for (const [id, a] of Object.entries(j.audio || {})) {
+    const bin = Uint8Array.from(atob(a.wav), ch => ch.charCodeAt(0));
+    buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
+  }
+  Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
+  P.tracks.forEach(t => { t.fx = t.fx || []; });
+  $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
+  selTrackId = P.tracks[0]?.id || null; syncGraph(); render();
+}
+async function openProject(id, rev = null) {
+  try {
+    status('Opening project…');
+    const meta = await (await api(`/api/projects/${id}`)).json();
+    const r = await api(`/api/projects/${id}/file${rev ? '?rev=' + rev : ''}`);
+    await loadProjectData(await r.json());
+    P.title = meta.name; $('#title').value = meta.name;   // DB name wins (rename in manager)
+    currentProject = meta; markClean();
+    const n = +r.headers.get('X-Revision');
+    if (rev && n !== meta.head_revision) { savedSnapshot = ''; updateDirty(); }  // older revision loaded = unsaved working copy
+    history.replaceState(null, '', '#p=' + id);
+    hideHome();
+    status(rev && n !== meta.head_revision ? `Viewing revision ${n} of ${meta.name} – Save creates revision ${meta.head_revision + 1}` : `Opened ${meta.name} (revision ${n})`);
+  } catch (e) { status('Open failed: ' + e.message); showHome(); }
+}
+async function createProject() {
+  const name = $('#npName').value.trim() || 'New Song', bpm = clamp(+$('#npBpm').value || 180, 40, 240);
+  try {
+    const meta = await (await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, bpm, sig: 4 }), headers: { 'Content-Type': 'application/json' } })).json();
+    ensureCtx(); resetState(); P.bpm = bpm; P.title = name; $('#bpm').value = bpm; $('#sig').value = 4; $('#title').value = name;
+    applyTemplate($('#npTpl').value); syncGraph(); render();
+    currentProject = meta; await saveRevision('Created');
+    history.replaceState(null, '', '#p=' + meta.id); hideHome();
+  } catch (e) { status('Create failed: ' + e.message); }
+}
+
+/* project manager screen */
+let showTrash = false;
+const fmtAgo = ts => { const s = Date.now() / 1000 - ts; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' h ago'; return new Date(ts * 1000).toLocaleString(); };
+const fmtSize = b => b == null ? '–' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+async function showHome() {
+  await autoSave();
+  stopTransport();
+  $('#home').classList.add('show'); history.replaceState(null, '', location.pathname);
+  renderHome();
+}
+function hideHome() { $('#home').classList.remove('show'); }
+async function renderHome() {
+  const list = $('#projList'); list.innerHTML = '<p class="hint">Loading…</p>';
+  $('#homeTitle').textContent = showTrash ? 'Trash (deleted projects – files are kept)' : 'Projects';
+  $('#btnTrash').textContent = showTrash ? '← Back to projects' : '🗑 Trash';
+  try {
+    const data = await (await api('/api/projects' + (showTrash ? '?deleted=1' : ''))).json();
+    $('#homePath').textContent = `Data: ${data.home}/db.sql  ·  files: ${data.home}/file/`;
+    const q = $('#projSearch').value.trim().toLowerCase();
+    const items = data.projects.filter(p => !q || p.name.toLowerCase().includes(q));
+    list.innerHTML = '';
+    if (!items.length) list.append(el('p', { className: 'hint' }, showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
+    items.forEach(p => {
+      const nameEl = el('div', { className: 'pname', title: 'Open' }, p.name);
+      const card = el('div', { className: 'pcard' },
+        nameEl,
+        el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
+        el('div', { className: 'pmeta' }, 'Updated ' + fmtAgo(p.updated_at)),
+        el('div', { className: 'pbtns' }, showTrash
+          ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
+          : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
+            el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
+            el('button', { onclick: () => {
+              const inp = el('input', { value: p.name, className: 'pname-edit' });
+              const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
+              inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+              inp.onblur = () => done(true); nameEl.replaceWith(inp); inp.focus(); inp.select();
+            } }, '✎ Rename'),
+            el('button', { title: 'Move to trash (can be restored)', onclick: async () => { await api(`/api/projects/${p.id}`, { method: 'DELETE' }); renderHome(); } }, '🗑')]));
+      if (!showTrash) nameEl.onclick = () => openProject(p.id);
+      list.append(card);
+    });
+  } catch (e) { list.innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); }
+}
+
+/* revision history dialog */
+async function openHistory(id = currentProject?.id, fromHome = false) {
+  if (!id) return;
+  const box = $('#historyList'); box.innerHTML = '<p class="hint">Loading…</p>'; $('#historyDlg').classList.add('show');
+  try {
+    const p = await (await api(`/api/projects/${id}`)).json();
+    $('#historyTitle').textContent = `History – ${p.name} (${p.revisions.length} revisions)`;
+    box.innerHTML = '';
+    p.revisions.forEach(r => box.append(el('div', { className: 'hrow' + (r.number === p.head_revision ? ' head' : '') },
+      el('div', { className: 'hnum' }, 'r' + r.number),
+      el('div', { className: 'hinfo' }, el('b', {}, r.message), el('span', { className: 'pmeta' }, `${new Date(r.created_at * 1000).toLocaleString()} · ${r.track_count} tracks · ${fmtSize(r.size)}${r.number === p.head_revision ? ' · latest' : ''}`)),
+      el('div', { className: 'pbtns' },
+        el('button', { title: 'Load this revision into the editor', onclick: async () => { $('#historyDlg').classList.remove('show'); if (!fromHome) await autoSave(); openProject(id, r.number); } }, 'Open'),
+        r.number !== p.head_revision ? el('button', { title: 'Make this revision the latest (creates a new revision, nothing is lost)', onclick: async () => {
+          if (!fromHome) await autoSave();
+          await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); $('#historyDlg').classList.remove('show'); openProject(id);
+        } }, '↺ Restore') : null,
+        el('a', { className: 'btnlink', href: `/api/projects/${id}/file?rev=${r.number}&download=1`, title: 'Download this revision as a .rushdaw file' }, '⬇')))));
+  } catch (e) { box.innerHTML = ''; box.append(el('p', { className: 'hint' }, 'Error: ' + e.message)); }
+}
+async function importProjectFile(file) {
+  try {
+    status('Importing ' + file.name + '…');
+    const meta = await (await api('/api/projects/import?name=' + encodeURIComponent(file.name.replace(/\.(rushdaw|json)$/i, '')), { method: 'POST', body: await file.arrayBuffer() })).json();
+    renderHome(); openProject(meta.id);
+  } catch (e) { status('Import failed: ' + e.message); alert('Import failed: ' + e.message); }
 }
 
 /* --------------------------------------------------------------- tab / misc */
@@ -957,20 +1155,40 @@ function init() {
   }; });
   $('#btnImport').onclick = () => $('#fileInput').click();
   $('#fileInput').onchange = e => { const t = getTrack(selTrackId); importFiles([...e.target.files], t, null); e.target.value = ''; };
-  $('#btnSave').onclick = saveProject;
-  $('#btnLoad').onclick = () => $('#projInput').click();
-  $('#projInput').onchange = e => { if (e.target.files[0]) loadProject(e.target.files[0]); e.target.value = ''; };
+  $('#btnSave').onclick = () => saveRevision($('#revMsg').value);
+  $('#revMsg').onkeydown = e => { if (e.key === 'Enter') saveRevision($('#revMsg').value); };
+  $('#btnHistory').onclick = () => openHistory();
+  $('#btnProjects').onclick = showHome;
+  $('#historyClose').onclick = () => $('#historyDlg').classList.remove('show');
+  $('#historyDlg').onclick = e => { if (e.target.id === 'historyDlg') $('#historyDlg').classList.remove('show'); };
+  $('#npCreate').onclick = createProject;
+  $('#npName').onkeydown = e => { if (e.key === 'Enter') createProject(); };
+  $('#npImport').onclick = () => $('#npImportFile').click();
+  $('#npImportFile').onchange = e => { if (e.target.files[0]) importProjectFile(e.target.files[0]); e.target.value = ''; };
+  $('#projSearch').oninput = renderHome;
+  $('#btnTrash').onclick = () => { showTrash = !showTrash; renderHome(); };
+  setInterval(updateDirty, 1000);
+  window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
   $('#btnExport').onclick = exportSong;
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
 
   // ruler: click to seek, shift+drag to set loop region
-  $('#ruler').addEventListener('mousedown', e => {
+  $('#ruler').addEventListener('pointerdown', e => {
     const r = $('#ruler'); const b0 = snapBeat(xToBeat(e, r));
     if (!e.shiftKey) { seek(b0); return; }
     $('#loop').checked = true;
     const mm = ev => { const b1 = snapBeat(xToBeat(ev, r)); P.loop = { start: Math.min(b0, b1), end: Math.max(b0, b1) }; drawLoop(); };
-    const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); };
-    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+    const mu = () => { window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); };
+    window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu);
+  });
+  // resizable bottom panel (mouse + touch), remembered between sessions
+  const bottom = $('#bottom'), savedH = +localStorage.getItem('rushdaw.bottomH');
+  if (savedH) bottom.style.height = savedH + 'px';
+  $('#splitter').addEventListener('pointerdown', e => {
+    e.preventDefault(); const y0 = e.clientY, h0 = bottom.getBoundingClientRect().height;
+    const mm = ev => { const h = clamp(h0 + (y0 - ev.clientY), 120, window.innerHeight - 160); bottom.style.height = h + 'px'; };
+    const mu = () => { window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); localStorage.setItem('rushdaw.bottomH', Math.round(bottom.getBoundingClientRect().height)); };
+    window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu);
   });
   // sync header scroll with timeline
   $('#timelineWrap').addEventListener('scroll', e => { $('#trackHeaders').style.transform = `translateY(${-e.target.scrollTop}px)`; });
@@ -980,8 +1198,12 @@ function init() {
   window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; hideDrop(); } });
   window.addEventListener('dragover', e => e.preventDefault());
   window.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files]); });
-  // keyboard
+  // keyboard: Ctrl/Cmd+S always saves a revision (even while typing in a field)
   window.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); e.stopImmediatePropagation(); if (!$('#home').classList.contains('show')) saveRevision($('#revMsg').value); }
+  }, true);
+  window.addEventListener('keydown', e => {
+    if ($('#home').classList.contains('show') || $('#historyDlg').classList.contains('show')) return;
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home' || e.key === 'Enter') seek(0);
@@ -997,15 +1219,10 @@ function init() {
     info.formats.forEach(f => s.append(el('option', { value: f, selected: f === 'mp3' }, f.toUpperCase() + (f === 'mp4' ? ' (video)' : ''))));
   }).catch(() => status('Offline mode: WAV export only'));
 
-  // demo starter project
-  const d = newTrack('drum'); d.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
-  const s = newTrack('synth'); s.synth = { preset: 'Bass', ...SYNTH_PRESETS.Bass }; s.name = 'Bass';
-  [[36, 0, 3], [36, 6, 2], [43, 10, 2], [41, 12, 4]].forEach(([p, st, l]) => s.notes.push({ p, s: st, l }));
-  s.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
-  newGuitarTrack(0).clips[0].len = 16;
-  newTrack('audio');
-  selTrackId = d.id;
-  render(); requestAnimationFrame(frame);
-  status('Ready – Space: play · R: record · S: split · Ctrl+D: duplicate · Del: delete · Shift+drag ruler: loop');
+  requestAnimationFrame(frame);
+  status('Ready – Space: play · R: record · Ctrl/Cmd+S: save revision · S: split · Ctrl+D: duplicate · Del: delete');
+  // start in the project manager, or reopen the project from the URL (#p=<id>)
+  const m = location.hash.match(/p=([0-9a-f]{32})/);
+  if (m) openProject(m[1]); else showHome();
 }
 init();
