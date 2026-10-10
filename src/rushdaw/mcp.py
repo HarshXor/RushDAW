@@ -70,6 +70,8 @@ class RushDAWMCP:
         M.migrate_drums(doc.get("project") or {})
         M.fill_regions(doc.get("project") or {})  # every MIDI region owns its pattern
         M.migrate_strings(doc.get("project") or {})
+        for t in (doc.get("project") or {}).get("tracks", []):
+            M.normalize_amp(t)  # amp distortion is a visible per-track effect
         return doc, r, meta
 
     def _edit(self, pid, message, fn):
@@ -491,7 +493,8 @@ class RushDAWMCP:
                 if a.get("preset"):
                     if a["preset"] not in M.SYNTH_PRESETS:
                         raise M.ModelError("unknown synth preset. Presets: " + ", ".join(M.SYNTH_PRESETS))
-                    s = {**M.SYNTH_DEFAULTS, **M.SYNTH_PRESETS[a["preset"]], "preset": a["preset"]}
+                    M.apply_synth_preset(t, a["preset"])
+                    s = t["synth"]
                 for k, v in (a.get("params") or {}).items():
                     spec = M.SYNTH_PARAMS.get(k)
                     if spec is None:
@@ -503,6 +506,7 @@ class RushDAWMCP:
                     else:
                         s[k] = M.num(v, k, *spec)
                 t["synth"] = s
+                M.normalize_amp(t)  # a drive param becomes / updates the track's Guitar Amp effect
             return self._track_edit(a, "synth sound", fn)
 
         # ---------------- clips / regions
@@ -613,7 +617,7 @@ class RushDAWMCP:
             b["fx"] = [M.new_fx("dist", {"drive": 0.35, "tone": 2500, "level": 0.8, "mix": 0.5})]
             b["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
             g = M.new_track(proj, "guitar")
-            g["synth"] = {"preset": "Power Chord Guitar", **M.SYNTH_DEFAULTS, **M.SYNTH_PRESETS["Power Chord Guitar"]}
+            M.apply_synth_preset(g, "Power Chord Guitar")  # its amp is visible in this layer's effects
             g["notes"] = [dict(n) for n in riff]
             g["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
             M.new_track(proj, "audio", "Vocal")

@@ -307,6 +307,8 @@ const FX_TYPES = {
   eq: { name: 'EQ', params: { low: [0, -15, 15, 0.5, 'dB'], lowF: [120, 30, 600, 1, 'Hz'], mid: [0, -15, 15, 0.5, 'dB'], midF: [1000, 200, 8000, 10, 'Hz'], high: [0, -15, 15, 0.5, 'dB'], highF: [6000, 1500, 16000, 10, 'Hz'] } },
   comp: { name: 'Compressor', params: { thr: [-20, -60, 0, 1, 'dB'], ratio: [4, 1, 20, 0.5, ':1'], attack: [0.01, 0.001, 0.3, 0.001, 's'], release: [0.2, 0.02, 1, 0.01, 's'], makeup: [3, 0, 24, 0.5, 'dB'] } },
   dist: { name: 'Distortion', params: { drive: [0.5, 0, 1, 0.01, ''], tone: [4500, 500, 12000, 10, 'Hz'], level: [0.6, 0, 1.5, 0.01, ''], mix: [1, 0, 1, 0.01, ''] } },
+  // guitar amp: input gain -> distortion -> highpass 90 Hz -> cabinet lowpass (Tone) -> output Level
+  amp: { name: 'Guitar Amp', params: { gain: [10, 0, 36, 0.5, 'dB'], drive: [0.8, 0, 1, 0.01, ''], tone: [4800, 500, 12000, 10, 'Hz'], level: [0.32, 0, 1.5, 0.01, ''] } },
   filter: { name: 'Filter', params: { mode: ['lowpass', ['lowpass', 'highpass', 'bandpass']], freq: [2000, 30, 18000, 1, 'Hz'], q: [1, 0.1, 15, 0.1, ''] } },
   chorus: { name: 'Chorus', params: { rate: [1.5, 0.1, 8, 0.1, 'Hz'], depth: [0.004, 0, 0.012, 0.0005, 's'], mix: [0.5, 0, 1, 0.01, ''] } },
   tremolo: { name: 'Tremolo', params: { rate: [5, 0.5, 20, 0.1, 'Hz'], depth: [0.5, 0, 1, 0.01, ''] } },
@@ -322,7 +324,7 @@ const FX_CHAIN_PRESETS = {
   'Lo-Fi': [['filter', { mode: 'lowpass', freq: 3200, q: 0.8 }], ['dist', { drive: 0.3, mix: 0.4 }], ['chorus', { rate: 0.6, depth: 0.006, mix: 0.4 }]],
   'Clear (no FX)': [],
 };
-const FX_LABELS = { low: 'Low', lowF: 'Low freq', mid: 'Mid', midF: 'Mid freq', high: 'High', highF: 'High freq', thr: 'Threshold', ratio: 'Ratio', attack: 'Attack', release: 'Release', makeup: 'Make-up', drive: 'Drive', tone: 'Tone', level: 'Level', mix: 'Mix', mode: 'Mode', freq: 'Cutoff', q: 'Resonance', rate: 'Rate', depth: 'Depth', time: 'Time', feedback: 'Feedback', size: 'Size' };
+const FX_LABELS = { low: 'Low', lowF: 'Low freq', mid: 'Mid', midF: 'Mid freq', high: 'High', highF: 'High freq', thr: 'Threshold', ratio: 'Ratio', attack: 'Attack', release: 'Release', makeup: 'Make-up', gain: 'Input gain', drive: 'Drive', tone: 'Tone', level: 'Level', mix: 'Mix', mode: 'Mode', freq: 'Cutoff', q: 'Resonance', rate: 'Rate', depth: 'Depth', time: 'Time', feedback: 'Feedback', size: 'Size' };
 function newFx(type, over = {}) {
   const p = {}; for (const [k, v] of Object.entries(FX_TYPES[type].params)) p[k] = v[0];
   return { id: nid('f'), type, on: true, p: { ...p, ...over } };
@@ -336,6 +338,9 @@ function makeFxUnit(c, type) {
     case 'comp': N.c = c.createDynamicsCompressor(); N.g = c.createGain(); u.in.connect(N.c); N.c.connect(N.g); N.g.connect(u.out); break;
     case 'dist': wetDry(); N.ws = c.createWaveShaper(); N.ws.oversample = '4x'; N.lp = bq('lowpass'); N.lvl = c.createGain(); u.in.connect(N.ws); N.ws.connect(N.lp); N.lp.connect(N.lvl); N.lvl.connect(N.wet); break;
     case 'filter': N.f = bq('lowpass'); u.in.connect(N.f); N.f.connect(u.out); break;
+    case 'amp': N.pre = c.createGain(); N.ws = c.createWaveShaper(); N.ws.oversample = '4x'; N.hp = bq('highpass'); N.hp.frequency.value = 90;
+      N.cab = bq('lowpass'); N.cab.Q.value = 0.7; N.lvl = c.createGain();
+      u.in.connect(N.pre); N.pre.connect(N.ws); N.ws.connect(N.hp); N.hp.connect(N.cab); N.cab.connect(N.lvl); N.lvl.connect(u.out); break;
     case 'chorus': wetDry(); N.d = c.createDelay(0.1); N.d.delayTime.value = 0.018; N.lfo = c.createOscillator(); N.dep = c.createGain();
       N.lfo.connect(N.dep); N.dep.connect(N.d.delayTime); u.in.connect(N.d); N.d.connect(N.wet); N.lfo.start(); u.oscs.push(N.lfo); break;
     case 'tremolo': N.amp = c.createGain(); N.lfo = c.createOscillator(); N.dep = c.createGain();
@@ -351,6 +356,8 @@ function setFxUnit(u, fx, c, L) {
     case 'eq': s(N.l.frequency, p.lowF); s(N.l.gain, p.low); s(N.m.frequency, p.midF); s(N.m.gain, p.mid); s(N.h.frequency, p.highF); s(N.h.gain, p.high); break;
     case 'comp': s(N.c.threshold, p.thr); s(N.c.ratio, p.ratio); s(N.c.attack, p.attack); s(N.c.release, p.release); s(N.g.gain, dbToGain(p.makeup)); break;
     case 'dist': N.ws.curve = distCurve(1 + Math.round(p.drive * 60)); s(N.lp.frequency, p.tone); s(N.lvl.gain, p.level); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix); break;
+    case 'amp': if (u.drv !== p.drive) { u.drv = p.drive; N.ws.curve = distCurve(1 + Math.round(p.drive * 40)); }
+      s(N.pre.gain, dbToGain(p.gain)); s(N.cab.frequency, p.tone); s(N.lvl.gain, p.level); break;
     case 'filter': N.f.type = p.mode; s(N.f.frequency, p.freq); s(N.f.Q, p.q); break;
     case 'chorus': s(N.lfo.frequency, p.rate); s(N.dep.gain, p.depth); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix * 0.5); break;
     case 'tremolo': s(N.lfo.frequency, p.rate); s(N.amp.gain, 1 - p.depth / 2); s(N.dep.gain, p.depth / 2); break;
@@ -461,6 +468,23 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', decay: 1.5, susLevel: 0.3, drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
 const DEFAULT_GUITAR_PRESET = 'Clean Guitar', DEFAULT_BASS_PRESET = 'Finger Bass';
+/* amp distortion lives in the track's own Effects chain (visible + editable per layer), never hidden
+   inside the instrument: a preset/synth "drive" becomes a 'Guitar Amp' insert effect on THAT track.
+   Same signal as before: note*gain -> amp input (1/gain) -> distortion -> cab -> level (gain). */
+function normalizeAmp(t) {
+  const s = t.synth; if (!s || !(s.drive > 0)) return;
+  t.fx = t.fx || [];
+  const g = s.gain || 1, vals = { gain: clamp(Math.round(-20 * Math.log10(g) * 2) / 2, 0, 36), drive: s.drive, tone: 4800, level: +(g * (s.susLevel <= 0.001 ? 0.45 : 1)).toFixed(2) };  // muted chug: amp would flatten it -> -7 dB keeps the old loudness
+  const old = t.fx.find(f => f.type === 'amp' && f.auto);
+  if (old) Object.assign(old.p, vals); else { const f = newFx('amp', vals); f.auto = true; t.fx.unshift(f); }
+  s.drive = 0;
+}
+// choose an instrument preset for one track: replaces the amp that the previous preset added (on this track only)
+function applySynthPreset(t, name) {
+  Object.assign(t.synth, SYNTH_DEFAULTS, SYNTH_PRESETS[name], { preset: name });
+  t.fx = (t.fx || []).filter(f => !(f.type === 'amp' && f.auto));
+  normalizeAmp(t);
+}
 /* older projects stored guitar/bass as oscillator synths (no 'engine' key) or modeled strings:
    switch them to the real recorded instruments (same preset name when it exists, else the default) */
 function migrateStringTrack(t) {
@@ -639,6 +663,9 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
     // held, the recording loops so long notes keep ringing) -> RELEASE (fade after the note ends)
     const { decay, sus } = envOf(s);
     g.gain.setTargetAtTime(Math.max(0.0001, peak * sus), t + att, decay / 3);
+    // Sustain 0% (palm mute): close the tail fast after Decay, like a noise gate, so an amp effect on the
+    // track can't drag the dying tail out
+    if (sus <= 0.001 && t + att + decay < t + hold) g.gain.setTargetAtTime(0.0001, t + att + decay, decay / 12);
     g.gain.setTargetAtTime(0.0001, t + hold, rel / 3);
     end = t + hold + rel * 2 + 0.05;
   } else if (s.pluck > 0) { g.gain.setTargetAtTime(0.0001, t + att, s.pluck / 3); g.gain.setTargetAtTime(0.0001, t + hold, rel / 4); }
@@ -1247,7 +1274,7 @@ function renderEditor() {
       g.fillText('1 bar held', X(hold) - 52, 10); g.fillText('release', X(hold) + 3, 10);
     };
     requestAnimationFrame(drawEnv);
-    tools.append('Sound', el('select', { onchange: e => { Object.assign(s, SYNTH_DEFAULTS, SYNTH_PRESETS[e.target.value], { preset: e.target.value }); renderEditor(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
+    tools.append('Sound', el('select', { onchange: e => { applySynthPreset(t, e.target.value); syncGraph(); renderEditor(); renderFx(); renderMixer(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
       'Engine', el('select', { title: 'Real instrument = recorded guitar/bass, Modeled string = simulated plucked string, Synth = oscillators', onchange: e => { setS('engine', e.target.value); if (e.target.value === 'sample') loadSampleSet(s.sample || 'electric_guitar_clean'); renderEditor(); } },
         [['sample', 'Real instrument'], ['string', 'Modeled string'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
       ...(s.engine === 'sample' ? [
@@ -1270,7 +1297,7 @@ function renderEditor() {
       ]),
       el('span', { title: 'Release: fade-out after the note ends' }, slider('Release', 0.01, 3, 0.01, s.release, v => v.toFixed(2) + ' s', v => { setS('release', v); drawEnv(); })),
       slider('Tone', 100, 12000, 10, s.cutoff, v => Math.round(v) + 'Hz', v => setS('cutoff', v)),
-      slider('Drive', 0, 1, 0.01, s.drive || 0, v => Math.round(v * 100) + '%', v => setS('drive', v)),
+      el('button', { title: 'Distortion / amp of this layer is an insert effect – edit it in the Effects tab', onclick: () => showTab('fx') }, 'Amp / FX: ' + ((t.fx || []).filter(f => f.on).map(f => FX_TYPES[f.type].name).join(' › ') || 'none') + ' →'),
       'Chord', el('select', { onchange: e => setS('chord', e.target.value) }, [['none', 'Single note'], ['power', 'Power chord (1-5-8)']].map(([v, l]) => el('option', { value: v, selected: v === (s.chord || 'none') }, l))),
       'Note length', el('select', { onchange: e => { noteLen = +e.target.value; } }, [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, '1 bar']].map(([v, l]) => el('option', { value: v, selected: v === noteLen }, l))),
       el('button', { onclick: () => { h.notes = []; render(); } }, 'Clear'));
@@ -1543,7 +1570,7 @@ function applyCrustTemplate() {
   const b = newBassTrack(0); b.synth = { preset: 'Pick Bass', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS['Pick Bass'] };
   b.notes = CRUST_RIFF.map(([p, s, l]) => ({ p, s, l })); b.clips[0].len = 16;
   b.fx = [newFx('dist', { drive: 0.35, tone: 2500, level: 0.8, mix: 0.5 })];  // gritty crust bass
-  const g = newGuitarTrack(0); g.synth = { preset: 'Power Chord Guitar', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS['Power Chord Guitar'] };
+  const g = newGuitarTrack(0); applySynthPreset(g, 'Power Chord Guitar');  // its amp shows up in this layer's Effects
   g.notes = CRUST_RIFF.map(([p, s, l]) => ({ p, s, l })); g.clips[0].len = 16;
   newTrack('audio').name = 'Vocal';
   selTrackId = d.id;
@@ -1565,7 +1592,7 @@ async function loadProjectData(j) {
     buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
   }
   Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
-  P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); });
+  P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); normalizeAmp(t); });
   ensureRegions();  // older projects: every region gets its own copy of the track pattern
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
   selTrackId = P.tracks[0]?.id || null; syncGraph(); render();

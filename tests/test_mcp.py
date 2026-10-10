@@ -186,6 +186,10 @@ class McpTest(unittest.TestCase):
             self.assertEqual(set(dr["pads"][other]), {"."}, other)
         self.assertEqual((full["bass"]["synth"]["preset"], full["guitar"]["synth"]["preset"]), ("Pick Bass", "Power Chord Guitar"))
         self.assertEqual([f["type"] for f in full["bass"]["fx"]], ["dist"])
+        # the distorted guitar's amp is visible in ITS effects (not hidden in the instrument)
+        self.assertEqual([f["type"] for f in full["guitar"]["fx"]], ["amp"])
+        self.assertEqual(full["guitar"]["synth"]["drive"], 0)
+        self.assertEqual(full["guitar"]["fx"][0]["params"]["drive"], 0.8)
         self.assertEqual(len(full["guitar"]["notes"]), len(M.CRUST_RIFF))
         self.assertIn("dbeat", self.call("get_reference")["templates"])
         with open(APP_JS, encoding="utf-8") as f:
@@ -325,6 +329,14 @@ class McpTest(unittest.TestCase):
         # notes / synth / fx / master
         self.call("set_notes", project_id=pid, track="Guitar 1", notes=[{"note": "E2", "step": 1, "length": 2}, {"note": "G2", "step": 5}])
         self.call("set_synth", project_id=pid, track="Guitar 1", preset="Palm Mute Guitar", params={"drive": 0.9})
+        # the amp is a visible insert effect on THIS layer only (synth drive moves into it)
+        gt = {t["name"]: t for t in self.call("get_project", project_id=pid)["tracks"]}
+        self.assertEqual(gt["Guitar 1"]["synth"]["drive"], 0)
+        self.assertEqual([(f["type"], f["params"]["drive"]) for f in gt["Guitar 1"]["fx"]], [("amp", 0.9)])
+        self.assertFalse(any(f["type"] == "amp" for f in gt["Lead Guitar"]["fx"]))
+        self.call("set_synth", project_id=pid, track="Guitar 1", preset="Clean Guitar")  # clean preset removes its amp
+        self.assertEqual({t["name"]: t for t in self.call("get_project", project_id=pid)["tracks"]}["Guitar 1"]["fx"], [])
+        self.call("set_synth", project_id=pid, track="Guitar 1", preset="Palm Mute Guitar")
         fx = self.call("set_track_effects", project_id=pid, track="Guitar 1", effects=[{"type": "dist", "params": {"drive": 0.7}}, {"type": "reverb"}])["track"]["fx"]
         self.call("update_effect", project_id=pid, track="Guitar 1", effect_id=fx[1]["id"], params={"mix": 0.2}, on=False)
         self.call("set_master", project_id=pid, preset="Loud Pop", params={"ceiling": -0.8})
@@ -351,7 +363,7 @@ class McpTest(unittest.TestCase):
         self.assertEqual((lead["pan"], lead["volume"], lead["mute"], lead["reverb_send"]), (-0.4, 0.7, True, 0.2))
         g = tracks["Guitar 1"]
         self.assertEqual([(n["note"], n["step"], n["length"]) for n in g["notes"]], [("E2", 1, 2), ("G2", 5, 1)])
-        self.assertEqual((g["synth"]["preset"], g["synth"]["drive"]), ("Palm Mute Guitar", 0.9))
+        self.assertEqual((g["synth"]["preset"], g["synth"]["drive"]), ("Palm Mute Guitar", 0))
         self.assertEqual([(f["type"], f["on"]) for f in g["fx"]], [("dist", True), ("reverb", False)])
         self.assertEqual(g["fx"][1]["params"]["mix"], 0.2)
         self.assertEqual(doc["master"]["ceiling"], -0.8)

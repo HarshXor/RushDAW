@@ -5,6 +5,7 @@ browser.  Every structure produced here must be loadable by the web UI, so the
 constants below are kept in sync with ``static/app.js`` (see tests).
 """
 import json
+import math
 import copy
 import itertools
 import re
@@ -96,6 +97,7 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
     'eq': {'low': (0, -15, 15), 'lowF': (120, 30, 600), 'mid': (0, -15, 15), 'midF': (1000, 200, 8000), 'high': (0, -15, 15), 'highF': (6000, 1500, 16000)},
     'comp': {'thr': (-20, -60, 0), 'ratio': (4, 1, 20), 'attack': (0.01, 0.001, 0.3), 'release': (0.2, 0.02, 1), 'makeup': (3, 0, 24)},
     'dist': {'drive': (0.5, 0, 1), 'tone': (4500, 500, 12000), 'level': (0.6, 0, 1.5), 'mix': (1, 0, 1)},
+    'amp': {'gain': (10, 0, 36), 'drive': (0.8, 0, 1), 'tone': (4800, 500, 12000), 'level': (0.32, 0, 1.5)},  # guitar amp
     'filter': {'mode': ('lowpass', ['lowpass', 'highpass', 'bandpass']), 'freq': (2000, 30, 18000), 'q': (1, 0.1, 15)},
     'chorus': {'rate': (1.5, 0.1, 8), 'depth': (0.004, 0, 0.012), 'mix': (0.5, 0, 1)},
     'tremolo': {'rate': (5, 0.5, 20), 'depth': (0.5, 0, 1)},
@@ -332,6 +334,33 @@ def migrate_strings(proj):
         if 'engine' not in s or (s['engine'] == 'string' and known.get('engine') == 'sample'):
             p = s['preset'] if known.get('engine') == 'sample' else DEFAULT_GUITAR_PRESET if t['instrument'] == 'guitar' else DEFAULT_BASS_PRESET
             t['synth'] = {'preset': p, **SYNTH_DEFAULTS, **SYNTH_PRESETS[p]}
+
+
+def normalize_amp(t):
+    """Amp distortion lives in the track's own Effects chain (visible, per layer): a synth 'drive' becomes an
+    auto 'amp' insert effect on that track (mirrors normalizeAmp() in app.js)."""
+    s = t.get('synth')
+    if not s or not (s.get('drive') or 0) > 0:
+        return
+    t.setdefault('fx', [])
+    g = s.get('gain') or 1
+    vals = {'gain': clamp(round(-20 * math.log10(g) * 2) / 2, 0, 36), 'drive': s['drive'], 'tone': 4800,
+            'level': round(g * (0.45 if (s.get('susLevel') if s.get('susLevel') is not None else 1) <= 0.001 else 1), 2)}
+    old = next((f for f in t['fx'] if f.get('type') == 'amp' and f.get('auto')), None)
+    if old:
+        old['p'].update(vals)
+    else:
+        f = new_fx('amp', vals)
+        f['auto'] = True
+        t['fx'].insert(0, f)
+    s['drive'] = 0
+
+
+def apply_synth_preset(t, name):
+    """Choose an instrument preset for one track; replaces the amp the previous preset added (this track only)."""
+    t['synth'] = {**SYNTH_DEFAULTS, **SYNTH_PRESETS[name], 'preset': name}
+    t['fx'] = [f for f in t.get('fx') or [] if not (f.get('type') == 'amp' and f.get('auto'))]
+    normalize_amp(t)
 
 
 def apply_drum_preset(proj, t, preset):
