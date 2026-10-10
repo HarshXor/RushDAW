@@ -307,9 +307,19 @@ function env(c, gainParam, t, peak, decay) {
 const KIT_DEFAULT = { pitch: 0, decay: 1, level: 1 };
 // wide tuning ranges: ±24 semitones (two octaves), 10%..400% decay, 0..200% level
 const KIT_RANGES = { pitch: [-24, 24], decay: [0.1, 4], level: [0, 2] };
+// per-part Volume fader: shown in dB like the mixer (-48 dB at the bottom = off, 0 dB = default, max +6 dB);
+// stored as the linear 'level' gain (0..2) so projects and MCP stay compatible
+const KIT_VOL_DB = [-48, 6];
+const kitDbToLevel = db => db <= KIT_VOL_DB[0] ? 0 : Math.min(KIT_RANGES.level[1], Math.pow(10, db / 20));
+const levelToKitDb = lv => lv <= 0 ? KIT_VOL_DB[0] : clamp(20 * Math.log10(lv), KIT_VOL_DB[0], KIT_VOL_DB[1]);
+const fmtKitVol = lv => { if (lv <= 0) return 'off'; const db = 20 * Math.log10(lv); return (Math.abs(db) < 0.05 ? '0.0' : (db > 0 ? '+' : '') + db.toFixed(1)) + ' dB'; };
+// returns the part's settings object itself (filled with defaults in place) – never a copy, so the
+// editor sliders, preview and playback always read and write the same object
 function kitOf(track, id) {
   track.kit = track.kit || {};
-  return (track.kit[id] = { ...KIT_DEFAULT, ...(track.kit[id] || {}) });
+  const k = track.kit[id] || (track.kit[id] = {});
+  for (const [key, v] of Object.entries(KIT_DEFAULT)) if (typeof k[key] !== 'number') k[key] = v;
+  return k;
 }
 // kind = drum part id, t = start time, vel = velocity, kit = { pitch (semitones), decay (x), level (x) }
 function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
@@ -934,13 +944,14 @@ function renderEditor() {
     DRUMS.forEach((d, r) => {
       const kit = kitOf(t, d.id);
       const preview = () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, 1, kitOf(t, d.id)); };
-      const knob = (label, key, min, max, step, fmt) => {
+      // toUi / fromUi map the stored value to the slider scale (identity, or dB for the volume fader)
+      const knob = (label, key, min, max, step, fmt, toUi = v => v, fromUi = v => v) => {
         const out = el('span', { className: 'kval' }, fmt(kit[key]));
         return el('label', { className: 'kctl', title: label + ' (double-click = reset)' }, el('span', { className: 'klab' }, label),
-          el('input', { type: 'range', min, max, step, value: kit[key],
-            oninput: e => { kit[key] = +e.target.value; out.textContent = fmt(kit[key]); },
+          el('input', { type: 'range', min, max, step, value: toUi(kit[key]),
+            oninput: e => { kit[key] = fromUi(+e.target.value); out.textContent = fmt(kit[key]); },
             onchange: preview,
-            ondblclick: e => { kit[key] = KIT_DEFAULT[key]; e.target.value = kit[key]; out.textContent = fmt(kit[key]); preview(); } }), out);
+            ondblclick: e => { kit[key] = KIT_DEFAULT[key]; e.target.value = toUi(kit[key]); out.textContent = fmt(kit[key]); preview(); } }), out);
       };
       const isSel = selPart && selPart.trackId === t.id && selPart.row === r;
       const lbl = el('div', { className: 'drumlbl' + (isSel ? ' sel' : ''), onpointerdown: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; document.querySelectorAll('.drumlbl.sel').forEach(x => x.classList.remove('sel')); lbl.classList.add('sel'); } },
@@ -951,7 +962,7 @@ function renderEditor() {
           el('button', { className: 'dl-mini', title: 'Paste part here · Ctrl/Cmd+V', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; pasteClipboard(); } }, '📋')),
         knob('Tune', 'pitch', KIT_RANGES.pitch[0], KIT_RANGES.pitch[1], 0.5, v => (v > 0 ? '+' : '') + v + ' st'),
         knob('Decay', 'decay', KIT_RANGES.decay[0], KIT_RANGES.decay[1], 0.05, v => Math.round(v * 100) + '%'),
-        knob('Level', 'level', KIT_RANGES.level[0], KIT_RANGES.level[1], 0.01, v => Math.round(v * 100) + '%'));
+        knob('Volume', 'level', KIT_VOL_DB[0], KIT_VOL_DB[1], 0.5, fmtKitVol, levelToKitDb, kitDbToLevel));
       grid.append(lbl);
       for (let i = 0; i < steps; i++) {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (t.pattern.grid[r][i] ? ' on' : '') });

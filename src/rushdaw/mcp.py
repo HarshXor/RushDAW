@@ -391,13 +391,19 @@ class RushDAWMCP:
                     t["pattern"]["grid"][r] = [0] * n
             return self._track_edit(a, "clear pads", fn)
 
-        @tool("set_drum_tuning", "Tune a drum part: pitch in semitones (-24..24), decay multiplier (0.1..4), level (0..2).",
-              _S(project_id=PID, track=TRACK, part=PART, pitch=("number", "-24..24 semitones (0.5 steps allowed)"), decay=("number", "0.1..4 (1 = default length)"), level=("number", "0..2")))
+        @tool("set_drum_tuning", "Tune a drum part (each kit piece has its own settings): pitch in semitones (-24..24), decay multiplier (0.1..4), "
+              "and volume either as volume_db (-48..+6 dB, -48 = off, 0 = default) or as linear level (0..2).",
+              _S(project_id=PID, track=TRACK, part=PART, pitch=("number", "-24..24 semitones (0.5 steps allowed)"), decay=("number", "0.1..4 (1 = default length)"),
+                 volume_db=("number", "Part volume in dB: -48 (off) .. +6, 0 = default"), level=("number", "Part volume as linear gain 0..2 (1 = default)")))
         def set_drum_tuning(a):
+            if "volume_db" in a and "level" in a:
+                raise ToolError("give either volume_db or level, not both")
             def fn(proj, t):
                 self._drum(t)
                 pid = M.DRUM_IDS[M.drum_row(a["part"])]
                 kit = {**M.KIT_DEFAULT, **(t.setdefault("kit", {}).get(pid) or {})}
+                if "volume_db" in a:
+                    kit["level"] = M.kit_db_to_level(M.num(a["volume_db"], "volume_db", *M.KIT_VOL_DB))
                 for k, (lo, hi) in M.KIT_RANGES.items():
                     if k in a:
                         kit[k] = M.num(a[k], k, lo, hi)

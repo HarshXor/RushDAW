@@ -186,7 +186,7 @@ button,select,input{touch-action:manipulation}
 .dl-play{width:24px;height:22px;padding:0;flex:none;font-size:10px}
 .dl-name{flex:1;min-width:0;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dl-mini{padding:0 4px;font-size:11px;height:20px;flex:none;opacity:.75}.dl-mini:hover{opacity:1}
-.kctl{display:grid;grid-template-columns:36px 1fr 42px;align-items:center;gap:4px;height:14px}
+.kctl{display:grid;grid-template-columns:40px 1fr 46px;align-items:center;gap:4px;height:14px}
 .klab{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}
 .kctl input[type=range]{width:100%;height:12px;margin:0}
 .kval{font:9px ui-monospace,Menlo,monospace;color:var(--acc);text-align:right;white-space:nowrap}

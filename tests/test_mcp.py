@@ -198,6 +198,10 @@ class McpTest(unittest.TestCase):
         self.call("set_drum_tuning", project_id=pid, track=drums, part="snare", pitch=3, decay=1.4)
         self.call("set_drum_tuning", project_id=pid, track=drums, part="Floor Tom", pitch=-20, decay=3.5, level=1.8)
         self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", pitch=30)["error"])
+        self.call("set_drum_tuning", project_id=pid, track=drums, part="crash", volume_db=-6)      # per-part volume in dB
+        self.call("set_drum_tuning", project_id=pid, track=drums, part="ride", volume_db=-48)      # bottom of the fader = off
+        self.assertIn("either", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", volume_db=-3, level=1)["error"])
+        self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", volume_db=12)["error"])
         self.call("set_pattern_length", project_id=pid, track=drums, bars=2)
         # notes / synth / fx / master
         self.call("set_notes", project_id=pid, track="Guitar 1", notes=[{"note": "E2", "step": 1, "length": 2}, {"note": "G2", "step": 5}])
@@ -219,6 +223,8 @@ class McpTest(unittest.TestCase):
         self.assertEqual(d["pads"]["crash"], "." * 32)
         self.assertEqual(d["kit"]["snare"], {"pitch": 3, "decay": 1.4, "level": 1})
         self.assertEqual(d["kit"]["toml"], {"pitch": -20, "decay": 3.5, "level": 1.8})
+        self.assertAlmostEqual(d["kit"]["crash"]["level"], 0.501187, places=5)
+        self.assertEqual(d["kit"]["ride"]["level"], 0)
         self.assertEqual(list(d["pads"]), ["kick", "snare", "chh", "ohh", "tomh", "tomm", "toml", "crash", "ride", "phh"])
         self.assertEqual([c["start_beat"] for c in d["clips"]], [0, 20])
         lead = tracks["Lead Guitar"]

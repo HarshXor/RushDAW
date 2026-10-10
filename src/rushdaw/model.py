@@ -98,6 +98,11 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
 }
 KIT_DEFAULT = {'pitch': 0, 'decay': 1, 'level': 1}
 KIT_RANGES = {'pitch': (-24, 24), 'decay': (0.1, 4), 'level': (0, 2)}  # wide: ±2 octaves, 10-400% decay, 0-200% level
+KIT_VOL_DB = (-48, 6)  # per-part Volume fader in dB (-48 = off); stored as linear 'level'
+
+
+def kit_db_to_level(db):
+    return 0.0 if db <= KIT_VOL_DB[0] else min(KIT_RANGES['level'][1], round(10 ** (db / 20), 6))
 TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar', 'bass')
 LOW_NOTE, HIGH_NOTE = 36, 84
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
