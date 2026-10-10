@@ -2111,6 +2111,22 @@ function init() {
   });
   // sync header scroll with timeline
   $('#timelineWrap').addEventListener('scroll', e => { $('#trackHeaders').style.transform = `translateY(${-e.target.scrollTop}px)`; });
+  // The header column (layer settings) follows the timeline; scrolling over it scrolls the timeline,
+  // so both sides scroll vertically (mouse wheel / trackpad and touch drag).
+  const hdrCol = $('#headers'), tlw = $('#timelineWrap');
+  hdrCol.addEventListener('wheel', e => {
+    if (e.ctrlKey) return;  // pinch-zoom gesture
+    const k = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? tlw.clientHeight : 1;
+    const before = tlw.scrollTop; tlw.scrollTop += e.deltaY * k;
+    if (tlw.scrollTop !== before) e.preventDefault();
+  }, { passive: false });
+  let hdrTouchY = null;
+  hdrCol.addEventListener('touchstart', e => { hdrTouchY = e.target.closest('input, select, button') ? null : e.touches[0].clientY; }, { passive: true });
+  hdrCol.addEventListener('touchmove', e => {
+    if (hdrTouchY === null) return;
+    const y = e.touches[0].clientY; tlw.scrollTop += hdrTouchY - y; hdrTouchY = y; e.preventDefault();
+  }, { passive: false });
+  hdrCol.addEventListener('touchend', () => { hdrTouchY = null; });
   // global drag & drop import
   let dragDepth = 0;
   window.addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { dragDepth++; $('#dropOverlay').style.display = 'flex'; } });
