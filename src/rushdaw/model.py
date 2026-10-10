@@ -33,10 +33,10 @@ DRUM_PRESETS = {
     'Thrash Skank': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'crash': 'x.x.x.x.x.x.x.x.'},
     'Hardcore Breakdown': {'kick': 'x..x..x...x..x..', 'snare': '........x.......', 'crash': 'x.......x.......', 'toml': '......x.......x.', 'phh': '..x...x...x...x.'},
     'Hardcore Two-Step': {'kick': 'x.xx....x.xx....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
-    'D-Beat': {'kick': 'x..x.x..x..x.x..', 'snare': '..x...x...x...x.', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
-    # 2 bars: crash on the 1, hi-hat 8ths (not under the crash), snare on every '&', kick K..K.K.. (classic d-beat)
+    'D-Beat': {'kick': 'x..x.x..x..x.x..', 'snare': '..x...x...x...x.', 'ohh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
+    # 2 bars: crash on the 1, OPEN hi-hat 8ths (not under the crash), snare on every '&', kick K..K.K.. (classic d-beat)
     'Crust D-Beat': {'kick': 'x..x.x..x..x.x..x..x.x..x..x.x..', 'snare': '..x...x...x...x...x...x...x...x.',
-                     'chh': '..x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.', 'crash': 'x...............................'},
+                     'ohh': '..x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.', 'crash': 'x...............................'},
     'Punk Beat': {'kick': 'x.x...x.x.x...x.', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'Punk Polka': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Pop-Punk Drive': {'kick': 'x.....x.x.......', 'snare': '....x.......x...', 'ohh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},

@@ -179,10 +179,10 @@ class McpTest(unittest.TestCase):
         dr = full["drum"]
         self.assertEqual(dr["pattern_bars"], 2)
         self.assertEqual(dr["pads"]["crash"], "x" + "." * 31)                       # only on the 1
-        self.assertEqual(dr["pads"]["chh"], "..x.x.x.x.x.x.x." + "x.x.x.x.x.x.x.x.")  # 8ths, none under the crash
+        self.assertEqual(dr["pads"]["ohh"], "..x.x.x.x.x.x.x." + "x.x.x.x.x.x.x.x.")  # open hi-hat 8ths, none under the crash
         self.assertEqual(dr["pads"]["snare"], "..x." * 8)                         # every '&'
         self.assertEqual(dr["pads"]["kick"], "x..x.x.." * 4)                      # K..K.K..
-        for other in ("ohh", "tomh", "tomm", "toml", "ride", "phh"):
+        for other in ("chh", "tomh", "tomm", "toml", "ride", "phh"):
             self.assertEqual(set(dr["pads"][other]), {"."}, other)
         self.assertEqual((full["bass"]["synth"]["preset"], full["guitar"]["synth"]["preset"]), ("Pick Bass", "Power Chord Guitar"))
         self.assertEqual([f["type"] for f in full["bass"]["fx"]], ["dist"])
