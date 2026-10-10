@@ -451,6 +451,25 @@ class VocalMidiTest(unittest.TestCase):
             self.assertEqual(M.SYNTH_PRESETS[name]["engine"], "voice")
 
 
+class NaturalDrumTest(unittest.TestCase):
+    def test_drum_samples_bundled(self):
+        base = os.path.join(os.path.dirname(APP_JS), "samples", "drums")
+        for part in ("kick", "snare", "chh", "ohh", "tomh", "tomm", "toml", "crash", "ride"):
+            for layer in (1, 2, 3):
+                for rr in (1, 2, 3):
+                    path = os.path.join(base, f"{part}-{layer}-{rr}.mp3")
+                    self.assertTrue(os.path.getsize(path) > 1000, path)
+
+    def test_velocity_chars_and_feel(self):
+        self.assertEqual(M.pattern_to_row("x.o.g...", 8), [1, 0, 0.6, 0, 0.3, 0, 0, 0])
+        self.assertEqual(M.row_to_pattern([1, 0, 0.6, 0, 0.3, 0.8]), "x.o.gx")
+        proj = {"tracks": [], "bpm": 120, "sig": 4}
+        d = M.new_track(proj, "drum")
+        self.assertEqual(d["feel"]["hum"], 6)
+        g = M.new_track(proj, "guitar")
+        self.assertNotIn("feel", g)  # guitar / bass timing unchanged
+
+
 class ModelSyncTest(unittest.TestCase):
     """The Python model must mirror static/app.js so MCP edits load correctly in the UI."""
 

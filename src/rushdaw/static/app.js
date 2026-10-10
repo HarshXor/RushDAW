@@ -135,7 +135,7 @@ function newTrack(type) {
     color: COLORS[P.tracks.length % COLORS.length], vol: 0.8, pan: 0, mute: false, solo: false, arm: false,
     eq: { low: 0, mid: 0, high: 0 }, comp: { thr: 0, ratio: 1 }, rev: 0, dly: 0, fx: [], clips: [],
   };
-  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)), ids: DRUM_IDS.slice() }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; /* a little room = acoustic kit feel */ }
+  if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)), ids: DRUM_IDS.slice() }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; t.feel = { hum: 6, swing: 0, push: 0 }; /* a little room + drummer timing = acoustic kit feel */ }
   if (type === 'synth') { t.synth = { preset: 'Keys', ...SYNTH_PRESETS.Keys }; t.bars = 1; t.notes = []; }
   if (type === 'audio') t.arm = !P.tracks.some(x => x.arm);
   P.tracks.push(t);
@@ -220,7 +220,7 @@ function applyDrumPreset(t, name) {
   const need = Math.ceil(Math.max(16, ...Object.values(pr).map(s => s.length)) / 16);
   if (t.kind !== 'midi' && t.pattern.bars < need) t.pattern.bars = need;  // regions keep their own length
   const n = patSteps(t);
-  t.pattern.grid = DRUMS.map(d => Array.from({ length: n }, (_, i) => { const s = pr[d.id]; return s && s[i % s.length] === 'x' ? 1 : 0; }));
+  t.pattern.grid = DRUMS.map(d => Array.from({ length: n }, (_, i) => { const s = pr[d.id]; return s ? (VEL_CHAR[s[i % s.length]] || 0) : 0; }));
 }
 
 /* ------------------------------------------------------------ audio engine */
@@ -415,7 +415,60 @@ function kitOf(track, id) {
   return k;
 }
 // kind = drum part id, t = start time, vel = velocity, kit = { pitch (semitones), decay (x), level (x) }
-function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
+/* Recorded acoustic drum kit (MuldjordKit by Lars Muldjord, FreePats, CC-BY 4.0 – see samples/NOTICE.txt):
+   per part 3 velocity layers (soft / medium / hard) x 3 round-robin hits; the pad velocity picks the layer, every hit
+   picks a different recording, so repeated hits are never identical. Tune = playback rate, Decay = fade of the ring,
+   Volume = level. Pedal hi-hat = a soft closed-hat hit, shortened and darker. */
+const DRUM_SAMPLE_PARTS = ['kick', 'snare', 'chh', 'ohh', 'tomh', 'tomm', 'toml', 'crash', 'ride'];
+const DRUM_TARGET_PEAK = { kick: 0.95, snare: 0.9, chh: 0.55, ohh: 0.6, tomh: 0.85, tomm: 0.85, toml: 0.9, crash: 0.7, ride: 0.55 };
+const drumBank = new Map();  // part -> [layer][rr] { buf, off, peak }, plus .norm
+let drumLoad = null;
+const drumLast = new Map();
+function loadDrumSamples() {
+  if (drumLoad) return drumLoad;
+  sampleDecoder = sampleDecoder || new OfflineAudioContext(1, 1, 48000);
+  const jobs = [];
+  DRUM_SAMPLE_PARTS.forEach(id => {
+    const layers = [[], [], []];
+    for (let l = 1; l <= 3; l++) for (let r = 1; r <= 3; r++) jobs.push(fetch(`samples/drums/${id}-${l}-${r}.mp3`).then(x => { if (!x.ok) throw new Error(x.status); return x.arrayBuffer(); })
+      .then(a => sampleDecoder.decodeAudioData(a)).then(buf => {
+        const y = buf.getChannelData(0); let pk = 0; for (const v of y) pk = Math.max(pk, Math.abs(v));
+        let i = 0; while (i < y.length && Math.abs(y[i]) < pk * 0.05) i++;
+        layers[l - 1].push({ buf, off: Math.max(0, i - 16) / buf.sampleRate, peak: pk });
+      }).catch(e => console.warn('drum sample', id, l, r, e)));
+    drumBank.set(id, layers);
+  });
+  drumLoad = Promise.all(jobs).then(() => {
+    DRUM_SAMPLE_PARTS.forEach(id => { const L = drumBank.get(id); const hard = Math.max(...L[2].map(e => e.peak), 1e-3); L.norm = DRUM_TARGET_PEAK[id] / hard; L.ready = L.every(x => x.length); });
+  });
+  return drumLoad;
+}
+const drumSamplesReady = () => DRUM_SAMPLE_PARTS.every(id => drumBank.get(id)?.ready);
+function playDrumSample(c, dest, kind, t, vel, kit, pv) {
+  const pedal = kind === 'phh', id = pedal ? 'chh' : kind, L = drumBank.get(id);
+  const v = pv ?? vel, li = pedal ? 0 : v < 0.45 ? 0 : v < 0.8 ? 1 : 2, layer = L[li];
+  let rr = Math.floor(Math.random() * layer.length);
+  const key = id + li; if (layer.length > 1 && rr === drumLast.get(key)) rr = (rr + 1) % layer.length;  // never the same hit twice in a row
+  drumLast.set(key, rr);
+  const smp = layer[rr], src = c.createBufferSource(), g = c.createGain();
+  src.buffer = smp.buf; src.playbackRate.value = Math.pow(2, (kit.pitch || 0) / 12);
+  src.detune.value = Math.random() * 16 - 8;  // a drum head never hits exactly the same pitch twice
+  const rel = vel / ((pv ?? vel) || 1);               // the human +-variation on top of the pad velocity
+  const lvl = L.norm * (kit.level ?? 1) * rel * Math.pow(v / [0.3, 0.6, 1][li], 0.6) * Math.sqrt(v) * (pedal ? 3.2 : 1);  // softer pads clearly softer
+  const len = (smp.buf.duration - smp.off) / src.playbackRate.value, dk = kit.decay || 1;
+  g.gain.setValueAtTime(lvl, t);
+  if (dk < 1 || pedal) { const hold = pedal ? 0.05 : len * 0.12 * dk; g.gain.setTargetAtTime(0.0001, t + hold, Math.max(0.01, (pedal ? 0.03 : len * 0.25 * dk))); }
+  let out = g;
+  if (pedal) { const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4500; g.connect(lp); out = lp; }
+  src.connect(g); out.connect(dest);
+  src.start(t, smp.off); src.stop(t + (pedal ? 0.25 : len + 0.05));
+  return [src];
+}
+function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT, pv = null, engine = 'sample') {
+  if (engine !== 'synth') { if (drumSamplesReady()) return playDrumSample(c, dest, kind, t, vel, kit, pv); loadDrumSamples(); }
+  return playDrumSynth(c, dest, kind, t, vel, kit);
+}
+function playDrumSynth(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
   const srcs = [];
   const pr = Math.pow(2, (kit.pitch || 0) / 12), dk = kit.decay || 1;
   const F = f => Math.min(18000, f * pr), D = d => d * dk;
@@ -476,6 +529,22 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
     case 'crash': stick(2600, 0.42); metal(380, 'highpass', 4200, 1.9, 0.16); nz('highpass', 3800, 2.1, 0.38); nz('bandpass', 6000, 0.45, 0.23, 0.8); break;
   }
   return srcs;
+}
+/* velocity: every pad / note stores its own loudness 0..1 (1 = old on/off pads). Preset chars: x = full, o = soft, g = ghost */
+const VEL_CHAR = { x: 1, X: 1, o: 0.6, g: 0.3 };
+const VEL_LEVELS = [[1, 'Accent 100%'], [0.8, 'Normal 80%'], [0.6, 'Soft 60%'], [0.3, 'Ghost 30%']];
+let padVel = 1;
+const nextVel = v => { const i = VEL_LEVELS.findIndex(([x]) => Math.abs(x - v) < 0.05); return VEL_LEVELS[(i + 1) % VEL_LEVELS.length][0]; };
+/* feel (per track): Humanize = random timing spread (ms), Swing = delay of every 2nd 16th (0..60% of a 16th),
+   Push = whole layer ahead (-) or laid back (+) in ms. Drummer feel: snare a hair late, hats a hair early. */
+const FEEL_DEFAULT = { hum: 0, swing: 0, push: 0 };
+const DRUM_FEEL_MS = { kick: 0, snare: 4, chh: -2, ohh: -2, phh: -1, ride: -1, crash: 0, tomh: 2, tomm: 2, toml: 2 };
+const feelOf = t => { t.feel = { ...FEEL_DEFAULT, ...(t.feel || {}) }; return t.feel; };
+function feelOffset(t, i, part) {
+  const f = feelOf(t), S = spb();
+  let d = f.push / 1000 + (i % 2 ? f.swing * S / 4 : 0);
+  if (f.hum > 0) d += (Math.random() * 2 - 1) * f.hum / 1000 + (part ? (DRUM_FEEL_MS[part] || 0) / 1000 * Math.min(1, f.hum / 6) : 0);
+  return d;
 }
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
 const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', decay: 1.5, susLevel: 0.3, drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5, vowel: 'a', voices: 1, breath: 0, vibrato: 0 };
@@ -618,6 +687,7 @@ const loadAllSamples = () => Promise.all(Object.keys(SAMPLE_SETS).map(loadSample
 async function samplesReady() {
   const ids = new Set(P.tracks.filter(t => t.synth?.engine === 'sample').map(t => t.synth.sample));
   await Promise.all([...ids].map(loadSampleSet));
+  if (P.tracks.some(t => t.type === 'drum' && t.drumEngine !== 'synth')) await loadDrumSamples();
 }
 function nearestSample(id, m) {
   const set = SAMPLE_SETS[id], bank = sampleBank.get(id); if (!set || !bank) return null;
@@ -788,14 +858,15 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
           if (k >= steps) break;                                         // linear region: nothing repeats
           const beat = clip.start + k / 4, i = k, when = tOf(beat);
           if (t.type === 'drum') DRUMS.forEach((d, r) => {
-            if (!h.pattern.grid[r][i]) return;
+            const pv = h.pattern.grid[r][i]; if (!pv) return;
+            const when = Math.max(g.c.currentTime, tOf(beat) + feelOffset(t, i, d.id));
             // hi-hat choke: closing the hats (closed / pedal) cuts a ringing open hi-hat
             if ((d.id === 'chh' || d.id === 'phh') && tn.openHat) { tn.openHat.forEach(v => { try { v.stop(when + 0.01); } catch (e) { /* already ended */ } }); tn.openHat = null; }
-            const v = playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14, kitOf(t, d.id)); /* slight velocity variation = human feel */
+            const v = playDrum(g.c, tn.in, d.id, when, pv * (0.93 + Math.random() * 0.07), kitOf(t, d.id), pv, t.drumEngine); /* pad velocity + slight human variation */
             if (d.id === 'ohh') tn.openHat = v;
             keep(v);
           });
-          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
+          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, Math.max(g.c.currentTime, when + feelOffset(t, i)), n.l * S / 4, n.v ?? 1)); });
         }
       }
     }
@@ -1046,7 +1117,7 @@ function drawClip(cv, t, c) {
     for (let x = 0; x < W; x++) { const i = Math.floor(p0 + (x / W) * pn); const v = (pk[i] || 0) * (H / 2 - 8); g.fillRect(x, H / 2 + 4 - v, 1, Math.max(1, v * 2)); }
   } else {
     const h = isPatHolder(t, c) ? c : t, cols = Math.round(c.len * 4), cw = pxB() / 4 * (cv._scale || 1);
-    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r] && h.pattern.grid[r][k]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
+    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { const v = h.pattern.grid[r] && h.pattern.grid[r][k]; if (v) { g.globalAlpha = 0.35 + 0.65 * v; g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); g.globalAlpha = 1; } }); }
     else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); h.notes.forEach(n => { if (n.s < cols) g.fillRect(n.s * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
     // bar lines inside the region
     g.fillStyle = 'rgba(255,255,255,.18)'; for (let k = stepsPerBar(); k < cols; k += stepsPerBar()) g.fillRect(k * cw, 0, 1, H);
@@ -1265,13 +1336,22 @@ function renderEditor() {
     grid.append(el('div', { className: 'ghead' + (i % 4 === 0 ? ' beat' : '') + (barStart ? ' bar' : ''), title: barStart ? `Bar ${bar0 + i / spbar + 1}` : '' },
       barStart ? 'B' + (bar0 + i / spbar + 1) : i % 4 === 0 ? String(Math.floor(i / 4) % P.sig + 1) : '·'));
   }
+  // new pads / notes get this velocity; right-click (or Alt+click) a pad/note to change its velocity
+  const fl = feelOf(t);
+  tools.append('Velocity', el('select', { title: 'Velocity of new pads / notes (right-click or Alt+click a pad to cycle it)', onchange: e => { padVel = +e.target.value; } },
+    VEL_LEVELS.map(([v, l]) => el('option', { value: v, selected: Math.abs(v - padVel) < 0.01 }, l))),
+    el('span', { title: 'Humanize: random timing spread like a real player (drums also get a drummer feel: snare slightly behind, hats slightly ahead)' }, slider('Humanize', 0, 30, 1, fl.hum, v => v ? v + ' ms' : 'off', v => { fl.hum = v; })),
+    el('span', { title: 'Swing: delays every second 16th note' }, slider('Swing', 0, 0.6, 0.01, fl.swing, v => Math.round(v * 100) + '%', v => { fl.swing = v; })),
+    el('span', { title: 'Push / lay back: whole layer ahead (−) or behind (+) the beat' }, slider('Push', -30, 30, 1, fl.push, v => (v > 0 ? '+' : '') + v + ' ms', v => { fl.push = v; })));
   const up = () => { paintVal = null; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); renderArrange(); };
   grid.addEventListener('pointermove', e => { if (paintVal === null) return; const x = document.elementFromPoint(e.clientX, e.clientY); if (x && x._apply) x._apply(); });
   if (t.type === 'drum') {
+    tools.append('Kit', el('select', { title: 'Acoustic = recorded drum kit (velocity layers, every hit a different recording) · Synth = synthesized kit', onchange: e => { t.drumEngine = e.target.value; } },
+      [['sample', 'Acoustic (recorded)'], ['synth', 'Synth kit']].map(([v, l]) => el('option', { value: v, selected: v === (t.drumEngine || 'sample') }, l))));
     tools.append('Preset', el('select', { onchange: e => { applyDrumPreset(h, e.target.value); render(); } }, el('option', {}, '— choose —'), Object.keys(DRUM_PRESETS).map(k => el('option', {}, k))));
     DRUMS.forEach((d, r) => {
       const kit = kitOf(t, d.id);
-      const preview = () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, 1, kitOf(t, d.id)); };
+      const preview = () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, padVel, kitOf(t, d.id), padVel, t.drumEngine); };
       // toUi / fromUi map the stored value to the slider scale (identity, or dB for the volume fader)
       const knob = (label, key, min, max, step, fmt, toUi = v => v, fromUi = v => v) => {
         const out = el('span', { className: 'kval' }, fmt(kit[key]));
@@ -1297,9 +1377,14 @@ function renderEditor() {
       for (let i = 0; i < steps; i++) {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (i && i % spbar === 0 ? ' barline' : '') + (h.pattern.grid[r][i] ? ' on' : '') });
         cell.dataset.col = i;
-        const apply = () => { h.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
+        const showVel = () => { const v = h.pattern.grid[r][i]; cell.style.setProperty('--v', v || 1); cell.title = v ? `velocity ${Math.round(v * 100)}% – right-click / Alt+click: change velocity` : ''; };
+        showVel();
+        const apply = () => { h.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); showVel(); };
+        // right-click / Alt+click a pad: cycle its velocity (Accent -> Normal -> Soft -> Ghost)
+        const cycle = e => { e.preventDefault(); if (!h.pattern.grid[r][i]) return; h.pattern.grid[r][i] = nextVel(h.pattern.grid[r][i]); showVel(); ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, h.pattern.grid[r][i], kitOf(t, d.id), h.pattern.grid[r][i], t.drumEngine); renderArrange(); };
+        cell.addEventListener('contextmenu', cycle);
         cell._apply = apply;
-        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = h.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) preview(); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
+        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); if (e.altKey || e.button === 2) { if (e.altKey) cycle(e); return; } paintVal = h.pattern.grid[r][i] ? 0 : padVel; apply(); if (paintVal) preview(); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
         grid.append(cell);
       }
     });
@@ -1370,14 +1455,15 @@ function renderEditor() {
       cell.classList.toggle('nstart', !!n && n.s === i);
       cell.classList.toggle('ncont', !!n && n.s !== i);
       cell.classList.toggle('nend', !!n && n.s + n.l - 1 === i);
-      cell.title = n ? `${NOTE_NAMES[p % 12]}${Math.floor(p / 12) - 1} · ${n.l} step${n.l > 1 ? 's' : ''} (${(n.l / 4).toFixed(2)} beats) – drag to resize, click to delete` : '';
+      cell.style.setProperty('--v', n ? n.v ?? 1 : 1);
+      cell.title = n ? `${NOTE_NAMES[p % 12]}${Math.floor(p / 12) - 1} · ${n.l} step${n.l > 1 ? 's' : ''} (${(n.l / 4).toFixed(2)} beats) · velocity ${Math.round((n.v ?? 1) * 100)}% – drag to resize, click to delete, right-click: velocity` : '';
     });
     const startDrag = (e, p, i) => {
       e.preventDefault();
       let note = covering(p, i), existing = !!note, moved = false;
       if (!note) {
-        note = { p, s: i, l: Math.min(noteLen, steps - i) }; h.notes.push(note);
-        ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25);
+        note = { p, s: i, l: Math.min(noteLen, steps - i) }; if (padVel < 1) note.v = padVel; h.notes.push(note);
+        ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25, padVel);
       }
       paintRow(p);
       // a note can't grow into the next note of the same pitch
@@ -1398,6 +1484,8 @@ function renderEditor() {
       };
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', upFn); window.addEventListener('pointercancel', upFn);
     };
+    const cycleNote = (e, p, i) => { e.preventDefault(); const n = covering(p, i); if (!n) return; n.v = nextVel(n.v ?? 1); if (n.v === 1) delete n.v;
+      paintRow(p); ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25, n.v ?? 1); };
     tools.append(el('span', { className: 'hint', style: { margin: 0 } }, 'Drag = long note · drag a note = resize · click a note = delete'));
     for (let p = HIGH_NOTE; p >= LOW_NOTE; p--) {
       const nm = NOTE_NAMES[p % 12], black = nm.includes('#');
@@ -1406,7 +1494,8 @@ function renderEditor() {
       for (let i = 0; i < steps; i++) {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i && i % spbar === 0 ? ' barline' : '') });
         cell.dataset.col = i; cell.dataset.p = p;
-        cell.addEventListener('pointerdown', e => startDrag(e, p, i));
+        cell.addEventListener('pointerdown', e => { if (e.button === 2) return; if (e.altKey) { cycleNote(e, p, i); return; } startDrag(e, p, i); });
+        cell.addEventListener('contextmenu', e => cycleNote(e, p, i));
         cells.push(cell); grid.append(cell);
       }
       rowCells.set(p, cells); paintRow(p);
@@ -1889,6 +1978,7 @@ function newVocalTrack(startBeat = 0) {
 
 /* ------------------------------------------------------------------ wiring */
 function init() {
+  loadDrumSamples();  // recorded acoustic drum kit (~2 MB)
   loadAllSamples();  // real guitar/bass recordings (~1 MB) decoded in the background right away
   $('#btnPlay').onclick = togglePlay;
   $('#btnRewind').onclick = () => seek(0);

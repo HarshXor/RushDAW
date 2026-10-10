@@ -126,6 +126,8 @@ def tune_percent_to_pitch(pct):
 
 def kit_db_to_level(db):
     return 0.0 if db <= KIT_VOL_DB[0] else min(KIT_RANGES['level'][1], round(10 ** (db / 20), 6))
+VEL_CHAR = {'x': 1, 'X': 1, 'o': 0.6, 'g': 0.3}  # pad velocity chars (mirrors VEL_CHAR in app.js)
+FEEL_DEFAULT = {'hum': 0, 'swing': 0, 'push': 0}  # per-track timing feel: humanize ms, swing 0..0.6, push ms
 TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar', 'bass', 'vocal')
 LOW_NOTE, HIGH_NOTE = 36, 84
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -253,16 +255,17 @@ def fill_regions(proj):
 
 
 def pattern_to_row(pattern, steps):
-    """'x...x...' (x/X/1/* = hit, anything else = rest; spaces and | ignored) -> list of 0/1, repeated to fill."""
+    """'x...o..g' (x/X/1/* = hit 100%, o = soft 60%, g = ghost 30%, anything else = rest; spaces and | ignored)
+    -> list of velocities (0 = rest), repeated to fill."""
     clean = [ch for ch in str(pattern) if ch not in ' |']
     if not clean:
         raise ModelError("pattern must not be empty")
-    row = [1 if ch in 'xX1*' else 0 for ch in clean]
+    row = [1 if ch in 'xX1*' else VEL_CHAR.get(ch, 0) for ch in clean]
     return [row[i % len(row)] for i in range(steps)]
 
 
 def row_to_pattern(row):
-    return ''.join('x' if v else '.' for v in row)
+    return ''.join('.' if not v else 'x' if v >= 0.75 else 'o' if v >= 0.45 else 'g' for v in row)
 
 
 def note_name(midi):
@@ -380,7 +383,7 @@ def apply_drum_preset(proj, t, preset):
     if t.get('kind') != 'midi' and t['pattern'].get('bars', 1) < need:  # regions keep their own length
         t['pattern']['bars'] = need
     n = pat_steps(proj, t)
-    t['pattern']['grid'] = [[1 if pr.get(pid) and pr[pid][i % len(pr[pid])] == 'x' else 0 for i in range(n)] for pid in DRUM_IDS]
+    t['pattern']['grid'] = [[VEL_CHAR.get(pr[pid][i % len(pr[pid])], 0) if pr.get(pid) else 0 for i in range(n)] for pid in DRUM_IDS]
 
 
 def resize_grid(proj, t):
@@ -406,6 +409,7 @@ def new_track(proj, kind, name=None):
         apply_drum_preset(proj, t, DEFAULT_DRUM_PRESET)
         t['rev'] = 0.12
         t['kit'] = {}
+        t['feel'] = {'hum': 6, 'swing': 0, 'push': 0}
     if ttype == 'synth':
         preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET, 'vocal': DEFAULT_VOCAL_PRESET}.get(kind, 'Keys')
         t['synth'] = {'preset': preset, **SYNTH_DEFAULTS, **SYNTH_PRESETS[preset]}

@@ -143,3 +143,9 @@ Click **+ Vocal MIDI** to add a sung-voice layer played from the piano roll. Dra
 - New track starts with the "Choir Space" effect chain (EQ, Chorus, Reverb), visible and editable in the Effects tab.
 - New effect **Vocal Formant** (vowel a/e/i/o/u, formant shift, mix) turns any layer into an "aah"/"ooh" sound.
 - MCP: `add_track type=vocal`, `set_synth` with `engine: voice`, `vowel`, `voices`, `breath`, `vibrato`; `add_effect type=formant`.
+
+### Natural drums: recorded kit, velocity and feel
+- Drum tracks play a **recorded acoustic kit** (MuldjordKit, CC-BY 4.0): 3 velocity layers x 3 different hits per part, so repeated hits never sound identical. Editor → **Kit**: *Acoustic (recorded)* (default) or *Synth kit*. Tune / Decay / Volume per part still work.
+- **Velocity per pad and note**: choose the velocity for new pads (Accent 100%, Normal 80%, Soft 60%, Ghost 30%); right-click or Alt+click a pad/note to cycle it. Softer pads are drawn dimmer and play a softer recording (ghost notes, accents).
+- **Feel** per layer: Humanize (random timing in ms; drums add a drummer feel: snare slightly behind, hats slightly ahead), Swing, Push / lay back. New drum tracks start with Humanize 6 ms.
+- MCP: `set_drum_pads velocity` (1-127), pattern strings `x` = 100%, `o` = soft, `g` = ghost, `set_notes` note `velocity`, `update_track humanize_ms / swing / push_ms`.

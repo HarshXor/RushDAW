@@ -16,3 +16,11 @@ Instruments used (one note every 3 semitones; file name = MIDI note number):
   electric_bass_pick/      Electric Bass (pick)      MIDI 28-67
 
 The files are unmodified copies; RushDAW re-pitches and processes them at playback.
+
+Drum kit (samples/drums/)
+-------------------------
+MuldjordKit acoustic drum kit, recorded by Lars Muldjord (2010), FreePats edition by roberto@zenvoid.org
+https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html
+License: Creative Commons Attribution 4.0 International (CC-BY 4.0) – https://creativecommons.org/licenses/by/4.0/
+Changes: a subset was selected (3 velocity layers x 3 hits per part: kick, snare, closed/open hi-hat, 3 toms,
+crash, ride), trimmed, faded out, mixed to mono and encoded as MP3.

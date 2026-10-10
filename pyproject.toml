@@ -9,7 +9,7 @@ description = "RushDAW - web based DAW (mixing, recording, mastering, drum machi
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
-authors = [{ name = "harshxor" }]
+authors = [{ name = "HarshXor", email = "afrzlf4@gmail.com" }]
 keywords = ["daw", "audio", "mixing", "mastering", "music", "drum machine", "web audio"]
 classifiers = [
     "Programming Language :: Python :: 3",

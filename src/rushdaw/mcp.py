@@ -273,10 +273,12 @@ class RushDAWMCP:
                 return {"track": M.track_summary(proj, t)}
             return self._edit(a["project_id"], f"add {a['type']} track", run)
 
-        @tool("update_track", "Mixer settings of a track/layer: name, volume (0-1.5, 0.8 default), pan (-1 left .. 0 center .. 1 right), mute, solo, channel EQ (dB), compressor, reverb/delay sends.",
+        @tool("update_track", "Mixer + feel settings of a track/layer: name, volume (0-1.5, 0.8 default), pan (-1 left .. 0 center .. 1 right), mute, solo, channel EQ (dB), compressor, reverb/delay sends.",
               _S(project_id=PID, track=TRACK, name=("string", "New name."), volume=("number", "0 - 1.5"), pan=("number", "-1 (hard left) .. 0 (center) .. 1 (hard right)"),
                  mute=("boolean", "Mute the layer."), solo=("boolean", "Solo the layer."), eq_low=("number", "-15..15 dB"), eq_mid=("number", "-15..15 dB"), eq_high=("number", "-15..15 dB"),
-                 comp_threshold=("number", "-60..0 dB"), comp_ratio=("number", "1..20"), reverb_send=("number", "0..1"), delay_send=("number", "0..1"), color=("string", "CSS color, e.g. #00e5ff")))
+                 comp_threshold=("number", "-60..0 dB"), comp_ratio=("number", "1..20"), reverb_send=("number", "0..1"), delay_send=("number", "0..1"), color=("string", "CSS color, e.g. #00e5ff"),
+                 humanize_ms=("number", "Feel: random timing spread 0-30 ms (drums also get a drummer feel)."), swing=("number", "Feel: swing 0-0.6 (delay of every 2nd 16th)."),
+                 push_ms=("number", "Feel: -30 (ahead) .. +30 (laid back) ms.")))
         def update_track(a):
             def fn(proj, t):
                 if "name" in a:
@@ -301,6 +303,9 @@ class RushDAWMCP:
                     t["dly"] = M.num(a["delay_send"], "delay_send", 0, 1)
                 if "color" in a:
                     t["color"] = str(a["color"])[:20]
+                for k, key, lo, hi in (("humanize_ms", "hum", 0, 30), ("swing", "swing", 0, 0.6), ("push_ms", "push", -30, 30)):
+                    if k in a:
+                        t["feel"] = {**M.FEEL_DEFAULT, **(t.get("feel") or {}), key: M.num(a[k], k, lo, hi)}
             return self._track_edit(a, "update track", fn)
 
         @tool("delete_track", "Remove a track/layer from the project (previous revisions keep it).", _S(project_id=PID, track=TRACK))
@@ -379,7 +384,7 @@ class RushDAWMCP:
         # ---------------- drum pads
         @tool("set_drum_pads", "Turn individual drum pads (steps) on or off for one part. Steps are 1-based 16th notes (1-16 for bar 1, 17-32 for bar 2, ...).",
               _S(project_id=PID, track=TRACK, part=PART, steps=("array", "1-based step numbers.", True, {"items": {"type": "integer"}}),
-                 on=("boolean", "true = hit (default), false = clear."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
+                 on=("boolean", "true = hit (default), false = clear."), velocity=("integer", "Hit velocity 1-127 (default 127; ~76 soft, ~38 ghost note)."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_drum_pads(a):
             def fn(proj, t):
                 row, n = M.drum_row(a["part"]), M.pat_steps(proj, t)
@@ -387,10 +392,11 @@ class RushDAWMCP:
                     s = int(s)
                     if not 1 <= s <= n:
                         raise M.ModelError(f"step {s} out of range 1-{n} (pattern is {t['pattern']['bars']} bar(s); use set_pattern_length for more)")
-                    t["pattern"]["grid"][row][s - 1] = 1 if a.get("on", True) else 0
+                    vel = round(M.num(a.get("velocity", 127), "velocity", 1, 127) / 127, 3)
+                    t["pattern"]["grid"][row][s - 1] = vel if a.get("on", True) else 0
             return self._pattern_edit(a, f"pads {a['part']}", fn, "drum")
 
-        @tool("set_drum_pattern", "Write whole pad rows from strings, e.g. {\"kick\": \"x...x...x...x...\", \"snare\": \"....x.......x...\"}. 'x' = hit, '.' = rest; '|' and spaces are ignored; short patterns repeat to fill the pattern length. Parts not listed are unchanged unless clear_others=true.",
+        @tool("set_drum_pattern", "Write whole pad rows from strings, e.g. {\"kick\": \"x...x...x...x...\", \"snare\": \"....x.......x...\"}. 'x' = hit (100%), 'o' = soft (60%), 'g' = ghost note (30%), '.' = rest; '|' and spaces are ignored; short patterns repeat to fill the pattern length. Parts not listed are unchanged unless clear_others=true.",
               _S(project_id=PID, track=TRACK, patterns=("object", "Map part -> pattern string.", True), bars=("integer", "Optionally set the pattern length first (1, 2, 4, 8)."),
                  clear_others=("boolean", "Clear all parts not given (default false)."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_drum_pattern(a):
@@ -464,9 +470,9 @@ class RushDAWMCP:
             return self._pattern_edit(a, f"pattern {a['bars']} bars", fn, None)  # drum or synth track
 
         # ---------------- synth / guitar
-        @tool("set_notes", "Write notes of a synth/guitar/bass region. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1)}. "
+        @tool("set_notes", "Write notes of a synth/guitar/bass region. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1), velocity: 1-127 (default 127)}. "
               "A long length = ONE sustained note over many steps (e.g. length 16 = a whole bar in 4/4); it rings with the track's decay/sustain and fades with its release. Range C2 (36) - C6 (84).",
-              _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}}, "required": ["note", "step"]}}),
+              _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}, "velocity": {"type": "integer"}}, "required": ["note", "step"]}}),
                  replace=("boolean", "Replace all existing notes (default true); false = add/overwrite."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_notes(a):
             def fn(proj, t):
@@ -479,7 +485,10 @@ class RushDAWMCP:
                     s = int(x["step"])
                     if not 1 <= s <= n:
                         raise M.ModelError(f"step {s} out of range 1-{n}")
-                    new.append({"p": p, "s": s - 1, "l": int(M.clamp(int(x.get("length", 1)), 1, n - s + 1))})
+                    nt = {"p": p, "s": s - 1, "l": int(M.clamp(int(x.get("length", 1)), 1, n - s + 1))}
+                    if "velocity" in x and int(x["velocity"]) < 127:
+                        nt["v"] = round(M.num(x["velocity"], "velocity", 1, 127) / 127, 3)
+                    new.append(nt)
                 keep = [] if a.get("replace", True) else [o for o in t["notes"] if not any(o["p"] == q["p"] and o["s"] == q["s"] for q in new)]
                 t["notes"] = keep + new
             return self._pattern_edit(a, "notes", fn, "synth")
