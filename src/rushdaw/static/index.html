@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RushDAW</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="logo">Rush<span>DAW</span></div>
+  <div class="group transport">
+    <button id="btnRewind" title="Back to start (Home)">⏮</button>
+    <button id="btnPlay" title="Play / Stop (Space)">▶</button>
+    <button id="btnRecord" class="rec" title="Record on armed track (R)">●</button>
+    <div id="timeDisplay">1.1.1 | 00:00.000</div>
+  </div>
+  <div class="group">
+    <label>BPM <input id="bpm" type="number" min="40" max="240" value="180"></label>
+    <label>Sig <select id="sig"><option>4</option><option>3</option><option>6</option></select>/4</label>
+    <label class="toggle"><input id="metronome" type="checkbox" checked> Metronome</label>
+    <label class="toggle"><input id="metroPlay" type="checkbox"> Click on play</label>
+    <label class="toggle"><input id="countIn" type="checkbox" checked> Count-in</label>
+    <label class="toggle"><input id="snap" type="checkbox" checked> Snap</label>
+    <label class="toggle"><input id="loop" type="checkbox"> Loop</label>
+    <label>Zoom <input id="zoom" type="range" min="10" max="300" value="60"></label>
+  </div>
+  <div class="group">
+    <button id="addAudio">+ Audio</button>
+    <button id="addDrum">+ Drum</button>
+    <button id="addSynth">+ Synth</button>
+    <button id="addGuitar">+ Guitar</button>
+    <button id="btnImport">Import…</button>
+    <input id="fileInput" type="file" accept="audio/*,video/*" multiple hidden>
+  </div>
+  <div class="group">
+    <input id="title" value="My Song" size="10" title="Song title">
+    <button id="btnSave">Save</button>
+    <button id="btnLoad">Open</button>
+    <input id="projInput" type="file" accept=".rushdaw,.json" hidden>
+    <select id="exportFmt"><option value="wav">WAV</option></select>
+    <label class="toggle"><input id="normalize" type="checkbox" checked> Normalize</label>
+    <button id="btnExport" class="primary">Export</button>
+  </div>
+</header>
+
+<main id="arrange">
+  <div id="headers">
+    <div class="ruler-spacer"></div>
+    <div id="trackHeaders"></div>
+  </div>
+  <div id="timelineWrap">
+    <div id="timeline">
+      <div id="ruler" title="Click: move playhead · Shift+drag: set loop"></div>
+      <div id="lanes"></div>
+      <div id="loopRegion"></div>
+      <div id="playhead"></div>
+    </div>
+  </div>
+</main>
+
+<section id="bottom">
+  <nav class="tabs">
+    <button data-tab="mixer" class="active">Mixer</button>
+    <button data-tab="editor">Editor</button>
+    <button data-tab="fx">Effects</button>
+    <button data-tab="master">Mastering</button>
+    <span id="status"></span>
+  </nav>
+  <div id="tab-mixer" class="tab active"><div id="mixer"></div></div>
+  <div id="tab-editor" class="tab"><div id="editor"><p class="hint">Select a Drum or Synth track to edit its pattern.</p></div></div>
+  <div id="tab-fx" class="tab"><div id="fxPanel"></div></div>
+  <div id="tab-master" class="tab"><div id="master"></div></div>
+</section>
+
+<div id="dropOverlay">Drop audio files to import</div>
+<script src="app.js"></script>
+</body>
+</html>

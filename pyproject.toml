@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rushdaw"
+version = "0.1.0"
+description = "RushDAW - web based DAW (mixing, recording, mastering, drum machine, synth) inspired by BandLab"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "harshxor" }]
+keywords = ["daw", "audio", "mixing", "mastering", "music", "drum machine", "web audio"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio :: Mixers",
+    "Environment :: Web Environment",
+]
+dependencies = ["imageio-ffmpeg>=0.4.8"]
+
+[project.scripts]
+rushdaw = "rushdaw.cli:main"
+
+[project.urls]
+Homepage = "https://pypi.org/project/rushdaw/"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rushdaw = ["static/*"]
