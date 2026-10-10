@@ -47,8 +47,10 @@ const DRUM_PRESETS = {
   'Thrash Skank': { kick: 'x...x...x...x...', snare: '..x...x...x...x.', crash: 'x.x.x.x.x.x.x.x.' },
   'Hardcore Breakdown': { kick: 'x..x..x...x..x..', snare: '........x.......', crash: 'x.......x.......', toml: '......x.......x.', phh: '..x...x...x...x.' },
   'Hardcore Two-Step': { kick: 'x.xx....x.xx....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
-  'D-Beat': { kick: 'x.xx..x.x.xx..x.', snare: '....x.......x...', crash: 'x.x.x.x.x.x.x.x.' },
-  'Crust D-Beat': { kick: 'x.....x.x.....x.', snare: '....x.......x...', crash: 'x.x.x.x.x.x.x.x.' },
+  'D-Beat': { kick: 'x..x.x..x..x.x..', snare: '..x...x...x...x.', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
+  // 2 bars: crash on the 1, hi-hat 8ths (not under the crash), snare on every '&', kick K..K.K.. (classic Discharge d-beat)
+  'Crust D-Beat': { kick: 'x..x.x..x..x.x..x..x.x..x..x.x..', snare: '..x...x...x...x...x...x...x...x.',
+    chh: '..x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.', crash: 'x...............................' },
   'Punk Beat': { kick: 'x.x...x.x.x...x.', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   'Punk Polka': { kick: 'x...x...x...x...', snare: '..x...x...x...x.', chh: 'x.x.x.x.x.x.x.x.' },
   'Pop-Punk Drive': { kick: 'x.....x.x.......', snare: '....x.......x...', ohh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
@@ -135,9 +137,13 @@ function resizeGrid(t) {
   const n = patSteps(t);
   t.pattern.grid = t.pattern.grid.map(r => { const a = r.slice(0, n); while (a.length < n) a.push(0); return a; });
 }
+// presets are 16 (1 bar) or 32 (2 bars) steps long; a 2-bar preset extends a 1-bar pattern to 2 bars
 function applyDrumPreset(t, name) {
-  const pr = DRUM_PRESETS[name]; const n = patSteps(t);
-  t.pattern.grid = DRUMS.map(d => Array.from({ length: n }, (_, i) => { const s = pr[d.id]; return s && s[i % 16] === 'x' ? 1 : 0; }));
+  const pr = DRUM_PRESETS[name];
+  const need = Math.ceil(Math.max(16, ...Object.values(pr).map(s => s.length)) / 16);
+  if (t.pattern.bars < need) t.pattern.bars = need;
+  const n = patSteps(t);
+  t.pattern.grid = DRUMS.map(d => Array.from({ length: n }, (_, i) => { const s = pr[d.id]; return s && s[i % s.length] === 'x' ? 1 : 0; }));
 }
 
 /* ------------------------------------------------------------ audio engine */

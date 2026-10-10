@@ -33,8 +33,10 @@ DRUM_PRESETS = {
     'Thrash Skank': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'crash': 'x.x.x.x.x.x.x.x.'},
     'Hardcore Breakdown': {'kick': 'x..x..x...x..x..', 'snare': '........x.......', 'crash': 'x.......x.......', 'toml': '......x.......x.', 'phh': '..x...x...x...x.'},
     'Hardcore Two-Step': {'kick': 'x.xx....x.xx....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
-    'D-Beat': {'kick': 'x.xx..x.x.xx..x.', 'snare': '....x.......x...', 'crash': 'x.x.x.x.x.x.x.x.'},
-    'Crust D-Beat': {'kick': 'x.....x.x.....x.', 'snare': '....x.......x...', 'crash': 'x.x.x.x.x.x.x.x.'},
+    'D-Beat': {'kick': 'x..x.x..x..x.x..', 'snare': '..x...x...x...x.', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
+    # 2 bars: crash on the 1, hi-hat 8ths (not under the crash), snare on every '&', kick K..K.K.. (classic d-beat)
+    'Crust D-Beat': {'kick': 'x..x.x..x..x.x..x..x.x..x..x.x..', 'snare': '..x...x...x...x...x...x...x...x.',
+                     'chh': '..x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.', 'crash': 'x...............................'},
     'Punk Beat': {'kick': 'x.x...x.x.x...x.', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'Punk Polka': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Pop-Punk Drive': {'kick': 'x.....x.x.......', 'snare': '....x.......x...', 'ohh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
@@ -258,9 +260,12 @@ def migrate_strings(proj):
 def apply_drum_preset(proj, t, preset):
     if preset not in DRUM_PRESETS:
         raise ModelError(f"unknown drum preset '{preset}'. Presets: " + ', '.join(DRUM_PRESETS))
-    n = pat_steps(proj, t)
     pr = DRUM_PRESETS[preset]
-    t['pattern']['grid'] = [[1 if pr.get(pid) and pr[pid][i % 16] == 'x' else 0 for i in range(n)] for pid in DRUM_IDS]
+    need = -(-max([16] + [len(v) for v in pr.values()]) // 16)  # 2-bar presets extend a 1-bar pattern
+    if t['pattern'].get('bars', 1) < need:
+        t['pattern']['bars'] = need
+    n = pat_steps(proj, t)
+    t['pattern']['grid'] = [[1 if pr.get(pid) and pr[pid][i % len(pr[pid])] == 'x' else 0 for i in range(n)] for pid in DRUM_IDS]
 
 
 def resize_grid(proj, t):

@@ -175,9 +175,15 @@ class McpTest(unittest.TestCase):
         p = self.call("create_project", name="Crust", bpm=176, template="dbeat")
         self.assertEqual([(t["name"], t["type"]) for t in p["tracks"]], [("Drums", "drum"), ("Bass", "bass"), ("Guitar 1", "guitar"), ("Vocal", "audio")])
         full = {t["type"]: t for t in self.call("get_project", project_id=p["project_id"])["tracks"]}
-        self.assertEqual(full["drum"]["pads"]["kick"], "x.....x.x.....x.")
-        self.assertEqual(full["drum"]["pads"]["snare"], "....x.......x...")
-        self.assertEqual(full["drum"]["pads"]["crash"], "x.x.x.x.x.x.x.x.")
+        # classic d-beat over 2 bars (crash / hi-hat / snare / kick from top to bottom)
+        dr = full["drum"]
+        self.assertEqual(dr["pattern_bars"], 2)
+        self.assertEqual(dr["pads"]["crash"], "x" + "." * 31)                       # only on the 1
+        self.assertEqual(dr["pads"]["chh"], "..x.x.x.x.x.x.x." + "x.x.x.x.x.x.x.x.")  # 8ths, none under the crash
+        self.assertEqual(dr["pads"]["snare"], "..x." * 8)                         # every '&'
+        self.assertEqual(dr["pads"]["kick"], "x..x.x.." * 4)                      # K..K.K..
+        for other in ("ohh", "tomh", "tomm", "toml", "ride", "phh"):
+            self.assertEqual(set(dr["pads"][other]), {"."}, other)
         self.assertEqual((full["bass"]["synth"]["preset"], full["guitar"]["synth"]["preset"]), ("Pick Bass", "Power Chord Guitar"))
         self.assertEqual([f["type"] for f in full["bass"]["fx"]], ["dist"])
         self.assertEqual(len(full["guitar"]["notes"]), len(M.CRUST_RIFF))
