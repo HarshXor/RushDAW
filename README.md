@@ -36,7 +36,7 @@ If port 8765 is busy: when RushDAW is already running there, `rushdaw` just open
 | **Recording** | Record from the mic onto an armed track, **metronome on/off**, count-in, latency compensation. **Punch-in replace**: a new take overwrites the old audio on that track exactly where it was recorded (old clips there are deleted / trimmed / split), so only the newest take is heard; takes are numbered Take 1, 2, 3 … |
 | **Import** | Import audio/video files (button or drag & drop onto a track). Clips can be dragged to change their position or move to another track, trimmed, split (S), duplicated (Ctrl/Cmd+D) |
 | **Mastering** | Master chain EQ → Bus Compressor → Make-up → Limiter → Output, presets (Balanced, Loud Pop, Warm, Bass Boost, Bright), dBFS meter |
-| **Export** | WAV, MP3, MP4 (video with waveform visualizer), M4A, AAC, OGG, OPUS, FLAC, with optional normalization |
+| **Export** | WAV, MP3, MP4 (video with waveform visualizer), M4A, AAC, OGG, OPUS, FLAC. The export renders through the same audio graph as studio playback (same mixer, FX, mastering, true-peak ceiling guard and sample rate), so it sounds like what you hear. Optional **Normalize** (off by default) raises the level to the master ceiling |
 | **Project manager** | Start screen listing all projects: create (templates Metal demo / Band / **D-Beat / Crust Punk** / Empty), open, rename, search, delete to Trash + restore, import `.rushdaw` |
 | **Revision history** | Every 💾 Save (Ctrl/Cmd+S) creates a new revision with an optional note; History lets you open any old revision, restore it (non-destructive, becomes a new revision) or download it. Unsaved changes are auto-saved as a revision when you go back to Projects |
 

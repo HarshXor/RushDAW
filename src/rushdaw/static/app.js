@@ -256,7 +256,11 @@ function createGraph(c, live) {
   g.lim = c.createDynamicsCompressor(); g.lim.knee.value = 0; g.lim.ratio.value = 20; g.lim.attack.value = 0.001; g.lim.release.value = 0.08;
   g.out = c.createGain(); g.an = c.createAnalyser(); g.an.fftSize = 2048;
   g.in.connect(g.low); g.low.connect(g.mid); g.mid.connect(g.high); g.high.connect(g.comp);
-  g.comp.connect(g.makeup); g.makeup.connect(g.lim); g.lim.connect(g.out); g.out.connect(g.an); g.an.connect(c.destination);
+  // True-peak guard after the limiter (the Web Audio compressor overshoots and adds auto make-up gain):
+  // a soft-knee clipper that never exceeds the ceiling. Same node in live playback and export,
+  // so what you hear in the studio is exactly what gets rendered.
+  g.clipIn = c.createGain(); g.clipIn.gain.value = 0.5; g.clip = c.createWaveShaper(); g.clip.oversample = '4x';
+  g.comp.connect(g.makeup); g.makeup.connect(g.lim); g.lim.connect(g.out); g.out.connect(g.clipIn); g.clipIn.connect(g.clip); g.clip.connect(g.an); g.an.connect(c.destination);
   g.revIn = c.createGain(); g.conv = c.createConvolver(); g.irSize = P.master.reverbSize; g.conv.buffer = makeIR(c, g.irSize);
   g.revIn.connect(g.conv); g.conv.connect(g.in);
   g.dlyIn = c.createGain(); g.dly = c.createDelay(5); g.fb = c.createGain(); g.dlyLp = c.createBiquadFilter(); g.dlyLp.frequency.value = 4500;
@@ -274,6 +278,18 @@ function applyMaster(g) {
   setP(g.out.gain, m.vol, c, L);
   setP(g.dly.delayTime, Math.min(4.9, m.delayDiv * spb()), c, L); setP(g.fb.gain, m.delayFb, c, L);
   if (Math.abs(g.irSize - m.reverbSize) > 0.01) { g.irSize = m.reverbSize; g.conv.buffer = makeIR(c, m.reverbSize); }
+  if (g.clipCeil !== m.ceiling) { g.clipCeil = m.ceiling; g.clip.curve = clipCurve(dbToGain(Math.min(-0.3, m.ceiling))); }
+}
+// input u in [-1,1] is the signal / 2 (so peaks up to 2.0 are shaped); linear up to 85% of the ceiling,
+// then a smooth tanh knee that approaches (never passes) the ceiling.
+function clipCurve(ceil) {
+  ceil *= 0.985;  // headroom for the 4x oversampling filter overshoot -> output stays under the ceiling
+  const n = 4096, y = new Float32Array(n), k = ceil * 0.85, room = ceil - k;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1) * 2 - 1) * 2, a = Math.abs(x);
+    y[i] = Math.sign(x) * (a <= k ? a : k + room * Math.tanh((a - k) / room));
+  }
+  return y;
 }
 function trackNodes(g, t) {
   let n = g.tracks.get(t.id);
@@ -926,8 +942,16 @@ function stopTransport() {
   if (T.recording) finishRecording();
   $('#btnPlay').classList.remove('on'); $('#btnPlay').textContent = '▶';
 }
-function togglePlay() {
+let playPending = false;
+async function togglePlay() {
   if (T.playing) { stopTransport(); return; }
+  if (playPending) return;
+  ensureCtx();  // create/resume the audio context inside the click (autoplay policy)
+  // Play must sound exactly like the export: wait for the recorded instruments instead of
+  // falling back to the synth sounds while they are still loading (export waits too).
+  playPending = true;
+  try { status('Loading instruments…'); await samplesReady(); status(''); } finally { playPending = false; }
+  if (T.playing) return;
   // song already finished (playhead at/after the last clip) -> start again from the beginning
   const end = songEndBeats();
   if (end > 0 && T.pos >= end - 0.01) T.pos = 0;
@@ -1628,7 +1652,7 @@ async function renderMix() {
   ensureRegions();
   await samplesReady();
   const end = songEndBeats(); if (end <= 0) throw new Error('Nothing to export – add some clips first');
-  const sr = 44100, secs = end * spb() + 2.5;
+  const sr = ctx ? ctx.sampleRate : 48000, secs = end * spb() + 2.5;  // same sample rate as studio playback
   const oc = new OfflineAudioContext(2, Math.ceil(sr * secs), sr);
   const g = createGraph(oc, false);
   scheduleRange(g, 0, end, { t: 0, b: 0 }, { first: true });
