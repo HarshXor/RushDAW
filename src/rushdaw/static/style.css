@@ -163,6 +163,7 @@ button,select,input{touch-action:manipulation}
 .pname-edit{font-weight:700}
 .pmeta{color:var(--mut);font-size:11px}
 .pbtns{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;align-items:center}
+.pbtns .pfmt{padding:3px 4px;max-width:110px}
 .btnlink{display:inline-block;padding:4px 9px;border:1px solid var(--line);border-radius:6px;color:var(--txt);text-decoration:none;background:var(--panel2)}
 .btnlink:hover{border-color:var(--acc)}
 .dlg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:12px}

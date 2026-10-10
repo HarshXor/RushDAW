@@ -1670,20 +1670,37 @@ function download(blob, name) {
   const a = el('a', { href: URL.createObjectURL(blob), download: name }); document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
 }
+// Render the project that is currently loaded (P = exactly what the studio plays: muted / soloed tracks,
+// saved or not) and download it in the given format.
+async function renderAndDownload(fmt, title) {
+  status('Rendering mixdown…');
+  const wav = encodeWAV(await renderMix());
+  if (fmt === 'wav') { download(wav, title + '.wav'); status('Exported WAV'); return; }
+  status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
+  const r = await fetch(`/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch (e) { /* ignore */ } throw new Error(m); }
+  download(await r.blob(), `${title}.${fmt}`); status('Exported ' + fmt.toUpperCase());
+}
 async function exportSong() {
   const fmt = $('#exportFmt').value, title = $('#title').value || 'RushDAW';
   const btn = $('#btnExport'); btn.disabled = true;
-  try {
-    status('Rendering mixdown…');
-    const wav = encodeWAV(await renderMix());
-    if (fmt === 'wav') { download(wav, title + '.wav'); status('Exported WAV'); return; }
-    status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
-    const r = await fetch(`/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
-    if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch (e) { /* ignore */ } throw new Error(m); }
-    download(await r.blob(), `${title}.${fmt}`); status('Exported ' + fmt.toUpperCase());
-  } catch (e) { status('Export failed: ' + e.message); }
+  try { await renderAndDownload(fmt, title); }
+  catch (e) { status('Export failed: ' + e.message); }
   finally { btn.disabled = false; }
 }
+// Project list: render + download the latest saved revision without opening the editor.
+// (The open project was auto-saved when the list was shown, so "latest" = what the studio had.)
+async function downloadFromList(p, fmt, btn) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Rendering…';
+  try {
+    const meta = await (await api(`/api/projects/${p.id}`)).json();
+    await loadProjectData(await (await api(`/api/projects/${p.id}/file`)).json());
+    P.title = meta.name; $('#title').value = meta.name; currentProject = meta; markClean();
+    await renderAndDownload(fmt, meta.name || 'RushDAW');
+  } catch (e) { status('Download failed: ' + e.message); alert('Download failed: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+const exportFormats = () => [...$('#exportFmt').options].map(o => [o.value, o.textContent]);
 
 /* ------------------------------------------- projects: save / load / history */
 // Projects live on the local server: metadata in ~/.rushdaw/db.sql (SQLite),
@@ -1829,6 +1846,9 @@ async function renderHome() {
           ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
           : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
             el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
+            ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
+              const b = el('button', { title: 'Render the latest saved revision and download it (muted tracks stay muted)', onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
+              return [sel, b]; })(),
             el('button', { onclick: () => {
               const inp = el('input', { value: p.name, className: 'pname-edit' });
               const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
@@ -2119,6 +2139,7 @@ function init() {
   fetch('/api/info').then(r => r.json()).then(info => {
     const s = $('#exportFmt'); s.innerHTML = '';
     info.formats.forEach(f => s.append(el('option', { value: f, selected: f === 'mp3' }, f.toUpperCase() + (f === 'mp4' ? ' (video)' : ''))));
+    if ($('#home').classList.contains('show')) renderHome();  // project cards get the full format list
   }).catch(() => status('Offline mode: WAV export only'));
 
   requestAnimationFrame(frame);
