@@ -48,6 +48,7 @@ const DRUM_PRESETS = {
   'Hardcore Breakdown': { kick: 'x..x..x...x..x..', snare: '........x.......', crash: 'x.......x.......', toml: '......x.......x.', phh: '..x...x...x...x.' },
   'Hardcore Two-Step': { kick: 'x.xx....x.xx....', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   'D-Beat': { kick: 'x.xx..x.x.xx..x.', snare: '....x.......x...', crash: 'x.x.x.x.x.x.x.x.' },
+  'Crust D-Beat': { kick: 'x.....x.x.....x.', snare: '....x.......x...', crash: 'x.x.x.x.x.x.x.x.' },
   'Punk Beat': { kick: 'x.x...x.x.x...x.', snare: '....x.......x...', chh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
   'Punk Polka': { kick: 'x...x...x...x...', snare: '..x...x...x...x.', chh: 'x.x.x.x.x.x.x.x.' },
   'Pop-Punk Drive': { kick: 'x.....x.x.......', snare: '....x.......x...', ohh: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
@@ -307,12 +308,8 @@ function env(c, gainParam, t, peak, decay) {
 const KIT_DEFAULT = { pitch: 0, decay: 1, level: 1 };
 // wide tuning ranges: ±24 semitones (two octaves), 10%..400% decay, 0..200% level
 const KIT_RANGES = { pitch: [-24, 24], decay: [0.1, 4], level: [0, 2] };
-// per-part Volume fader: shown in dB like the mixer (-48 dB at the bottom = off, 0 dB = default, max +6 dB);
-// stored as the linear 'level' gain (0..2) so projects and MCP stay compatible
-const KIT_VOL_DB = [-48, 6];
-const kitDbToLevel = db => db <= KIT_VOL_DB[0] ? 0 : Math.min(KIT_RANGES.level[1], Math.pow(10, db / 20));
-const levelToKitDb = lv => lv <= 0 ? KIT_VOL_DB[0] : clamp(20 * Math.log10(lv), KIT_VOL_DB[0], KIT_VOL_DB[1]);
-const fmtKitVol = lv => { if (lv <= 0) return 'off'; const db = 20 * Math.log10(lv); return (Math.abs(db) < 0.05 ? '0.0' : (db > 0 ? '+' : '') + db.toFixed(1)) + ' dB'; };
+// Tune is stored in semitones (compatible with saved projects / MCP) and shown as pitch percent: 100% = default tuning
+const fmtTunePct = st => Math.round(Math.pow(2, st / 12) * 100) + '%';
 // returns the part's settings object itself (filled with defaults in place) – never a copy, so the
 // editor sliders, preview and playback always read and write the same object
 function kitOf(track, id) {
@@ -356,10 +353,10 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
       // gains scaled so the raw (pre-fader) kick peak stays <= 1.0
       osc('sine', 125, 52, 0.32, 0.42); mode(68, 0.22, 0.17, 0.85);
       nz('highpass', 2800, 0.018, 0.25, 0.8); osc('triangle', 1600, 900, 0.012, 0.15); break;
-    // standard acoustic snare (medium tuning, use the part's Tune knob for higher/lower):
-    // ~200 Hz head with natural overtones, stick crack, and a clear bottom snare-wire rattle
+    // rock / metal snare (default tuning, use the part's Tune knob for higher/lower):
+    // fat ~190 Hz head with natural overtones, hard stick crack, and a clear bottom snare-wire rattle
     case 'snare': {
-      const f0 = 200;  // gains leave headroom: raw peak stays < 1.0 even with random noise
+      const f0 = 190;  // gains leave headroom: raw peak stays < 1.0 even with random noise
       mode(f0, 0.24, 0.32, 0.93, 'triangle'); mode(f0 * 1.59, 0.16, 0.15); mode(f0 * 2.14, 0.12, 0.08);
       nz('bandpass', 2000, 0.03, 0.24, 0.8);              // stick crack
       nz('bandpass', 4500, 0.26, 0.25, 0.55);             // bottom wires: main sizzle
@@ -372,10 +369,11 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
     // hi-hats: stick tick + metallic partials + bright noise (acoustic, not 808)
     case 'chh': stick(4500, 0.32); metal(420, 'highpass', 7500, 0.06, 0.24); nz('highpass', 8000, 0.07, 0.38); break;
     case 'ohh': stick(4200, 0.3); metal(420, 'highpass', 7000, 0.55, 0.2); nz('highpass', 7500, 0.6, 0.32); break;
-    // toms: ringing heads with natural small pitch drop + stick attack
-    case 'tomh': mode(205, 0.6, 0.6, 0.9); mode(205 * 1.5, 0.3, 0.18); nz('lowpass', 3500, 0.03, 0.22); break;
-    case 'tomm': mode(150, 0.7, 0.64, 0.89); mode(150 * 1.5, 0.35, 0.18); nz('lowpass', 3000, 0.032, 0.22); break;
-    case 'toml': mode(105, 0.8, 0.68, 0.88); mode(105 * 1.5, 0.4, 0.18); nz('lowpass', 2500, 0.035, 0.22); break;
+    // toms, rock / metal tuning: low and fat (12" ~170 Hz, 13" ~128 Hz, 16" floor ~88 Hz), natural pitch drop,
+    // plus a bright stick attack so fast fills stay defined
+    case 'tomh': mode(170, 0.62, 0.6, 0.9); mode(170 * 1.5, 0.3, 0.18); nz('lowpass', 4500, 0.03, 0.24); break;
+    case 'tomm': mode(128, 0.72, 0.64, 0.89); mode(128 * 1.5, 0.35, 0.18); nz('lowpass', 4000, 0.032, 0.24); break;
+    case 'toml': mode(88, 0.85, 0.68, 0.87); mode(88 * 1.5, 0.42, 0.18); nz('lowpass', 3500, 0.035, 0.24); break;
     // pedal hi-hat: foot closes the hats -> short "chick" + small low thud, no stick tick
     case 'phh': metal(420, 'highpass', 6500, 0.035, 0.2); nz('bandpass', 6000, 0.04, 0.3, 0.8); nz('bandpass', 900, 0.02, 0.1, 1); break;
     // crash: hard stick hit + loud metallic wash with a long tail
@@ -698,6 +696,28 @@ async function startRecording() {
   recState = { rec, stream, chunks, track: t, startBeat, skip };
   status(countBeats ? 'Count-in… recording on ' + t.name : 'Recording on ' + t.name);
 }
+/* Punch-in replace: the new take overwrites whatever audio the track had in [b0, b1) (beats).
+   Clips fully inside are deleted, clips sticking out are trimmed, a clip spanning the whole range is cut
+   in two around it – so only the newest take is heard there. */
+function punchReplace(track, b0, b1, keepBuf = null) {  // keepBuf = the new take's audio (not on a clip yet)
+  const S = spb(), keep = [];
+  for (const c of track.clips) {
+    if (c.kind !== 'audio') { keep.push(c); continue; }
+    const s = c.start, e = c.start + clipLenBeats(c);
+    if (e <= b0 + 1e-6 || s >= b1 - 1e-6) { keep.push(c); continue; }            // no overlap
+    if (s < b0) keep.push({ ...c, dur: (b0 - s) * S });                            // part before the take
+    if (e > b1) keep.push({ ...c, id: s < b0 ? nid('c') : c.id, start: b1,         // part after the take
+      offset: c.offset + (b1 - s) * S, dur: (e - b1) * S });
+  }
+  const changed = track.clips.length - keep.filter(c => track.clips.includes(c)).length;  // clips deleted or trimmed
+  track.clips = keep;
+  // free decoded audio no clip uses any more (saved projects only include used audio anyway)
+  const used = new Set(); P.tracks.forEach(t => t.clips.forEach(c => c.kind === 'audio' && used.add(c.buf)));
+  const cb = typeof clipboard !== 'undefined' && clipboard ? JSON.stringify(clipboard) : '';
+  if (keepBuf) used.add(keepBuf);
+  for (const id of [...buffers.keys()]) if (!used.has(id) && !cb.includes(id)) { buffers.delete(id); bufNames.delete(id); peaksCache.delete(id); }
+  return changed;
+}
 function finishRecording() {
   const r = recState; recState = null; T.recording = false; $('#btnRecord').classList.remove('on');
   if (!r) return;
@@ -706,10 +726,14 @@ function finishRecording() {
     try {
       const ab = await new Blob(r.chunks).arrayBuffer();
       const buf = await ctx.decodeAudioData(ab);
-      const id = nid('b'); buffers.set(id, buf); bufNames.set(id, 'Take ' + (r.track.clips.length + 1));
+      const takeNo = 1 + Math.max(0, ...[...bufNames.values()].map(n => +(/^Take (\d+)$/.exec(n) || [0, 0])[1]));  // unique take numbers
+      const id = nid('b'); buffers.set(id, buf); bufNames.set(id, 'Take ' + takeNo);
       const dur = buf.duration - r.skip;
-      if (dur > 0.05) r.track.clips.push({ id: nid('c'), kind: 'audio', buf: id, start: r.startBeat, offset: r.skip, dur, gain: 1 });
-      render(); status('Recording added to ' + r.track.name);
+      if (dur > 0.05) {
+        const changed = punchReplace(r.track, r.startBeat, r.startBeat + dur / spb(), id);
+        r.track.clips.push({ id: nid('c'), kind: 'audio', buf: id, start: r.startBeat, offset: r.skip, dur, gain: 1 });
+        render(); status(changed ? `Recording replaced the old audio on ${r.track.name}` : 'Recording added to ' + r.track.name);
+      } else { buffers.delete(id); bufNames.delete(id); render(); status('Recording too short – nothing changed'); }
     } catch (e) { status('Could not decode recording: ' + e.message); }
   };
   r.rec.stop();
@@ -960,9 +984,11 @@ function renderEditor() {
           el('span', { className: 'dl-name', title: d.name }, d.name),
           el('button', { className: 'dl-mini', title: 'Copy part (pattern + tuning) · Ctrl/Cmd+C', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; copySelection(); } }, '⧉'),
           el('button', { className: 'dl-mini', title: 'Paste part here · Ctrl/Cmd+V', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; pasteClipboard(); } }, '📋')),
-        knob('Tune', 'pitch', KIT_RANGES.pitch[0], KIT_RANGES.pitch[1], 0.5, v => (v > 0 ? '+' : '') + v + ' st'),
+        // everything in percent (100% = default): Tune = pitch of the drum (25%..400% = -2..+2 octaves),
+        // Decay = length of the ring (10%..400%), Volume = loudness of the part (off..200%)
+        knob('Tune', 'pitch', KIT_RANGES.pitch[0], KIT_RANGES.pitch[1], 0.5, fmtTunePct),
         knob('Decay', 'decay', KIT_RANGES.decay[0], KIT_RANGES.decay[1], 0.05, v => Math.round(v * 100) + '%'),
-        knob('Volume', 'level', KIT_VOL_DB[0], KIT_VOL_DB[1], 0.5, fmtKitVol, levelToKitDb, kitDbToLevel));
+        knob('Volume', 'level', KIT_RANGES.level[0], KIT_RANGES.level[1], 0.01, v => v <= 0 ? 'off' : Math.round(v * 100) + '%'));
       grid.append(lbl);
       for (let i = 0; i < steps; i++) {
         const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (t.pattern.grid[r][i] ? ' on' : '') });
@@ -1215,8 +1241,21 @@ function resetState() {
   P.tracks = []; P.master = JSON.parse(JSON.stringify(DEFAULT_MASTER)); P.loop = { start: 0, end: 16 }; P.sig = 4;
   selTrackId = null; selClipId = null; T.pos = 0;
 }
+// D-Beat / Crust Punk: d-beat drums, pick bass + distorted power-chord guitar doubling a dark riff in E
+const CRUST_RIFF = [[40, 0, 2], [40, 2, 1], [40, 3, 1], [43, 4, 2], [41, 6, 2], [40, 8, 2], [40, 10, 1], [40, 11, 1], [46, 12, 2], [45, 14, 2]];
+function applyCrustTemplate() {
+  const d = newTrack('drum'); d.name = 'Drums'; applyDrumPreset(d, 'Crust D-Beat'); d.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
+  const b = newBassTrack(0); b.synth = { preset: 'Pick Bass', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS['Pick Bass'] };
+  b.notes = CRUST_RIFF.map(([p, s, l]) => ({ p, s, l })); b.clips[0].len = 16;
+  b.fx = [newFx('dist', { drive: 0.35, tone: 2500, level: 0.8, mix: 0.5 })];  // gritty crust bass
+  const g = newGuitarTrack(0); g.synth = { preset: 'Power Chord Guitar', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS['Power Chord Guitar'] };
+  g.notes = CRUST_RIFF.map(([p, s, l]) => ({ p, s, l })); g.clips[0].len = 16;
+  newTrack('audio').name = 'Vocal';
+  selTrackId = d.id;
+}
 function applyTemplate(tpl) {
   if (tpl === 'empty') { newTrack('audio'); return; }
+  if (tpl === 'dbeat') { applyCrustTemplate(); return; }
   const d = newTrack('drum'); d.clips.push({ id: nid('c'), kind: 'midi', start: 0, len: 16 });
   newBassTrack(0).clips[0].len = 16;
   newGuitarTrack(0).clips[0].len = 16;

@@ -123,7 +123,7 @@ class RushDAWMCP:
                     "synth_presets": list(M.SYNTH_PRESETS), "synth_params": {k: v if isinstance(v, list) else {"min": v[0], "max": v[1]} for k, v in M.SYNTH_PARAMS.items()},
                     "effects": {k: {p: ({"default": s[0], "choices": s[1]} if isinstance(s[1], list) else {"default": s[0], "min": s[1], "max": s[2]}) for p, s in v.items()} for k, v in M.FX_TYPES.items()},
                     "master_params": {k: {"min": v[0], "max": v[1]} for k, v in M.MASTER_PARAMS.items()}, "master_presets": list(M.MASTER_PRESETS),
-                    "track_types": list(M.TRACK_TYPES), "templates": ["empty", "metal", "band"],
+                    "track_types": list(M.TRACK_TYPES), "templates": ["empty", "metal", "band", "dbeat"],
                     "drum_tuning": {k: {"min": v[0], "max": v[1], "default": M.KIT_DEFAULT[k]} for k, v in M.KIT_RANGES.items()},
                     "note_range": {"min": M.LOW_NOTE, "max": M.HIGH_NOTE, "min_name": M.note_name(M.LOW_NOTE), "max_name": M.note_name(M.HIGH_NOTE)}}
 
@@ -141,10 +141,10 @@ class RushDAWMCP:
             return {"id": meta["id"], "name": meta["name"], "revision": r["number"], "latest_revision": meta["head_revision"],
                     **M.project_summary(doc, a.get("detail", True))}
 
-        @tool("create_project", "Create a new project. Templates: empty (one audio track), metal (drums, bass, guitar, audio), band (metal + Vocal track with vocal FX).",
+        @tool("create_project", "Create a new project. Templates: empty (one audio track), metal (drums, bass, guitar, audio), band (metal + Vocal track with vocal FX), dbeat (D-Beat / Crust Punk: Crust D-Beat drums, gritty pick bass, distorted power-chord guitar, Vocal).",
               _S(name=("string", "Project name.", True), bpm=("number", "Tempo 40-240 (default 180)."),
                  time_signature=("integer", "Beats per bar: 3, 4 or 6 (default 4).", False, {"enum": [3, 4, 6]}),
-                 template=("string", "empty | metal | band (default metal).", False, {"enum": ["empty", "metal", "band"]})))
+                 template=("string", "empty | metal | band | dbeat (default metal).", False, {"enum": ["empty", "metal", "band", "dbeat"]})))
         def create_project(a):
             bpm = M.num(a.get("bpm", 180), "bpm", 40, 240)
             sig = int(a.get("time_signature", 4))
@@ -391,17 +391,30 @@ class RushDAWMCP:
                     t["pattern"]["grid"][r] = [0] * n
             return self._track_edit(a, "clear pads", fn)
 
-        @tool("set_drum_tuning", "Tune a drum part (each kit piece has its own settings): pitch in semitones (-24..24), decay multiplier (0.1..4), "
-              "and volume either as volume_db (-48..+6 dB, -48 = off, 0 = default) or as linear level (0..2).",
-              _S(project_id=PID, track=TRACK, part=PART, pitch=("number", "-24..24 semitones (0.5 steps allowed)"), decay=("number", "0.1..4 (1 = default length)"),
+        @tool("set_drum_tuning", "Tune a drum part (each kit piece has its own settings). Percent values (100 = default rock/metal tuning): "
+              "tune_percent 25..400 (pitch; 200 = one octave up), decay_percent 10..400 (ring length), volume_percent 0..200 (0 = off). "
+              "Raw alternatives: pitch in semitones (-24..24), decay (0.1..4), level (0..2) or volume_db (-48..+6).",
+              _S(project_id=PID, track=TRACK, part=PART,
+                 tune_percent=("number", "Pitch in percent, 25..400 (100 = default)"), decay_percent=("number", "Ring length in percent, 10..400 (100 = default)"),
+                 volume_percent=("number", "Part volume in percent, 0 (off)..200 (100 = default)"),
+                 pitch=("number", "-24..24 semitones (0.5 steps allowed)"), decay=("number", "0.1..4 (1 = default length)"),
                  volume_db=("number", "Part volume in dB: -48 (off) .. +6, 0 = default"), level=("number", "Part volume as linear gain 0..2 (1 = default)")))
         def set_drum_tuning(a):
-            if "volume_db" in a and "level" in a:
-                raise ToolError("give either volume_db or level, not both")
+            for pct, raw in (("tune_percent", "pitch"), ("decay_percent", "decay"), ("volume_percent", "level")):
+                if pct in a and raw in a:
+                    raise ToolError(f"give either {pct} or {raw}, not both")
+            if sum(k in a for k in ("volume_db", "level", "volume_percent")) > 1:
+                raise ToolError("give either volume_percent, volume_db or level, not both")
             def fn(proj, t):
                 self._drum(t)
                 pid = M.DRUM_IDS[M.drum_row(a["part"])]
                 kit = {**M.KIT_DEFAULT, **(t.setdefault("kit", {}).get(pid) or {})}
+                if "tune_percent" in a:
+                    kit["pitch"] = M.tune_percent_to_pitch(M.num(a["tune_percent"], "tune_percent", 25, 400))
+                if "decay_percent" in a:
+                    kit["decay"] = round(M.num(a["decay_percent"], "decay_percent", 10, 400) / 100, 4)
+                if "volume_percent" in a:
+                    kit["level"] = round(M.num(a["volume_percent"], "volume_percent", 0, 200) / 100, 4)
                 if "volume_db" in a:
                     kit["level"] = M.kit_db_to_level(M.num(a["volume_db"], "volume_db", *M.KIT_VOL_DB))
                 for k, (lo, hi) in M.KIT_RANGES.items():
@@ -527,10 +540,26 @@ class RushDAWMCP:
 
     @staticmethod
     def _apply_template(proj, tpl):
-        if tpl not in ("empty", "metal", "band"):
-            raise M.ModelError("template must be empty, metal or band")
+        if tpl not in ("empty", "metal", "band", "dbeat"):
+            raise M.ModelError("template must be empty, metal, band or dbeat")
         if tpl == "empty":
             M.new_track(proj, "audio")
+            return
+        if tpl == "dbeat":  # mirrors applyCrustTemplate() in app.js
+            riff = [{"p": p, "s": s, "l": l} for p, s, l in M.CRUST_RIFF]
+            d = M.new_track(proj, "drum", "Drums")
+            M.apply_drum_preset(proj, d, "Crust D-Beat")
+            d["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
+            b = M.new_track(proj, "bass")
+            b["synth"] = {"preset": "Pick Bass", **M.SYNTH_DEFAULTS, **M.SYNTH_PRESETS["Pick Bass"]}
+            b["notes"] = [dict(n) for n in riff]
+            b["fx"] = [M.new_fx("dist", {"drive": 0.35, "tone": 2500, "level": 0.8, "mix": 0.5})]
+            b["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
+            g = M.new_track(proj, "guitar")
+            g["synth"] = {"preset": "Power Chord Guitar", **M.SYNTH_DEFAULTS, **M.SYNTH_PRESETS["Power Chord Guitar"]}
+            g["notes"] = [dict(n) for n in riff]
+            g["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})
+            M.new_track(proj, "audio", "Vocal")
             return
         d = M.new_track(proj, "drum")
         d["clips"].append({"id": M.nid("c"), "kind": "midi", "start": 0, "len": 16})

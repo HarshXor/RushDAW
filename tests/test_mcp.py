@@ -171,6 +171,22 @@ class McpTest(unittest.TestCase):
         ids = [json.loads(self.c.next_event()[1])["id"] for _ in range(2)]
         self.assertEqual(ids, [901, 902])
 
+    def test_dbeat_crust_template(self):
+        p = self.call("create_project", name="Crust", bpm=176, template="dbeat")
+        self.assertEqual([(t["name"], t["type"]) for t in p["tracks"]], [("Drums", "drum"), ("Bass", "bass"), ("Guitar 1", "guitar"), ("Vocal", "audio")])
+        full = {t["type"]: t for t in self.call("get_project", project_id=p["project_id"])["tracks"]}
+        self.assertEqual(full["drum"]["pads"]["kick"], "x.....x.x.....x.")
+        self.assertEqual(full["drum"]["pads"]["snare"], "....x.......x...")
+        self.assertEqual(full["drum"]["pads"]["crash"], "x.x.x.x.x.x.x.x.")
+        self.assertEqual((full["bass"]["synth"]["preset"], full["guitar"]["synth"]["preset"]), ("Pick Bass", "Power Chord Guitar"))
+        self.assertEqual([f["type"] for f in full["bass"]["fx"]], ["dist"])
+        self.assertEqual(len(full["guitar"]["notes"]), len(M.CRUST_RIFF))
+        self.assertIn("dbeat", self.call("get_reference")["templates"])
+        with open(APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        js_riff = re.search(r"const CRUST_RIFF = (\[.*?\]);", js).group(1)
+        self.assertEqual(json.loads(js_riff), [list(n) for n in M.CRUST_RIFF])
+
     def test_edit_flow(self):
         p = self.call("create_project", name="MCP Song", bpm=190, template="metal")
         pid = p["project_id"]
@@ -199,6 +215,9 @@ class McpTest(unittest.TestCase):
         self.call("set_drum_tuning", project_id=pid, track=drums, part="Floor Tom", pitch=-20, decay=3.5, level=1.8)
         self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", pitch=30)["error"])
         self.call("set_drum_tuning", project_id=pid, track=drums, part="crash", volume_db=-6)      # per-part volume in dB
+        self.call("set_drum_tuning", project_id=pid, track=drums, part="High Tom", tune_percent=200, decay_percent=150, volume_percent=80)
+        self.assertIn("either", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", tune_percent=120, pitch=1)["error"])
+        self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", tune_percent=500)["error"])
         self.call("set_drum_tuning", project_id=pid, track=drums, part="ride", volume_db=-48)      # bottom of the fader = off
         self.assertIn("either", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", volume_db=-3, level=1)["error"])
         self.assertIn("between", self.call("set_drum_tuning", ok=False, project_id=pid, track=drums, part="kick", volume_db=12)["error"])
@@ -225,6 +244,7 @@ class McpTest(unittest.TestCase):
         self.assertEqual(d["kit"]["toml"], {"pitch": -20, "decay": 3.5, "level": 1.8})
         self.assertAlmostEqual(d["kit"]["crash"]["level"], 0.501187, places=5)
         self.assertEqual(d["kit"]["ride"]["level"], 0)
+        self.assertEqual(d["kit"]["tomh"], {"pitch": 12, "decay": 1.5, "level": 0.8})
         self.assertEqual(list(d["pads"]), ["kick", "snare", "chh", "ohh", "tomh", "tomm", "toml", "crash", "ride", "phh"])
         self.assertEqual([c["start_beat"] for c in d["clips"]], [0, 20])
         lead = tracks["Lead Guitar"]

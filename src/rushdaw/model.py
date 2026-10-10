@@ -24,6 +24,7 @@ DRUM_ALIASES = {'hihat': 'chh', 'hh': 'chh', 'closedhh': 'chh', 'closedhat': 'ch
                 'crash': 'crash', 'cymbal': 'crash', 'ride': 'ride'}
 DRUM_ALIASES = {k.lower(): v for k, v in DRUM_ALIASES.items()}
 DEFAULT_DRUM_PRESET = 'Metal Double Bass'
+CRUST_RIFF = [(40, 0, 2), (40, 2, 1), (40, 3, 1), (43, 4, 2), (41, 6, 2), (40, 8, 2), (40, 10, 1), (40, 11, 1), (46, 12, 2), (45, 14, 2)]  # = CRUST_RIFF in app.js
 DRUM_PRESETS = {
     'Metal Double Bass': {'kick': 'xxxxxxxxxxxxxxxx', 'snare': '....x.......x...', 'crash': 'x...............', 'ride': 'x...x...x...x...'},
     'Metal Gallop': {'kick': 'x.xxx.xxx.xxx.xx', 'snare': '....x.......x...', 'crash': 'x...x...x...x...'},
@@ -33,6 +34,7 @@ DRUM_PRESETS = {
     'Hardcore Breakdown': {'kick': 'x..x..x...x..x..', 'snare': '........x.......', 'crash': 'x.......x.......', 'toml': '......x.......x.', 'phh': '..x...x...x...x.'},
     'Hardcore Two-Step': {'kick': 'x.xx....x.xx....', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'D-Beat': {'kick': 'x.xx..x.x.xx..x.', 'snare': '....x.......x...', 'crash': 'x.x.x.x.x.x.x.x.'},
+    'Crust D-Beat': {'kick': 'x.....x.x.....x.', 'snare': '....x.......x...', 'crash': 'x.x.x.x.x.x.x.x.'},
     'Punk Beat': {'kick': 'x.x...x.x.x...x.', 'snare': '....x.......x...', 'chh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
     'Punk Polka': {'kick': 'x...x...x...x...', 'snare': '..x...x...x...x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Pop-Punk Drive': {'kick': 'x.....x.x.......', 'snare': '....x.......x...', 'ohh': 'x.x.x.x.x.x.x.x.', 'crash': 'x...............'},
@@ -99,6 +101,12 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
 KIT_DEFAULT = {'pitch': 0, 'decay': 1, 'level': 1}
 KIT_RANGES = {'pitch': (-24, 24), 'decay': (0.1, 4), 'level': (0, 2)}  # wide: ±2 octaves, 10-400% decay, 0-200% level
 KIT_VOL_DB = (-48, 6)  # per-part Volume fader in dB (-48 = off); stored as linear 'level'
+
+
+def tune_percent_to_pitch(pct):
+    """Pitch percent (100 = default) -> semitones, rounded to the 0.5 steps of the editor's Tune knob."""
+    import math
+    return max(KIT_RANGES['pitch'][0], min(KIT_RANGES['pitch'][1], round(12 * math.log2(pct / 100) * 2) / 2))
 
 
 def kit_db_to_level(db):
