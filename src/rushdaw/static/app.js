@@ -30,12 +30,15 @@ const DRUM_IDS = DRUMS.map(d => d.id);
 const LEGACY_DRUM_IDS = ['kick', 'snare', 'ride', 'chh', 'ohh', 'tomh', 'toml', 'rim', 'crash'];
 // re-map a drum track's grid rows to the current kit order (keeps old projects intact)
 function migrateDrumTrack(t) {
-  if (t.type !== 'drum' || !t.pattern) return;
-  const ids = t.pattern.ids || LEGACY_DRUM_IDS;
-  if (ids.join() === DRUM_IDS.join()) return;
-  const n = (t.pattern.grid[0] || []).length || t.pattern.bars * 16;
-  t.pattern.grid = DRUM_IDS.map(id => { const i = ids.indexOf(id); return i >= 0 && t.pattern.grid[i] ? t.pattern.grid[i].slice() : Array(n).fill(0); });
-  t.pattern.ids = DRUM_IDS.slice();
+  if (t.type !== 'drum') return;
+  [t, ...t.clips].forEach(h => {  // the track's template pattern and every region's own pattern
+    if (!h.pattern) return;
+    const ids = h.pattern.ids || LEGACY_DRUM_IDS;
+    if (ids.join() === DRUM_IDS.join()) return;
+    const n = (h.pattern.grid[0] || []).length || h.pattern.bars * 16;
+    h.pattern.grid = DRUM_IDS.map(id => { const i = ids.indexOf(id); return i >= 0 && h.pattern.grid[i] ? h.pattern.grid[i].slice() : Array(n).fill(0); });
+    h.pattern.ids = DRUM_IDS.slice();
+  });
 }
 const DEFAULT_DRUM_PRESET = 'Metal Double Bass';
 const DRUM_PRESETS = {
@@ -132,7 +135,31 @@ function newTrack(type) {
   P.tracks.push(t);
   return t;
 }
-const patSteps = t => (t.type === 'drum' ? t.pattern.bars : t.bars) * stepsPerBar();
+/* Every MIDI region (clip) owns its pattern: drum regions have c.pattern {bars, grid, ids}, synth/guitar/bass
+   regions have c.bars + c.notes. Editing one region never changes another (copies are independent).
+   The track's own t.pattern / t.notes is only the starting template for regions of a track without any. */
+const patBars = h => h.pattern ? h.pattern.bars : (h.bars || 1);
+const patSteps = h => patBars(h) * stepsPerBar();
+const isPatHolder = (t, c) => c && c.kind === 'midi' && (t.type === 'drum' ? !!c.pattern : Array.isArray(c.notes));
+const regionData = (t, src) => t.type === 'drum'
+  ? { pattern: JSON.parse(JSON.stringify(src.pattern)) }
+  : { bars: src.bars || 1, notes: JSON.parse(JSON.stringify(src.notes || [])) };
+// give regions created without their own data (old projects, templates) a private copy of the track template
+function ensureRegions() {
+  P.tracks.forEach(t => { if (t.type === 'drum' || t.type === 'synth') t.clips.forEach(c => { if (c.kind === 'midi' && !isPatHolder(t, c)) Object.assign(c, regionData(t, t)); }); });
+}
+const midiRegions = t => t.clips.filter(c => c.kind === 'midi').sort((a, b) => a.start - b.start);
+// the region shown in the editor: the selected region of this track, else its first region, else the track template
+function edHolder(t) {
+  const sel = t.clips.find(c => c.id === selClipId);
+  if (sel && sel.kind === 'midi') return sel;
+  return midiRegions(t)[0] || t;
+}
+// new region = independent copy of the pattern currently shown in the editor
+function newRegion(t, start, src = edHolder(t)) {
+  const c = { id: nid('c'), kind: 'midi', start, len: patBars(src) * P.sig, ...regionData(t, src) };
+  t.clips.push(c); return c;
+}
 function resizeGrid(t) {
   const n = patSteps(t);
   t.pattern.grid = t.pattern.grid.map(r => { const a = r.slice(0, n); while (a.length < n) a.push(0); return a; });
@@ -593,20 +620,21 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
           keep([src]);
         }
       } else {
-        const steps = patSteps(t); if (!steps) continue;
+        const h = isPatHolder(t, clip) ? clip : t;  // the region's own pattern (track template only as a fallback)
+        const steps = patSteps(h); if (!steps) continue;
         const from = Math.max(b0, clip.start), to = Math.min(b1, clip.start + clip.len);
         if (to <= from) continue;
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           const beat = clip.start + k / 4, i = k % steps, when = tOf(beat);
           if (t.type === 'drum') DRUMS.forEach((d, r) => {
-            if (!t.pattern.grid[r][i]) return;
+            if (!h.pattern.grid[r][i]) return;
             // hi-hat choke: closing the hats (closed / pedal) cuts a ringing open hi-hat
             if ((d.id === 'chh' || d.id === 'phh') && tn.openHat) { tn.openHat.forEach(v => { try { v.stop(when + 0.01); } catch (e) { /* already ended */ } }); tn.openHat = null; }
             const v = playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14, kitOf(t, d.id)); /* slight velocity variation = human feel */
             if (d.id === 'ohh') tn.openHat = v;
             keep(v);
           });
-          else t.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
+          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
         }
       }
     }
@@ -763,7 +791,7 @@ async function importFiles(files, track = null, beat = null) {
 }
 
 /* ------------------------------------------------------------------ render */
-function render() { renderArrange(); renderMixer(); renderEditor(); renderFx(); renderMaster(); }
+function render() { ensureRegions(); renderArrange(); renderMixer(); renderEditor(); renderFx(); renderMaster(); }
 
 function timelineBeats() { return Math.max(64, Math.ceil((songEndBeats() + P.sig * 8) / P.sig) * P.sig); }
 
@@ -800,8 +828,7 @@ function renderArrange() {
     lane.addEventListener('dblclick', e => {
       if (e.target !== lane || t.type === 'audio') return;
       const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig;
-      const c = { id: nid('c'), kind: 'midi', start: beat, len: (t.type === 'drum' ? t.pattern.bars : t.bars) * P.sig };
-      t.clips.push(c); selClipId = c.id; render(); showTab('editor');
+      const c = newRegion(t, beat); selClipId = c.id; lastFocus = 'clip'; render(); showTab('editor');
     });
     lane.addEventListener('dragover', e => e.preventDefault());
     lane.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files], t, snapBeat(xToBeat(e, lane))); });
@@ -850,15 +877,17 @@ function drawClip(cv, t, c) {
     const pk = getPeaks(c.buf), p0 = c.offset * 200, pn = c.dur * 200;
     for (let x = 0; x < W; x++) { const i = Math.floor(p0 + (x / W) * pn); const v = (pk[i] || 0) * (H / 2 - 8); g.fillRect(x, H / 2 + 4 - v, 1, Math.max(1, v * 2)); }
   } else {
-    const steps = patSteps(t), cols = Math.round(c.len * 4), cw = W / cols;
-    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (t.pattern.grid[r][k % steps]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
-    else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); for (let k = 0; k < cols; k++) t.notes.forEach(n => { if (n.s === k % steps) g.fillRect(k * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
+    const h = isPatHolder(t, c) ? c : t, steps = patSteps(h), cols = Math.round(c.len * 4), cw = W / cols;
+    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r][k % steps]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
+    else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); for (let k = 0; k < cols; k++) h.notes.forEach(n => { if (n.s === k % steps) g.fillRect(k * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
   }
 }
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
+  const prevSel = selClipId;
   selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
   document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); d.classList.add('sel');
+  if (c.kind === 'midi' && prevSel !== c.id) renderEditor();  // the editor follows the clicked region
   const resize = e.target.classList.contains('rs'), x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = clipLenBeats(c);
   let target = t, moved = false;
   const mm = ev => {
@@ -957,11 +986,26 @@ function renderEditor() {
     ed.append(el('p', { className: 'hint' }, t ? `“${t.name}” is an audio track: import or record audio, drag clips to position them, drag the right edge to trim, S = split at playhead, Ctrl/Cmd+D = duplicate, Delete = remove.` : 'Select a Drum or Synth track to edit its pattern. Double-click an empty spot in its lane to add a pattern region.'));
     return;
   }
-  const steps = patSteps(t), spbar = stepsPerBar();
-  const barsSel = el('select', { onchange: e => { const b = +e.target.value; if (t.type === 'drum') { t.pattern.bars = b; resizeGrid(t); } else { t.bars = b; t.notes = t.notes.filter(n => n.s < patSteps(t)); } render(); } },
-    [1, 2, 4, 8].map(b => el('option', { value: b, selected: b === (t.type === 'drum' ? t.pattern.bars : t.bars) }, b + ' bar' + (b > 1 ? 's' : ''))));
-  const tools = el('div', { className: 'edtools' }, el('b', {}, t.name), 'Pattern length', barsSel,
-    el('button', { onclick: () => { const len = (t.type === 'drum' ? t.pattern.bars : t.bars) * P.sig; const last = t.clips.reduce((a, c) => Math.max(a, c.start + c.len), 0); const st = t.clips.length ? Math.ceil(last / P.sig) * P.sig : Math.floor(T.pos / P.sig) * P.sig; t.clips.push({ id: nid('c'), kind: 'midi', start: st, len }); render(); } }, '+ Add region'));
+  const h = edHolder(t);  // the region being edited (each region has its own pattern)
+  const steps = patSteps(h), spbar = stepsPerBar();
+  const barsSel = el('select', { onchange: e => { const b = +e.target.value; if (t.type === 'drum') { h.pattern.bars = b; resizeGrid(h); } else { h.bars = b; h.notes = h.notes.filter(n => n.s < patSteps(h)); } render(); } },
+    [1, 2, 4, 8].map(b => el('option', { value: b, selected: b === (t.type === 'drum' ? h.pattern.bars : h.bars) }, b + ' bar' + (b > 1 ? 's' : ''))));
+  // region navigator: which region is being edited, step through the regions of this track
+  const regs = midiRegions(t), ri = regs.indexOf(h);
+  const goRegion = d => { const c = regs[(ri + d + regs.length) % regs.length]; if (!c) return; selClipId = c.id; lastFocus = 'clip'; render(); };
+  const regionInfo = ri >= 0
+    ? el('span', { className: 'reginfo', title: 'Each region has its own pattern – edits here change only this region' }, `Region ${ri + 1}/${regs.length} · bar ${Math.floor(h.start / P.sig) + 1}`)
+    : el('span', { className: 'reginfo' }, 'No region yet – “+ Add region” or double-click the lane');
+  const tools = el('div', { className: 'edtools' }, el('b', {}, t.name),
+    el('button', { title: 'Previous region', disabled: regs.length < 2, onclick: () => goRegion(-1) }, '◀'), regionInfo,
+    el('button', { title: 'Next region', disabled: regs.length < 2, onclick: () => goRegion(1) }, '▶'),
+    'Pattern length', barsSel,
+    el('button', { title: 'New region after the last one, starting as a copy of this pattern (independent)', onclick: () => {
+      const last = t.clips.reduce((a, c) => Math.max(a, c.start + clipLenBeats(c)), 0);
+      const st = t.clips.length ? Math.ceil(last / P.sig) * P.sig : Math.floor(T.pos / P.sig) * P.sig;
+      const c = newRegion(t, st, h); selClipId = c.id; lastFocus = 'clip'; render(); } }, '+ Add region'),
+    el('button', { title: 'Copy this pattern into every region of this track', disabled: regs.length < 2 || ri < 0, onclick: () => {
+      regs.forEach(c => { if (c !== h) Object.assign(c, regionData(t, h)); }); render(); status(`Copied this pattern to all ${regs.length} regions of ${t.name}`); } }, 'Apply to all regions'));
   ed.append(tools);
   const grid = el('div', { className: 'grid ' + (t.type === 'drum' ? 'drumgrid' : 'rollgrid'), style: { gridTemplateColumns: `${t.type === 'drum' ? 200 : 64}px repeat(${steps}, 28px)` } });
   // step ruler: beat numbers above the grid
@@ -970,7 +1014,7 @@ function renderEditor() {
   const up = () => { paintVal = null; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); renderArrange(); };
   grid.addEventListener('pointermove', e => { if (paintVal === null) return; const x = document.elementFromPoint(e.clientX, e.clientY); if (x && x._apply) x._apply(); });
   if (t.type === 'drum') {
-    tools.append('Preset', el('select', { onchange: e => { applyDrumPreset(t, e.target.value); render(); } }, el('option', {}, '— choose —'), Object.keys(DRUM_PRESETS).map(k => el('option', {}, k))));
+    tools.append('Preset', el('select', { onchange: e => { applyDrumPreset(h, e.target.value); render(); } }, el('option', {}, '— choose —'), Object.keys(DRUM_PRESETS).map(k => el('option', {}, k))));
     DRUMS.forEach((d, r) => {
       const kit = kitOf(t, d.id);
       const preview = () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, 1, kitOf(t, d.id)); };
@@ -997,11 +1041,11 @@ function renderEditor() {
         knob('Volume', 'level', KIT_RANGES.level[0], KIT_RANGES.level[1], 0.01, v => v <= 0 ? 'off' : Math.round(v * 100) + '%'));
       grid.append(lbl);
       for (let i = 0; i < steps; i++) {
-        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (t.pattern.grid[r][i] ? ' on' : '') });
+        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (h.pattern.grid[r][i] ? ' on' : '') });
         cell.dataset.col = i;
-        const apply = () => { t.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
+        const apply = () => { h.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
         cell._apply = apply;
-        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = t.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) preview(); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
+        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = h.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) preview(); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
         grid.append(cell);
       }
     });
@@ -1030,8 +1074,8 @@ function renderEditor() {
       slider('Drive', 0, 1, 0.01, s.drive || 0, v => Math.round(v * 100) + '%', v => setS('drive', v)),
       'Chord', el('select', { onchange: e => setS('chord', e.target.value) }, [['none', 'Single note'], ['power', 'Power chord (1-5-8)']].map(([v, l]) => el('option', { value: v, selected: v === (s.chord || 'none') }, l))),
       'Note length', el('select', { onchange: e => { noteLen = +e.target.value; } }, [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, '1 bar']].map(([v, l]) => el('option', { value: v, selected: v === noteLen }, l))),
-      el('button', { onclick: () => { t.notes = []; render(); } }, 'Clear'));
-    const covering = (p, i) => t.notes.find(n => n.p === p && i >= n.s && i < n.s + n.l);
+      el('button', { onclick: () => { h.notes = []; render(); } }, 'Clear'));
+    const covering = (p, i) => h.notes.find(n => n.p === p && i >= n.s && i < n.s + n.l);
     for (let p = HIGH_NOTE; p >= LOW_NOTE; p--) {
       const nm = NOTE_NAMES[p % 12], black = nm.includes('#');
       grid.append(el('div', { className: 'rowlbl' + (black ? ' black' : ''), onclick: () => { ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.3); } }, nm + (Math.floor(p / 12) - 1)));
@@ -1041,8 +1085,8 @@ function renderEditor() {
         cell.dataset.col = i;
         cell.addEventListener('pointerdown', e => {
           e.preventDefault(); const ex = covering(p, i);
-          if (ex) t.notes = t.notes.filter(x => x !== ex);
-          else { t.notes.push({ p, s: i, l: Math.min(noteLen, steps - i) }); ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25); }
+          if (ex) h.notes = h.notes.filter(x => x !== ex);
+          else { h.notes.push({ p, s: i, l: Math.min(noteLen, steps - i) }); ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25); }
           renderEditor(); renderArrange();
         });
         grid.append(cell);
@@ -1164,6 +1208,7 @@ function encodeWAV(buf, bits = 16) {
   return new Blob([ab], { type: 'audio/wav' });
 }
 async function renderMix() {
+  ensureRegions();
   await samplesReady();
   const end = songEndBeats(); if (end <= 0) throw new Error('Nothing to export – add some clips first');
   const sr = 44100, secs = end * spb() + 2.5;
@@ -1219,6 +1264,7 @@ function markClean() { savedSnapshot = snapshot(); updateDirty(); }
 function updateDirty() { const d = $('#dirtyDot'); if (d) d.classList.toggle('on', isDirty()); }
 
 async function serializeProject() {
+  ensureRegions();
   P.title = $('#title').value;
   const used = new Set(); P.tracks.forEach(t => t.clips.forEach(c => c.kind === 'audio' && used.add(c.buf)));
   const audio = {};
@@ -1277,6 +1323,7 @@ async function loadProjectData(j) {
   }
   Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
   P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); });
+  ensureRegions();  // older projects: every region gets its own copy of the track pattern
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
   selTrackId = P.tracks[0]?.id || null; syncGraph(); render();
 }
@@ -1397,8 +1444,9 @@ function copySelection(cut = false) {
   if (lastFocus === 'part' && selPart) {
     const t = getTrack(selPart.trackId); if (!t || t.type !== 'drum') return;
     const d = DRUMS[selPart.row];
-    clipboard = { kind: 'part', data: { id: d.id, name: d.name, steps: t.pattern.grid[selPart.row].slice(), kit: { ...kitOf(t, d.id) } } };
-    if (cut) { t.pattern.grid[selPart.row].fill(0); render(); }
+    const h = edHolder(t);
+    clipboard = { kind: 'part', data: { id: d.id, name: d.name, steps: h.pattern.grid[selPart.row].slice(), kit: { ...kitOf(t, d.id) } } };
+    if (cut) { h.pattern.grid[selPart.row].fill(0); render(); }
     status(`${cut ? 'Cut' : 'Copied'} drum part “${d.name}” (pattern + tuning)`); return;
   }
   const [ct, c] = findClip(selClipId);
@@ -1424,8 +1472,8 @@ function pasteClipboard() {
     if (!t || t.type !== 'drum') t = selPart && getTrack(selPart.trackId);
     if (!t || t.type !== 'drum') { status('Select a drum track to paste the part into'); return; }
     const row = selPart && selPart.trackId === t.id ? selPart.row : DRUMS.findIndex(d => d.id === cb.data.id);
-    const n = patSteps(t), src = cb.data.steps;
-    t.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i % src.length]);
+    const h = edHolder(t), n = patSteps(h), src = cb.data.steps;
+    h.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i % src.length]);
     t.kit = t.kit || {}; t.kit[DRUMS[row].id] = { ...cb.data.kit };
     render(); status(`Pasted “${cb.data.name}” into ${DRUMS[row].name} on ${t.name}`); return;
   }
@@ -1458,13 +1506,20 @@ function hideDrop() { $('#dropOverlay').style.display = 'none'; }
 function splitClip() {
   const [t, c] = findClip(selClipId); if (!c) return;
   const b = currentBeat(), len = clipLenBeats(c); if (b <= c.start || b >= c.start + len) return;
-  const cut = b - c.start, nc = { ...c, id: nid('c'), start: b };
-  if (c.kind === 'audio') { nc.offset = c.offset + cut * spb(); nc.dur = c.dur - cut * spb(); c.dur = cut * spb(); } else { nc.len = c.len - cut; c.len = cut; }
+  const cut = b - c.start, nc = { ...deepCopy(c), id: nid('c'), start: b };  // deep copy: the halves are independent
+  if (c.kind === 'audio') { nc.offset = c.offset + cut * spb(); nc.dur = c.dur - cut * spb(); c.dur = cut * spb(); }
+  else { nc.len = c.len - cut; c.len = cut; if (isPatHolder(t, nc)) rotatePattern(t, nc, Math.round(cut * 4)); }
   t.clips.push(nc); render();
 }
 function duplicateClip() {
   const [t, c] = findClip(selClipId); if (!c) return;
-  const nc = { ...c, id: nid('c'), start: c.start + clipLenBeats(c) }; t.clips.push(nc); selClipId = nc.id; render();
+  const nc = { ...deepCopy(c), id: nid('c'), start: c.start + clipLenBeats(c) }; t.clips.push(nc); selClipId = nc.id; render();  // independent copy
+}
+// shift a region's pattern left by k steps (used by split so the right half sounds exactly as before)
+function rotatePattern(t, h, k) {
+  const n = patSteps(h); k = ((k % n) + n) % n; if (!k) return;
+  if (t.type === 'drum') h.pattern.grid = h.pattern.grid.map(r => r.slice(k).concat(r.slice(0, k)));
+  else h.notes = h.notes.map(x => ({ ...x, s: (x.s - k + n) % n })).map(x => ({ ...x, l: Math.min(x.l, n - x.s) }));
 }
 
 /* MIDI guitar track = synth track with a guitar preset + starter power-chord riff */
@@ -1501,7 +1556,9 @@ function init() {
   };
   $('#sig').onchange = e => {
     P.sig = +e.target.value;
-    P.tracks.forEach(t => { if (t.type === 'drum') resizeGrid(t); if (t.type === 'synth') t.notes = t.notes.filter(n => n.s < patSteps(t)); });
+    P.tracks.forEach(t => [t, ...t.clips.filter(c => isPatHolder(t, c))].forEach(h => {
+      if (t.type === 'drum') resizeGrid(h); if (t.type === 'synth') h.notes = h.notes.filter(n => n.s < patSteps(h));
+    }));
     render();
   };
   $('#zoom').oninput = () => renderArrange();

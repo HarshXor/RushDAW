@@ -4,6 +4,7 @@ Used by the MCP tools to read and edit ``.rushdaw`` project documents without a
 browser.  Every structure produced here must be loadable by the web UI, so the
 constants below are kept in sync with ``static/app.js`` (see tests).
 """
+import json
 import copy
 import itertools
 import re
@@ -163,8 +164,33 @@ def steps_per_bar(proj):
 
 
 def pat_steps(proj, t):
-    bars = t['pattern']['bars'] if t['type'] == 'drum' else t.get('bars', 1)
+    # works on a track (its template pattern) or on a MIDI region that owns its pattern
+    bars = t['pattern']['bars'] if 'pattern' in t else t.get('bars', 1)
     return int(bars) * steps_per_bar(proj)
+
+
+def midi_regions(t):
+    return sorted((c for c in t.get('clips', []) if c.get('kind') == 'midi'), key=lambda c: c['start'])
+
+
+def has_own_pattern(t, c):
+    return c.get('kind') == 'midi' and ('pattern' in c if t['type'] == 'drum' else isinstance(c.get('notes'), list))
+
+
+def region_data(t, src):
+    """Independent copy of a pattern (drum: pattern; synth: bars + notes) – every region owns one."""
+    if t['type'] == 'drum':
+        return {'pattern': json.loads(json.dumps(src['pattern']))}
+    return {'bars': src.get('bars', 1), 'notes': json.loads(json.dumps(src.get('notes') or []))}
+
+
+def fill_regions(proj):
+    """Regions without their own pattern (older projects, new regions) get a copy of the track template (= ensureRegions in app.js)."""
+    for t in proj.get('tracks', []):
+        if t.get('type') in ('drum', 'synth'):
+            for c in t.get('clips', []):
+                if c.get('kind') == 'midi' and not has_own_pattern(t, c):
+                    c.update(region_data(t, t))
 
 
 def pattern_to_row(pattern, steps):
@@ -230,15 +256,18 @@ def find_clip(proj, clip_id):
 def migrate_drums(proj):
     """Re-map drum grids of older projects to the current kit row order (adds pattern['ids'])."""
     for t in proj.get('tracks', []):
-        if t.get('type') != 'drum' or not t.get('pattern'):
+        if t.get('type') != 'drum':
             continue
-        ids = t['pattern'].get('ids') or LEGACY_DRUM_IDS
-        if list(ids) == DRUM_IDS:
-            continue
-        grid = t['pattern'].get('grid') or []
-        n = len(grid[0]) if grid else pat_steps(proj, t)
-        t['pattern']['grid'] = [list(grid[ids.index(pid)]) if pid in ids and ids.index(pid) < len(grid) else [0] * n for pid in DRUM_IDS]
-        t['pattern']['ids'] = list(DRUM_IDS)
+        for h in [t] + list(t.get('clips', [])):  # the track template and every region's own pattern
+            if not h.get('pattern'):
+                continue
+            ids = h['pattern'].get('ids') or LEGACY_DRUM_IDS
+            if list(ids) == DRUM_IDS:
+                continue
+            grid = h['pattern'].get('grid') or []
+            n = len(grid[0]) if grid else pat_steps(proj, h)
+            h['pattern']['grid'] = [list(grid[ids.index(pid)]) if pid in ids and ids.index(pid) < len(grid) else [0] * n for pid in DRUM_IDS]
+            h['pattern']['ids'] = list(DRUM_IDS)
 
 
 def migrate_strings(proj):
@@ -322,14 +351,29 @@ def new_fx(fx_type, params=None, on=True):
 
 
 # ------------------------------------------------------------------ summaries
+def _notes_out(notes):
+    return [{'pitch': n['p'], 'note': note_name(n['p']), 'step': n['s'] + 1, 'length': n['l']} for n in sorted(notes, key=lambda n: (n['s'], n['p']))]
+
+
+def _region_detail(t, c):
+    if not has_own_pattern(t, c):
+        return {}
+    if t['type'] == 'drum':
+        return {'pattern_bars': c['pattern']['bars'], 'pads': {pid: row_to_pattern(c['pattern']['grid'][i]) for i, (pid, _) in enumerate(DRUMS)}}
+    return {'pattern_bars': c.get('bars', 1), 'notes': _notes_out(c['notes'])}
+
+
 def track_summary(proj, t, detail=True):
     out = {'id': t['id'], 'name': t['name'], 'type': t.get('instrument') or t['type'],
            'volume': t['vol'], 'pan': t['pan'], 'mute': t['mute'], 'solo': t['solo'],
            'eq': t['eq'], 'comp': t['comp'], 'reverb_send': t['rev'], 'delay_send': t['dly'],
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],
            'clips': [{'id': c['id'], 'kind': c['kind'], 'start_beat': c['start'],
-                      **({'length_beats': c['len']} if c['kind'] == 'midi' else {'duration_sec': c.get('dur'), 'offset_sec': c.get('offset')})}
+                      **({'length_beats': c['len']} if c['kind'] == 'midi' else {'duration_sec': c.get('dur'), 'offset_sec': c.get('offset')}),
+                      **(_region_detail(t, c) if detail else {})}
                      for c in t['clips']]}
+    # top-level pads / notes = the track template (used by whole-track MCP edits and as the start of new regions);
+    # every region in 'clips' reports its OWN pattern – regions are independent
     if detail and t['type'] == 'drum':
         out['pattern_bars'] = t['pattern']['bars']
         out['pads'] = {pid: row_to_pattern(t['pattern']['grid'][i]) for i, (pid, _) in enumerate(DRUMS)}
@@ -337,7 +381,7 @@ def track_summary(proj, t, detail=True):
     if detail and t['type'] == 'synth':
         out['pattern_bars'] = t.get('bars', 1)
         out['synth'] = t['synth']
-        out['notes'] = [{'pitch': n['p'], 'note': note_name(n['p']), 'step': n['s'] + 1, 'length': n['l']} for n in sorted(t['notes'], key=lambda n: (n['s'], n['p']))]
+        out['notes'] = _notes_out(t['notes'])
     return out
 
 

@@ -193,6 +193,58 @@ class McpTest(unittest.TestCase):
         js_riff = re.search(r"const CRUST_RIFF = (\[.*?\]);", js).group(1)
         self.assertEqual(json.loads(js_riff), [list(n) for n in M.CRUST_RIFF])
 
+    def test_regions_are_independent(self):
+        pid = self.call("create_project", name="Regions", template="metal")["project_id"]
+        drums = self.call("get_project", project_id=pid)["tracks"][0]
+        r1 = drums["clips"][0]["id"]
+        self.assertIn("pads", drums["clips"][0])                     # every region reports its own pattern
+        r2 = self.call("add_region", project_id=pid, track=drums["id"], start_beat=16, length_beats=4, copy_from=r1)["clip_id"]
+        r3 = self.call("add_region", project_id=pid, track=drums["id"], start_beat=20, length_beats=4)["clip_id"]
+        # edit only region 2
+        res = self.call("set_drum_pattern", project_id=pid, track=drums["id"], clip_id=r2, patterns={"kick": "x..............."}, clear_others=True)
+        self.assertEqual(res["edited"], f"region {r2}")
+        regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
+        self.assertEqual(regs[r2]["pads"]["kick"], "x" + "." * 15)
+        self.assertEqual(set(regs[r2]["pads"]["snare"]), {"."})
+        self.assertEqual(regs[r1]["pads"], regs[r3]["pads"])           # the others are untouched
+        self.assertNotEqual(regs[r1]["pads"]["kick"], regs[r2]["pads"]["kick"])
+        # region-only length change
+        self.call("set_pattern_length", project_id=pid, track=drums["id"], clip_id=r3, bars=2)
+        regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
+        self.assertEqual((regs[r1]["pattern_bars"], regs[r3]["pattern_bars"]), (1, 2))
+        # whole-track edit (no clip_id) still changes every region
+        self.call("set_drum_pads", project_id=pid, track=drums["id"], part="crash", steps=[1])
+        regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
+        self.assertTrue(all(r["pads"]["crash"][0] == "x" for r in regs.values()))
+        # synth/guitar regions too
+        g = self.call("get_project", project_id=pid)["tracks"][2]
+        g1 = g["clips"][0]["id"]
+        g2 = self.call("add_region", project_id=pid, track=g["id"], start_beat=16, copy_from=g1)["clip_id"]
+        self.call("set_notes", project_id=pid, track=g["id"], clip_id=g2, notes=[{"note": "A2", "step": 1, "length": 4}])
+        gr = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][2]["clips"]}
+        self.assertEqual([n["note"] for n in gr[g2]["notes"]], ["A2"])
+        self.assertGreater(len(gr[g1]["notes"]), 1)
+        self.assertIn("not found", self.call("set_notes", ok=False, project_id=pid, track=g["id"], clip_id="nope", notes=[])["error"])
+
+    def test_old_regions_get_their_own_copy(self):
+        proj = {"sig": 4, "tracks": [
+            {"type": "drum", "pattern": {"bars": 1, "grid": [[1] + [0] * 15 for _ in M.DRUMS], "ids": list(M.DRUM_IDS)},
+             "clips": [{"id": "a", "kind": "midi", "start": 0, "len": 4}, {"id": "b", "kind": "midi", "start": 4, "len": 4}]},
+            {"type": "synth", "bars": 1, "notes": [{"p": 40, "s": 0, "l": 2}], "clips": [{"id": "c", "kind": "midi", "start": 0, "len": 4}]}]}
+        M.fill_regions(proj)
+        a, b = proj["tracks"][0]["clips"]
+        self.assertEqual(a["pattern"], proj["tracks"][0]["pattern"])
+        a["pattern"]["grid"][0][5] = 1                                   # editing a ...
+        self.assertEqual(b["pattern"]["grid"][0][5], 0)                  # ... never changes b
+        self.assertEqual(proj["tracks"][0]["pattern"]["grid"][0][5], 0)  # nor the template
+        c = proj["tracks"][1]["clips"][0]
+        self.assertEqual((c["bars"], c["notes"]), (1, [{"p": 40, "s": 0, "l": 2}]))
+        self.assertIsNot(c["notes"], proj["tracks"][1]["notes"])
+        with open(APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        for fn in ("function ensureRegions", "function edHolder", "function newRegion", "function rotatePattern"):
+            self.assertIn(fn, js)
+
     def test_edit_flow(self):
         p = self.call("create_project", name="MCP Song", bpm=190, template="metal")
         pid = p["project_id"]

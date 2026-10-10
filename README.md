@@ -43,6 +43,8 @@ If port 8765 is busy: when RushDAW is already running there, `rushdaw` just open
 ### Keyboard shortcuts
 `Space` play/stop · `Ctrl/Cmd+C / X / V` copy / cut / paste the selected clip, track (layer) or drum part · `R` record · `Home`/`Enter` back to start · `S` split · `Ctrl/Cmd+D` duplicate · `Delete` remove clip · `M` metronome toggle · `Shift + drag` on the ruler sets the loop region · double-click a Drum/Synth lane to add a pattern region.
 
+**Every pattern region is independent.** Each MIDI region (drum, guitar, bass, synth) stores its own pattern, so copy/paste, `Ctrl/Cmd+D` duplicate and `S` split create independent copies – editing one region never changes another. Click a region to edit it; the Editor shows *Region n/m · bar x* with ◀ ▶ to step through the regions, **+ Add region** (starts as a copy of the shown pattern) and **Apply to all regions**. Older projects are converted automatically (every region gets its own copy).
+
 ## Data storage
 
 All data stays on your computer in `~/.rushdaw/` (change with `rushdaw --home PATH` or `RUSHDAW_HOME`):
@@ -98,7 +100,7 @@ Example client config:
 | Effects | `set_track_effects`, `add_effect`, `update_effect` (params / bypass / remove) |
 | Drum pads | `set_drum_pads` (turn steps on/off), `set_drum_pattern` (`"x...x..."` strings), `apply_drum_preset`, `clear_drum_pads`, `set_drum_tuning` (`tune_percent` / `decay_percent` / `volume_percent`, or raw pitch / decay / level / `volume_db`), `set_pattern_length` |
 | Synth / guitar | `set_notes` (e.g. `{"note": "E2", "step": 1, "length": 2}`), `set_synth` |
-| Clips / regions | `add_region`, `update_clip`, `delete_clip` |
+| Clips / regions | `add_region` (own copy of the track pattern, or `copy_from` another region), `update_clip`, `delete_clip`. Pattern tools (`set_drum_pads`, `set_drum_pattern`, `apply_drum_preset`, `clear_drum_pads`, `set_pattern_length`, `set_notes`) take an optional `clip_id` to edit only that region; without it they edit the whole track (all regions) |
 
 Every MCP edit is saved as a **new revision** (`MCP: …` in History), so it can always be restored. An editor open in the browser reloads automatically when MCP changes the project. If you have unsaved changes, it shows a warning instead.
 

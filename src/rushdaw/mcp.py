@@ -68,6 +68,7 @@ class RushDAWMCP:
             raise ToolError(str(e))
         doc = json.loads(data)
         M.migrate_drums(doc.get("project") or {})
+        M.fill_regions(doc.get("project") or {})  # every MIDI region owns its pattern
         M.migrate_strings(doc.get("project") or {})
         return doc, r, meta
 
@@ -76,6 +77,7 @@ class RushDAWMCP:
         with _edit_lock:
             doc, _, _ = self._load(pid)
             result = fn(doc)
+            M.fill_regions(doc["project"])  # regions created by this edit get their own copy of the track pattern
             try:
                 saved = self.st.save_revision(pid, json.dumps(doc).encode(), ("MCP: " + message)[:200])
             except StorageError as e:
@@ -92,6 +94,32 @@ class RushDAWMCP:
             res = fn(proj, t)
             return {"track": M.track_summary(proj, t), **(res or {})}
         return self._edit(a["project_id"], message, run)
+
+    def _pattern_edit(self, a, message, fn, kind):
+        """Run fn(proj, holder) on one region (a['clip_id']) or on the whole track: its template + every region."""
+        cid = a.get("clip_id")
+        def run(doc):
+            proj = doc["project"]
+            t = M.find_track(proj, a["track"])
+            if kind == "drum":
+                self._drum(t)
+            elif kind == "synth":
+                self._synth(t)
+            elif t["type"] not in ("drum", "synth"):
+                raise M.ModelError(f"track '{t['name']}' has no pattern (audio track)")
+            regions = M.midi_regions(t)
+            if cid:
+                c = next((c for c in regions if c["id"] == cid), None)
+                if c is None:
+                    raise M.ModelError(f"region '{cid}' not found on track '{t['name']}' (regions: {', '.join(r['id'] for r in regions) or 'none'})")
+                targets = [c]
+            else:
+                targets = [t] + regions
+            res = None
+            for h in targets:
+                res = fn(proj, h) or res
+            return {"track": M.track_summary(proj, t), "edited": f"region {cid}" if cid else f"whole track ({len(regions)} region(s))", **(res or {})}
+        return self._edit(a["project_id"], message + (f" [region {cid}]" if cid else ""), run)
 
     @staticmethod
     def _drum(t):
@@ -152,6 +180,7 @@ class RushDAWMCP:
                 raise M.ModelError("time_signature must be 3, 4 or 6")
             doc = M.new_document(a["name"].strip()[:120] or "New Song", bpm, sig)
             self._apply_template(doc["project"], a.get("template", "metal"))
+            M.fill_regions(doc["project"])  # each template region owns its pattern
             meta = self.st.create_project(doc["project"]["title"], bpm, sig)
             self.st.save_revision(meta["id"], json.dumps(doc).encode(), "MCP: created")
             return {"project_id": meta["id"], "revision": 1, **M.project_summary(doc, False)}
@@ -344,24 +373,22 @@ class RushDAWMCP:
         # ---------------- drum pads
         @tool("set_drum_pads", "Turn individual drum pads (steps) on or off for one part. Steps are 1-based 16th notes (1-16 for bar 1, 17-32 for bar 2, ...).",
               _S(project_id=PID, track=TRACK, part=PART, steps=("array", "1-based step numbers.", True, {"items": {"type": "integer"}}),
-                 on=("boolean", "true = hit (default), false = clear.")))
+                 on=("boolean", "true = hit (default), false = clear."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_drum_pads(a):
             def fn(proj, t):
-                self._drum(t)
                 row, n = M.drum_row(a["part"]), M.pat_steps(proj, t)
                 for s in a["steps"]:
                     s = int(s)
                     if not 1 <= s <= n:
                         raise M.ModelError(f"step {s} out of range 1-{n} (pattern is {t['pattern']['bars']} bar(s); use set_pattern_length for more)")
                     t["pattern"]["grid"][row][s - 1] = 1 if a.get("on", True) else 0
-            return self._track_edit(a, f"pads {a['part']}", fn)
+            return self._pattern_edit(a, f"pads {a['part']}", fn, "drum")
 
         @tool("set_drum_pattern", "Write whole pad rows from strings, e.g. {\"kick\": \"x...x...x...x...\", \"snare\": \"....x.......x...\"}. 'x' = hit, '.' = rest; '|' and spaces are ignored; short patterns repeat to fill the pattern length. Parts not listed are unchanged unless clear_others=true.",
               _S(project_id=PID, track=TRACK, patterns=("object", "Map part -> pattern string.", True), bars=("integer", "Optionally set the pattern length first (1, 2, 4, 8)."),
-                 clear_others=("boolean", "Clear all parts not given (default false).")))
+                 clear_others=("boolean", "Clear all parts not given (default false)."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_drum_pattern(a):
             def fn(proj, t):
-                self._drum(t)
                 if a.get("bars"):
                     self._set_bars(proj, t, a["bars"])
                 rows = {M.drum_row(p): pat for p, pat in a["patterns"].items()}
@@ -371,25 +398,24 @@ class RushDAWMCP:
                         t["pattern"]["grid"][r] = M.pattern_to_row(rows[r], n)
                     elif a.get("clear_others"):
                         t["pattern"]["grid"][r] = [0] * n
-            return self._track_edit(a, "drum pattern", fn)
+            return self._pattern_edit(a, "drum pattern", fn, "drum")
 
         @tool("apply_drum_preset", "Replace a drum track's pads with a preset beat (e.g. Metal Double Bass, Blast Beat, D-Beat, Punk Beat, Hardcore Breakdown...).",
-              _S(project_id=PID, track=TRACK, preset=("string", "Preset name (see get_reference).", True)))
+              _S(project_id=PID, track=TRACK, preset=("string", "Preset name (see get_reference).", True), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def apply_drum_preset(a):
             def fn(proj, t):
-                M.apply_drum_preset(proj, self._drum(t), a["preset"])
-            return self._track_edit(a, f"preset {a['preset']}", fn)
+                M.apply_drum_preset(proj, t, a["preset"])
+            return self._pattern_edit(a, f"preset {a['preset']}", fn, "drum")
 
         @tool("clear_drum_pads", "Clear all pads of one part, or of the whole drum track when part is omitted.",
-              _S(project_id=PID, track=TRACK, part=("string", "Drum part (omit = all parts).")))
+              _S(project_id=PID, track=TRACK, part=("string", "Drum part (omit = all parts)."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def clear_drum_pads(a):
             def fn(proj, t):
-                self._drum(t)
                 n = M.pat_steps(proj, t)
                 rows = [M.drum_row(a["part"])] if a.get("part") else range(len(M.DRUMS))
                 for r in rows:
                     t["pattern"]["grid"][r] = [0] * n
-            return self._track_edit(a, "clear pads", fn)
+            return self._pattern_edit(a, "clear pads", fn, "drum")
 
         @tool("set_drum_tuning", "Tune a drum part (each kit piece has its own settings). Percent values (100 = default rock/metal tuning): "
               "tune_percent 25..400 (pitch; 200 = one octave up), decay_percent 10..400 (ring length), volume_percent 0..200 (0 = off). "
@@ -424,19 +450,18 @@ class RushDAWMCP:
             return self._track_edit(a, f"tune {a['part']}", fn)
 
         @tool("set_pattern_length", "Set the pattern length in bars (1, 2, 4 or 8) of a drum or synth/guitar track. Longer patterns keep existing pads; shorter ones cut them.",
-              _S(project_id=PID, track=TRACK, bars=("integer", "1, 2, 4 or 8", True, {"enum": [1, 2, 4, 8]})))
+              _S(project_id=PID, track=TRACK, bars=("integer", "1, 2, 4 or 8", True, {"enum": [1, 2, 4, 8]}), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_pattern_length(a):
             def fn(proj, t):
                 self._set_bars(proj, t, a["bars"])
-            return self._track_edit(a, f"pattern {a['bars']} bars", fn)
+            return self._pattern_edit(a, f"pattern {a['bars']} bars", fn, None)  # drum or synth track
 
         # ---------------- synth / guitar
         @tool("set_notes", "Write notes of a synth/guitar track's pattern. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1)}. Range C2 (36) - C6 (84).",
               _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}}, "required": ["note", "step"]}}),
-                 replace=("boolean", "Replace all existing notes (default true); false = add/overwrite.")))
+                 replace=("boolean", "Replace all existing notes (default true); false = add/overwrite."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_notes(a):
             def fn(proj, t):
-                self._synth(t)
                 n = M.pat_steps(proj, t)
                 new = []
                 for x in a["notes"]:
@@ -449,7 +474,7 @@ class RushDAWMCP:
                     new.append({"p": p, "s": s - 1, "l": int(M.clamp(int(x.get("length", 1)), 1, n - s + 1))})
                 keep = [] if a.get("replace", True) else [o for o in t["notes"] if not any(o["p"] == q["p"] and o["s"] == q["s"] for q in new)]
                 t["notes"] = keep + new
-            return self._track_edit(a, "notes", fn)
+            return self._pattern_edit(a, "notes", fn, "synth")
 
         @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (engine sample|string|osc — 'sample' = real recorded guitar/bass, sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
               _S(project_id=PID, track=TRACK, preset=("string", "Synth preset (see get_reference)."), params=("object", "Parameters to change.")))
@@ -475,14 +500,22 @@ class RushDAWMCP:
             return self._track_edit(a, "synth sound", fn)
 
         # ---------------- clips / regions
-        @tool("add_region", "Add a pattern region (clip) to a drum/synth/guitar track; the track's pattern loops inside it. Beats are quarter notes from the song start (bar 2 starts at beat 4 in 4/4).",
-              _S(project_id=PID, track=TRACK, start_beat=("number", "Start beat (0 = song start).", True), length_beats=("number", "Length in beats (default 4 bars).")))
+        @tool("add_region", "Add a pattern region (clip) to a drum/synth/guitar track. The region gets its OWN copy of the track pattern "
+              "(or of another region with copy_from) – later edits to one region never change the others. Its pattern loops inside it. "
+              "Beats are quarter notes from the song start (bar 2 starts at beat 4 in 4/4).",
+              _S(project_id=PID, track=TRACK, start_beat=("number", "Start beat (0 = song start).", True), length_beats=("number", "Length in beats (default 4 bars)."),
+                 copy_from=("string", "Optional region (clip id) whose pattern the new region starts with.")))
         def add_region(a):
             def fn(proj, t):
                 if t["type"] == "audio":
                     raise M.ModelError("audio tracks get clips by importing/recording audio in the UI")
+                src = t
+                if a.get("copy_from"):
+                    src = next((c for c in M.midi_regions(t) if c["id"] == a["copy_from"]), None)
+                    if src is None:
+                        raise M.ModelError(f"region '{a['copy_from']}' not found on track '{t['name']}'")
                 c = {"id": M.nid("c"), "kind": "midi", "start": M.num(a["start_beat"], "start_beat", 0, 100000),
-                     "len": M.num(a.get("length_beats", proj["sig"] * 4), "length_beats", 0.25, 100000)}
+                     "len": M.num(a.get("length_beats", proj["sig"] * 4), "length_beats", 0.25, 100000), **M.region_data(t, src)}
                 t["clips"].append(c)
                 return {"clip_id": c["id"]}
             return self._track_edit(a, "add region", fn)
@@ -531,7 +564,7 @@ class RushDAWMCP:
         bars = int(bars)
         if bars not in (1, 2, 4, 8):
             raise M.ModelError("bars must be 1, 2, 4 or 8")
-        if t["type"] == "drum":
+        if "pattern" in t:  # drum track template or drum region
             t["pattern"]["bars"] = bars
             M.resize_grid(proj, t)
         else:

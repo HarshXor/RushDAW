@@ -65,6 +65,8 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .rowlbl{font-size:11px;color:var(--mut);padding-right:6px;display:flex;align-items:center;justify-content:flex-end;gap:4px;white-space:nowrap}
 .rowlbl.black{color:#aaa;background:#111;border-radius:3px}
 .edtools{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.reginfo{font:11px ui-monospace,Menlo,monospace;color:var(--acc);border:1px solid var(--acc);border-radius:4px;padding:2px 6px;white-space:nowrap}
+.edtools button:disabled{opacity:.35;cursor:default}
 .hint{color:var(--mut)}
 .mstbox{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:220px}
 .mstbox h4{margin:0 0 4px}
