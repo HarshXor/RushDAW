@@ -83,6 +83,12 @@ const SYNTH_PRESETS = {
   'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.75 },
   'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, decay: 4.0, susLevel: 0.75 },
   'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, decay: 0.18, susLevel: 0.0 },
+  // --- voice (engine 'voice' = formant-synthesized human voice: choir / solo "hooo" / "haaa", sustains like a held note) ---
+  'Choir Aah': { engine: 'voice', vowel: 'a', voices: 4, wave: 'sawtooth', attack: 0.12, release: 0.6, cutoff: 7000, detune: 9, gain: 0.5, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
+  'Choir Ooh': { engine: 'voice', vowel: 'u', voices: 4, wave: 'sawtooth', attack: 0.14, release: 0.7, cutoff: 6000, detune: 9, gain: 0.6, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
+  'Choir Ohh': { engine: 'voice', vowel: 'o', voices: 4, wave: 'sawtooth', attack: 0.12, release: 0.6, cutoff: 6500, detune: 9, gain: 0.55, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
+  'Solo Hoo': { engine: 'voice', vowel: 'u', voices: 1, wave: 'sawtooth', attack: 0.06, release: 0.35, cutoff: 6000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, breath: 0.35, vibrato: 0.5, decay: 0.8, susLevel: 0.8 },
+  'Solo Haa': { engine: 'voice', vowel: 'a', voices: 1, wave: 'sawtooth', attack: 0.05, release: 0.35, cutoff: 7500, detune: 0, gain: 0.5, drive: 0, chord: 'none', pluck: 0, breath: 0.35, vibrato: 0.5, decay: 0.8, susLevel: 0.8 },
   // --- modeled string (Karplus-Strong), kept for experimenting ---
   'Modeled String': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
 };
@@ -314,6 +320,8 @@ const FX_TYPES = {
   tremolo: { name: 'Tremolo', params: { rate: [5, 0.5, 20, 0.1, 'Hz'], depth: [0.5, 0, 1, 0.01, ''] } },
   delay: { name: 'Delay', params: { time: [0.75, 0.125, 2, 0.125, 'beat'], feedback: [0.35, 0, 0.9, 0.01, ''], tone: [5000, 500, 12000, 10, 'Hz'], mix: [0.3, 0, 1, 0.01, ''] } },
   reverb: { name: 'Reverb', params: { size: [2, 0.2, 8, 0.1, 's'], tone: [8000, 1000, 16000, 10, 'Hz'], mix: [0.3, 0, 1, 0.01, ''] } },
+  // vocal formant filter: shapes ANY sound into a vowel ("aah" / "ooh" ...) - talk-box / choir colour
+  formant: { name: 'Vocal Formant', params: { vowel: ['a', ['a', 'e', 'i', 'o', 'u']], shift: [1, 0.6, 1.6, 0.01, 'x'], mix: [0.8, 0, 1, 0.01, ''] } },
 };
 const FX_CHAIN_PRESETS = {
   'Vocal': [['eq', { low: -4, lowF: 120, mid: 1.5, midF: 2500, high: 3 }], ['comp', { thr: -24, ratio: 4, makeup: 6 }], ['delay', { time: 0.5, feedback: 0.25, mix: 0.12 }], ['reverb', { size: 2.2, mix: 0.25 }]],
@@ -321,10 +329,11 @@ const FX_CHAIN_PRESETS = {
   'Metal Guitar': [['filter', { mode: 'highpass', freq: 90, q: 0.7 }], ['dist', { drive: 0.9, tone: 5000, level: 0.45 }], ['eq', { low: 2, lowF: 110, mid: -4, midF: 700, high: 3, highF: 4000 }], ['comp', { thr: -18, ratio: 3, makeup: 2 }]],
   'Drum Bus': [['comp', { thr: -18, ratio: 4, attack: 0.02, release: 0.15, makeup: 4 }], ['eq', { low: 3, lowF: 80, high: 2, highF: 8000 }], ['dist', { drive: 0.15, mix: 0.3, level: 0.9 }]],
   'Bass': [['comp', { thr: -20, ratio: 5, makeup: 4 }], ['eq', { low: 3, lowF: 80, mid: -2, midF: 400 }], ['filter', { mode: 'lowpass', freq: 6000, q: 0.7 }]],
+  'Choir Space': [['eq', { low: -3, lowF: 150, high: 2, highF: 7000 }], ['chorus', { rate: 0.4, depth: 0.005, mix: 0.35 }], ['reverb', { size: 3.5, mix: 0.35 }]],
   'Lo-Fi': [['filter', { mode: 'lowpass', freq: 3200, q: 0.8 }], ['dist', { drive: 0.3, mix: 0.4 }], ['chorus', { rate: 0.6, depth: 0.006, mix: 0.4 }]],
   'Clear (no FX)': [],
 };
-const FX_LABELS = { low: 'Low', lowF: 'Low freq', mid: 'Mid', midF: 'Mid freq', high: 'High', highF: 'High freq', thr: 'Threshold', ratio: 'Ratio', attack: 'Attack', release: 'Release', makeup: 'Make-up', gain: 'Input gain', drive: 'Drive', tone: 'Tone', level: 'Level', mix: 'Mix', mode: 'Mode', freq: 'Cutoff', q: 'Resonance', rate: 'Rate', depth: 'Depth', time: 'Time', feedback: 'Feedback', size: 'Size' };
+const FX_LABELS = { low: 'Low', lowF: 'Low freq', mid: 'Mid', midF: 'Mid freq', high: 'High', highF: 'High freq', thr: 'Threshold', ratio: 'Ratio', attack: 'Attack', release: 'Release', makeup: 'Make-up', gain: 'Input gain', drive: 'Drive', tone: 'Tone', level: 'Level', mix: 'Mix', mode: 'Mode', freq: 'Cutoff', q: 'Resonance', rate: 'Rate', depth: 'Depth', time: 'Time', feedback: 'Feedback', size: 'Size', vowel: 'Vowel', shift: 'Formant shift' };
 function newFx(type, over = {}) {
   const p = {}; for (const [k, v] of Object.entries(FX_TYPES[type].params)) p[k] = v[0];
   return { id: nid('f'), type, on: true, p: { ...p, ...over } };
@@ -346,6 +355,7 @@ function makeFxUnit(c, type) {
     case 'tremolo': N.amp = c.createGain(); N.lfo = c.createOscillator(); N.dep = c.createGain();
       N.lfo.connect(N.dep); N.dep.connect(N.amp.gain); u.in.connect(N.amp); N.amp.connect(u.out); N.lfo.start(); u.oscs.push(N.lfo); break;
     case 'delay': wetDry(); N.d = c.createDelay(5); N.fb = c.createGain(); N.lp = bq('lowpass'); u.in.connect(N.d); N.d.connect(N.lp); N.lp.connect(N.fb); N.fb.connect(N.d); N.lp.connect(N.wet); break;
+    case 'formant': wetDry(); N.sum = c.createGain(); N.bp = [0, 1, 2, 3].map(() => { const f = bq('bandpass'), fg = c.createGain(); u.in.connect(f); f.connect(fg); fg.connect(N.sum); return [f, fg]; }); N.sum.connect(N.wet); break;
     case 'reverb': wetDry(); N.cv = c.createConvolver(); N.lp = bq('lowpass'); u.in.connect(N.cv); N.cv.connect(N.lp); N.lp.connect(N.wet); break;
   }
   return u;
@@ -362,6 +372,8 @@ function setFxUnit(u, fx, c, L) {
     case 'chorus': s(N.lfo.frequency, p.rate); s(N.dep.gain, p.depth); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix * 0.5); break;
     case 'tremolo': s(N.lfo.frequency, p.rate); s(N.amp.gain, 1 - p.depth / 2); s(N.dep.gain, p.depth / 2); break;
     case 'delay': s(N.d.delayTime, Math.min(4.9, p.time * spb())); s(N.fb.gain, p.feedback); s(N.lp.frequency, p.tone); s(N.wet.gain, p.mix); s(N.dry.gain, 1); break;
+    case 'formant': (VOWELS[p.vowel] || VOWELS.a).forEach(([fr, bw, gdb], i) => { s(N.bp[i][0].frequency, fr * p.shift); s(N.bp[i][0].Q, fr / bw); s(N.bp[i][1].gain, dbToGain(gdb) * 3); });
+      s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix); break;
     case 'reverb': if (u.ir !== p.size) { u.ir = p.size; N.cv.buffer = makeIR(c, p.size); } s(N.lp.frequency, p.tone); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix * 0.5); break;
   }
 }
@@ -466,7 +478,8 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
   return srcs;
 }
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
-const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', decay: 1.5, susLevel: 0.3, drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
+const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', decay: 1.5, susLevel: 0.3, drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5, vowel: 'a', voices: 1, breath: 0, vibrato: 0 };
+const DEFAULT_VOCAL_PRESET = 'Choir Aah';
 const DEFAULT_GUITAR_PRESET = 'Clean Guitar', DEFAULT_BASS_PRESET = 'Finger Bass';
 /* amp distortion lives in the track's own Effects chain (visible + editable per layer), never hidden
    inside the instrument: a preset/synth "drive" becomes a 'Guitar Amp' insert effect on THAT track.
@@ -613,6 +626,41 @@ function nearestSample(id, m) {
 }
 // Decay (s) and Sustain (0..1) of the sample engine; older tracks without them use their preset's values
 const envOf = s => ({ decay: Math.max(0.03, s.decay ?? SYNTH_PRESETS[s.preset]?.decay ?? 1.5), sus: clamp(s.susLevel ?? SYNTH_PRESETS[s.preset]?.susLevel ?? 0.3, 0, 1) });
+/* Human voice by formant synthesis: glottal-like source (sawtooth voices + vibrato + breath) through the vocal tract
+   resonances of a vowel (formants F1..F4). Every note starts with a breathy "h" -> "hooo" / "haaa". */
+const VOWELS = {  // [frequency Hz, bandwidth Hz, level dB]  (adult voice)
+  a: [[700, 110, 0], [1220, 120, -5], [2600, 160, -12], [3300, 220, -20]],
+  e: [[450, 80, 0], [1900, 110, -10], [2600, 150, -14], [3300, 220, -22]],
+  i: [[300, 60, 0], [2250, 100, -14], [2950, 140, -16], [3500, 220, -24]],
+  o: [[450, 80, 0], [800, 90, -8], [2700, 150, -22], [3200, 220, -28]],
+  u: [[330, 60, 0], [700, 80, -14], [2600, 150, -28], [3200, 220, -34]],
+};
+const VOWEL_NAMES = { a: 'Aah', e: 'Eeh', i: 'Iih', o: 'Ohh', u: 'Ooh / Hoo' };
+const VOWEL_GAIN = { a: 1, e: 1.3, i: 1.6, o: 0.5, u: 0.9 };  // equal loudness between vowels
+function voiceSource(c, s, midi, t, end, input) {
+  const vw = VOWELS[s.vowel] || VOWELS.a, shift = 1 + clamp((midi - 57) / 36, -0.3, 0.6) * 0.18;  // higher notes -> slightly higher formants
+  const bank = c.createGain(), out = c.createGain(); out.gain.value = 3.2 * (VOWEL_GAIN[s.vowel] || 1);
+  vw.forEach(([fr, bw, gdb]) => { const f = c.createBiquadFilter(), fg = c.createGain(); f.type = 'bandpass'; f.frequency.value = fr * shift; f.Q.value = fr / bw;
+    fg.gain.value = dbToGain(gdb); bank.connect(f); f.connect(fg); fg.connect(out); });
+  out.connect(input);
+  const srcs = [], n = clamp(Math.round(s.voices || 1), 1, 6), vib = clamp(s.vibrato ?? 0, 0, 1), br = clamp(s.breath ?? 0, 0, 1);
+  // vibrato: a singer starts straight and adds vibrato after ~0.3 s
+  const lfo = c.createOscillator(), dep = c.createGain(); lfo.frequency.value = 4.8 + Math.random() * 1.0;
+  dep.gain.setValueAtTime(0, t); dep.gain.setValueAtTime(0, t + 0.25); dep.gain.linearRampToValueAtTime(vib * 40, t + 0.7);
+  lfo.connect(dep); lfo.start(t); lfo.stop(end); srcs.push(lfo);
+  const vg = c.createGain(); vg.gain.value = 1 / Math.sqrt(n); vg.connect(bank);
+  for (let k = 0; k < n; k++) {
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = midiFreq(midi);
+    o.detune.value = n > 1 ? (Math.random() * 2 - 1) * (s.detune || 8) : (Math.random() * 4 - 2);  // choir: every singer slightly off
+    dep.connect(o.detune); o.connect(vg); o.start(t + (n > 1 ? Math.random() * 0.03 : 0)); o.stop(end); srcs.push(o);
+  }
+  // breath: the "h" at the start of every note + a little air under the tone
+  const nz = c.createBufferSource(), ng = c.createGain(), nf = c.createBiquadFilter(); nz.buffer = noise(c); nz.loop = true;
+  nf.type = 'highpass'; nf.frequency.value = 400; const air = 0.02 + br * 0.12, h = 0.08 + br * 0.5;
+  ng.gain.setValueAtTime(0.0001, t); ng.gain.linearRampToValueAtTime(h, t + 0.02); ng.gain.setTargetAtTime(air, t + 0.05, 0.05);
+  nz.connect(nf); nf.connect(ng); ng.connect(bank); nz.start(t, Math.random()); nz.stop(end); srcs.push(nz);
+  return srcs;
+}
 function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   if (s.engine === 'sample' && !sampleBank.has(s.sample)) {
     // recordings still loading (first seconds after start): use the modeled string meanwhile
@@ -631,7 +679,7 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   const isString = s.engine === 'string';
   let input = f;
   const isBass = /bass/i.test(s.preset || ''), extra = [];
-  if (s.engine === 'sample') { t += Math.random() * 0.006; vel *= 0.92 + Math.random() * 0.08; }  // humanize timing + dynamics
+  if (s.engine === 'sample' || s.engine === 'voice') { t += Math.random() * 0.006; vel *= 0.92 + Math.random() * 0.08; }  // humanize timing + dynamics
   if (isString) {
     // humanize like a real player: small random timing (+-4 ms) and dynamics (+-10%)
     t += Math.random() * 0.008; vel *= 0.9 + Math.random() * 0.1;
@@ -658,7 +706,7 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   const peak = s.gain * vel, rel = Math.max(0.01, s.release), att = Math.max(0.001, s.attack), hold = Math.max(att, dur);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + att);
   let end = t + hold + rel + 0.05;
-  if (s.engine === 'sample') {
+  if (s.engine === 'sample' || s.engine === 'voice') {
     // ADSR: pick attack -> DECAY (seconds to fall to the sustain level) -> SUSTAIN (level kept while the note is
     // held, the recording loops so long notes keep ringing) -> RELEASE (fade after the note ends)
     const { decay, sus } = envOf(s);
@@ -672,6 +720,7 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   else { g.gain.setValueAtTime(peak, t + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + hold + rel); }
   const intervals = s.chord === 'power' ? [0, 7, 12] : [0];
   const oscs = extra;
+  if (s.engine === 'voice') { intervals.forEach(iv => oscs.push(...voiceSource(c, s, midi + iv, t, end, input))); return oscs; }
   if (s.engine === 'sample') {
     // real recording: re-pitch the nearest sample, tiny random tuning (+-3 cents) like a real player
     intervals.forEach((iv, k) => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
@@ -929,7 +978,7 @@ function renderArrange() {
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
         btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
         el('button', { title: 'Delete track', onclick: e => { stop(e); deleteTrack(t.id); } }, '✕')),
-      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : 'Synth / MIDI') : 'Audio')),
+      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : t.instrument === 'vocal' ? 'Vocal / MIDI' : 'Synth / MIDI') : 'Audio')),
       el('div', { className: 'row ctl' }, el('span', { className: 'lab' }, 'Vol'),
         el('input', { type: 'range', min: 0, max: 1.5, step: 0.01, value: t.vol, title: 'Volume',
           oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
@@ -1276,7 +1325,7 @@ function renderEditor() {
     requestAnimationFrame(drawEnv);
     tools.append('Sound', el('select', { onchange: e => { applySynthPreset(t, e.target.value); syncGraph(); renderEditor(); renderFx(); renderMixer(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
       'Engine', el('select', { title: 'Real instrument = recorded guitar/bass, Modeled string = simulated plucked string, Synth = oscillators', onchange: e => { setS('engine', e.target.value); if (e.target.value === 'sample') loadSampleSet(s.sample || 'electric_guitar_clean'); renderEditor(); } },
-        [['sample', 'Real instrument'], ['string', 'Modeled string'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
+        [['sample', 'Real instrument'], ['voice', 'Voice (ooh / aah)'], ['string', 'Modeled string'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
       ...(s.engine === 'sample' ? [
         el('select', { title: 'Recorded instrument', onchange: e => { setS('sample', e.target.value); loadSampleSet(e.target.value); } },
           Object.entries(SAMPLE_SETS).map(([v, o]) => el('option', { value: v, selected: v === s.sample }, o.name))),
@@ -1284,6 +1333,15 @@ function renderEditor() {
         // Sustain = level kept while the note is held (0% = dies away like palm mute), Release = fade after note end
         el('span', { title: 'Decay: time for the pluck to fall to the sustain level' }, slider('Decay', 0.03, 10, 0.01, envOf(s).decay, v => v.toFixed(2) + ' s', v => { setS('decay', v); drawEnv(); })),
         el('span', { title: 'Sustain: level the note keeps while it is held (long notes keep ringing)' }, slider('Sustain', 0, 1, 0.01, envOf(s).sus, v => Math.round(v * 100) + '%', v => { setS('susLevel', v); drawEnv(); })),
+        envCanvas,
+      ] : s.engine === 'voice' ? [
+        'Vowel', el('select', { title: 'Vowel the voice sings: Aah = "haaa", Ooh = "hooo"', onchange: e => setS('vowel', e.target.value) }, Object.entries(VOWEL_NAMES).map(([v, l]) => el('option', { value: v, selected: v === (s.vowel || 'a') }, l))),
+        slider('Voices', 1, 6, 1, s.voices || 1, v => v === 1 ? 'solo' : v + ' (choir)', v => setS('voices', v)),
+        slider('Breath', 0, 1, 0.01, s.breath ?? 0, v => Math.round(v * 100) + '%', v => setS('breath', v)),
+        slider('Vibrato', 0, 1, 0.01, s.vibrato ?? 0, v => Math.round(v * 100) + '%', v => setS('vibrato', v)),
+        slider('Attack', 0.005, 1, 0.005, s.attack, v => v.toFixed(3) + ' s', v => setS('attack', v)),
+        el('span', { title: 'Decay: time to settle from the attack to the sustain level' }, slider('Decay', 0.03, 10, 0.01, envOf(s).decay, v => v.toFixed(2) + ' s', v => { setS('decay', v); drawEnv(); })),
+        el('span', { title: 'Sustain: level kept while the note is held' }, slider('Sustain', 0, 1, 0.01, envOf(s).sus, v => Math.round(v * 100) + '%', v => { setS('susLevel', v); drawEnv(); })),
         envCanvas,
       ] : s.engine === 'string' ? [
         slider('Brightness', 0.05, 1, 0.01, s.brightness ?? 0.5, v => Math.round(v * 100) + '%', v => setS('brightness', v)),
@@ -1607,7 +1665,7 @@ async function openProject(id, rev = null) {
     currentProject = meta; markClean();
     const n = +r.headers.get('X-Revision');
     if (rev && n !== meta.head_revision) { savedSnapshot = ''; updateDirty(); }  // older revision loaded = unsaved working copy
-    history.replaceState(null, '', '#p=' + id);
+    history.replaceState(null, '', projectUrl(id));
     hideHome();
     status(rev && n !== meta.head_revision ? `Viewing revision ${n} of ${meta.name} – Save creates revision ${meta.head_revision + 1}` : `Opened ${meta.name} (revision ${n})`);
   } catch (e) { status('Open failed: ' + e.message); showHome(); }
@@ -1619,7 +1677,7 @@ async function createProject() {
     ensureCtx(); resetState(); P.bpm = bpm; P.title = name; $('#bpm').value = bpm; $('#sig').value = 4; $('#title').value = name;
     applyTemplate($('#npTpl').value); syncGraph(); render();
     currentProject = meta; await saveRevision('Created');
-    history.replaceState(null, '', '#p=' + meta.id); hideHome();
+    history.replaceState(null, '', projectUrl(meta.id)); hideHome();
   } catch (e) { status('Create failed: ' + e.message); }
 }
 
@@ -1630,9 +1688,12 @@ const fmtSize = b => b == null ? '–' : b > 1048576 ? (b / 1048576).toFixed(1) 
 async function showHome() {
   await autoSave();
   stopTransport();
-  $('#home').classList.add('show'); history.replaceState(null, '', location.pathname);
+  $('#home').classList.add('show'); history.replaceState(null, '', location.pathname + '#/');
   renderHome();
 }
+// URL routes: #/ = project manager, #/project/<id> = editor (old #p=<id> links still open)
+const projectUrl = id => location.pathname + '#/project/' + id;
+const hashProjectId = () => (location.hash.match(/^#\/project\/([0-9a-f]{32})\/?$/) || location.hash.match(/^#p=([0-9a-f]{32})$/) || [])[1] || null;
 function hideHome() { $('#home').classList.remove('show'); }
 async function renderHome() {
   const list = $('#projList'); list.innerHTML = '<p class="hint">Loading…</p>';
@@ -1813,6 +1874,19 @@ function newBassTrack(startBeat = 0) {
   return t;
 }
 
+/* MIDI vocal track = synth track with a formant voice ("hooo" / "haaa"), long sustained starter phrase */
+function newVocalTrack(startBeat = 0) {
+  const t = newTrack('synth');
+  t.instrument = 'vocal';
+  const n = P.tracks.filter(x => x.instrument === 'vocal').length;
+  t.name = 'Voice' + (n > 1 ? ' ' + n : '');
+  t.synth = { preset: DEFAULT_VOCAL_PRESET, ...SYNTH_DEFAULTS, ...SYNTH_PRESETS[DEFAULT_VOCAL_PRESET] };
+  [[52, 0, 6], [55, 8, 6], [57, 16, 14], [55, 32, 6], [52, 40, 6], [50, 48, 14]].forEach(([p, s, l]) => t.notes.push({ p, s, l }));
+  t.fx = FX_CHAIN_PRESETS['Choir Space'].map(([ty, o]) => newFx(ty, o));
+  t.clips.push({ id: nid('c'), kind: 'midi', start: startBeat, len: P.sig * 4 });
+  return t;
+}
+
 /* ------------------------------------------------------------------ wiring */
 function init() {
   loadAllSamples();  // real guitar/bass recordings (~1 MB) decoded in the background right away
@@ -1834,6 +1908,7 @@ function init() {
   $('#loop').onchange = drawLoop;
   $('#title').onchange = e => { P.title = e.target.value; };
   $('#addBass').onclick = () => { const t = newBassTrack(Math.floor(T.pos / P.sig) * P.sig); selTrackId = t.id; syncGraph(); render(); showTab('editor'); };
+  $('#addVoice').onclick = () => { const t = newVocalTrack(Math.floor(T.pos / P.sig) * P.sig); selTrackId = t.id; syncGraph(); render(); showTab('editor'); };
   $('#addGuitar').onclick = () => { const t = newGuitarTrack(Math.floor(T.pos / P.sig) * P.sig); selTrackId = t.id; syncGraph(); render(); showTab('editor'); };
   ['addAudio', 'addDrum', 'addSynth'].forEach(id => { $('#' + id).onclick = () => {
     const t = newTrack(id.slice(3).toLowerCase());
@@ -1934,8 +2009,15 @@ function init() {
 
   requestAnimationFrame(frame);
   status('Ready – Space: play · R: record · Ctrl/Cmd+S: save revision · S: split · Ctrl+D: duplicate · Del: delete');
-  // start in the project manager, or reopen the project from the URL (#p=<id>)
-  const m = location.hash.match(/p=([0-9a-f]{32})/);
-  if (m) openProject(m[1]); else showHome();
+  // start in the project manager, or reopen the project from the URL (#/project/<id>)
+  const pid = hashProjectId();
+  if (pid) openProject(pid); else showHome();
+  // typing / pasting a URL or using back-forward: follow the route
+  window.addEventListener('hashchange', () => {
+    const id = hashProjectId();
+    if (id && id !== currentProject?.id) openProject(id);
+    else if (!id && !$('#home').classList.contains('show')) showHome();
+    else if (id && $('#home').classList.contains('show')) hideHome();
+  });
 }
 init();

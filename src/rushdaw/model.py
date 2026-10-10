@@ -49,7 +49,8 @@ DRUM_PRESETS = {
     'Reggaeton': {'kick': 'x...x...x...x...', 'snare': '...x..x....x..x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Empty': {},
 }
-SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'decay': 1.5, 'susLevel': 0.3, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
+SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'decay': 1.5, 'susLevel': 0.3, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5, 'vowel': 'a', 'voices': 1, 'breath': 0, 'vibrato': 0}
+DEFAULT_VOCAL_PRESET = 'Choir Aah'
 DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
 SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick']
 _SMP = {'engine': 'sample', 'wave': 'sawtooth', 'attack': 0.001, 'detune': 0, 'pluck': 0}
@@ -71,11 +72,17 @@ SYNTH_PRESETS = {
     'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.75},
     'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'decay': 4.0, 'susLevel': 0.75},
     'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'decay': 0.18, 'susLevel': 0.0},
+    # voice (formant-synthesized human voice: choir / solo "hooo" / "haaa", sustains like a held note)
+    'Choir Aah': {'engine': 'voice', 'vowel': 'a', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.12, 'release': 0.6, 'cutoff': 7000, 'detune': 9, 'gain': 0.5, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
+    'Choir Ooh': {'engine': 'voice', 'vowel': 'u', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.14, 'release': 0.7, 'cutoff': 6000, 'detune': 9, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
+    'Choir Ohh': {'engine': 'voice', 'vowel': 'o', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.12, 'release': 0.6, 'cutoff': 6500, 'detune': 9, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
+    'Solo Hoo': {'engine': 'voice', 'vowel': 'u', 'voices': 1, 'wave': 'sawtooth', 'attack': 0.06, 'release': 0.35, 'cutoff': 6000, 'detune': 0, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.35, 'vibrato': 0.5, 'decay': 0.8, 'susLevel': 0.8},
+    'Solo Haa': {'engine': 'voice', 'vowel': 'a', 'voices': 1, 'wave': 'sawtooth', 'attack': 0.05, 'release': 0.35, 'cutoff': 7500, 'detune': 0, 'gain': 0.5, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.35, 'vibrato': 0.5, 'decay': 0.8, 'susLevel': 0.8},
     # modeled string (Karplus-Strong), kept for experimenting
     'Modeled String': {'engine': 'string', 'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 3800, 'detune': 0, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.4, 'sustain': 0.55, 'pick': 0.14, 'body': 0.5},
 }
 SYNTH_PARAMS = {  # name: (min, max) or list of choices
-    'engine': ['sample', 'string', 'osc'], 'sample': list(SAMPLE_SETS), 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
+    'engine': ['sample', 'voice', 'string', 'osc'], 'vowel': ['a', 'e', 'i', 'o', 'u'], 'voices': (1, 6), 'breath': (0, 1), 'vibrato': (0, 1), 'sample': list(SAMPLE_SETS), 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
     'cutoff': (100, 12000), 'detune': (0, 50), 'gain': (0, 1.5), 'drive': (0, 1), 'pluck': (0, 3), 'chord': ['none', 'power'],
     'brightness': (0.05, 1), 'sustain': (0, 1), 'pick': (0.02, 0.5), 'body': (0, 1),
     'decay': (0.03, 10), 'susLevel': (0, 1),  # sample engine: Decay seconds, Sustain level while a note is held
@@ -103,7 +110,9 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
     'tremolo': {'rate': (5, 0.5, 20), 'depth': (0.5, 0, 1)},
     'delay': {'time': (0.75, 0.125, 2), 'feedback': (0.35, 0, 0.9), 'tone': (5000, 500, 12000), 'mix': (0.3, 0, 1)},
     'reverb': {'size': (2, 0.2, 8), 'tone': (8000, 1000, 16000), 'mix': (0.3, 0, 1)},
+    'formant': {'vowel': ('a', ['a', 'e', 'i', 'o', 'u']), 'shift': (1, 0.6, 1.6), 'mix': (0.8, 0, 1)},  # vocal formant filter
 }
+CHOIR_FX = [('eq', {'low': -3, 'lowF': 150, 'high': 2, 'highF': 7000}), ('chorus', {'rate': 0.4, 'depth': 0.005, 'mix': 0.35}), ('reverb', {'size': 3.5, 'mix': 0.35})]
 KIT_DEFAULT = {'pitch': 0, 'decay': 1, 'level': 1}
 KIT_RANGES = {'pitch': (-24, 24), 'decay': (0.1, 4), 'level': (0, 2)}  # wide: ±2 octaves, 10-400% decay, 0-200% level
 KIT_VOL_DB = (-48, 6)  # per-part Volume fader in dB (-48 = off); stored as linear 'level'
@@ -117,7 +126,7 @@ def tune_percent_to_pitch(pct):
 
 def kit_db_to_level(db):
     return 0.0 if db <= KIT_VOL_DB[0] else min(KIT_RANGES['level'][1], round(10 ** (db / 20), 6))
-TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar', 'bass')
+TRACK_TYPES = ('audio', 'drum', 'synth', 'guitar', 'bass', 'vocal')
 LOW_NOTE, HIGH_NOTE = 36, 84
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 _counter = itertools.count(1)
@@ -382,13 +391,13 @@ def resize_grid(proj, t):
 def new_track(proj, kind, name=None):
     if kind not in TRACK_TYPES:
         raise ModelError(f"type must be one of {', '.join(TRACK_TYPES)}")
-    ttype = 'synth' if kind in ('guitar', 'bass') else kind
+    ttype = 'synth' if kind in ('guitar', 'bass', 'vocal') else kind
     tracks = proj['tracks']
-    inst = kind if kind in ('guitar', 'bass') else None
+    inst = kind if kind in ('guitar', 'bass', 'vocal') else None
     n = sum(1 for x in tracks if x['type'] == ttype and x.get('instrument') == inst) + 1
-    default = {'audio': 'Audio ', 'drum': 'Drums ', 'synth': 'Synth ', 'guitar': 'Guitar ', 'bass': 'Bass '}[kind] + str(n)
-    if kind == 'bass' and n == 1:
-        default = 'Bass'
+    default = {'audio': 'Audio ', 'drum': 'Drums ', 'synth': 'Synth ', 'guitar': 'Guitar ', 'bass': 'Bass ', 'vocal': 'Voice '}[kind] + str(n)
+    if kind in ('bass', 'vocal') and n == 1:
+        default = default.strip()[:-2]
     t = {'id': nid('t'), 'type': ttype, 'name': (name or default)[:60], 'color': COLORS[len(tracks) % len(COLORS)],
          'vol': 0.8, 'pan': 0, 'mute': False, 'solo': False, 'arm': False, 'eq': {'low': 0, 'mid': 0, 'high': 0},
          'comp': {'thr': 0, 'ratio': 1}, 'rev': 0, 'dly': 0, 'fx': [], 'clips': []}
@@ -398,12 +407,14 @@ def new_track(proj, kind, name=None):
         t['rev'] = 0.12
         t['kit'] = {}
     if ttype == 'synth':
-        preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET}.get(kind, 'Keys')
+        preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET, 'vocal': DEFAULT_VOCAL_PRESET}.get(kind, 'Keys')
         t['synth'] = {'preset': preset, **SYNTH_DEFAULTS, **SYNTH_PRESETS[preset]}
         t['bars'] = 1
         t['notes'] = []
         if inst:
             t['instrument'] = inst
+        if kind == 'vocal':
+            t['fx'] = [new_fx(ty, o) for ty, o in CHOIR_FX]
     if ttype == 'audio':
         t['arm'] = not any(x.get('arm') for x in tracks)
     tracks.append(t)

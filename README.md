@@ -135,3 +135,11 @@ python3 -m unittest discover -s tests
 ## Third-party sounds
 
 The guitar and bass recordings in `src/rushdaw/static/samples/` come from the **FluidR3_GM** SoundFont by Frank Wen (MP3 renders from [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts)), licensed under [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/us/). See `src/rushdaw/static/samples/NOTICE.txt`.
+
+### Vocal MIDI (voice: "hooo" / "haaa")
+Click **+ Vocal MIDI** to add a sung-voice layer played from the piano roll. Drag across pads to make one long, sustained note (same as guitar/bass).
+- Presets: Choir Aah (default), Choir Ooh, Choir Ohh, Solo Hoo, Solo Haa (engine `voice`, formant synthesis).
+- Editor controls: Vowel (Aah / Eeh / Iih / Ohh / Ooh), Voices (1 = solo, 2-6 = choir), Breath, Vibrato, Attack, Decay, Sustain, Release.
+- New track starts with the "Choir Space" effect chain (EQ, Chorus, Reverb), visible and editable in the Effects tab.
+- New effect **Vocal Formant** (vowel a/e/i/o/u, formant shift, mix) turns any layer into an "aah"/"ooh" sound.
+- MCP: `add_track type=vocal`, `set_synth` with `engine: voice`, `vowel`, `voices`, `breath`, `vibrato`; `add_effect type=formant`.

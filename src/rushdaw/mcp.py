@@ -258,8 +258,8 @@ class RushDAWMCP:
             return self._edit(a["project_id"], "master " + (a.get("preset") or "params"), run)
 
         # ---------------- tracks / layers
-        @tool("add_track", "Add a track (layer): audio, drum, synth, guitar (natural clean guitar) or bass (natural finger bass). MIDI tracks get a pattern region by default.",
-              _S(project_id=PID, type=("string", "audio | drum | synth | guitar | bass", True, {"enum": list(M.TRACK_TYPES)}),
+        @tool("add_track", "Add a track (layer): audio, drum, synth, guitar (natural clean guitar), bass (natural finger bass) or vocal (MIDI voice: choir/solo hooo, haaa – long notes sustain). MIDI tracks get a pattern region by default.",
+              _S(project_id=PID, type=("string", "audio | drum | synth | guitar | bass | vocal", True, {"enum": list(M.TRACK_TYPES)}),
                  name=("string", "Track name."), region_start_beat=("number", "Start beat of the first pattern region (default 0)."),
                  region_length_beats=("number", "Length in beats of the first region (default 4 bars)."),
                  add_region=("boolean", "Add a pattern region for drum/synth/guitar (default true).")))
@@ -351,7 +351,7 @@ class RushDAWMCP:
             return self._track_edit(a, "set effects", fn)
 
         @tool("add_effect", "Add one insert effect to a track (appended, or at a 1-based position).",
-              _S(project_id=PID, track=TRACK, type=("string", "eq | comp | dist | filter | chorus | tremolo | delay | reverb", True, {"enum": list(M.FX_TYPES)}),
+              _S(project_id=PID, track=TRACK, type=("string", "eq | comp | dist | amp | filter | chorus | tremolo | delay | reverb | formant (vocal vowel filter: vowel a|e|i|o|u, shift, mix)", True, {"enum": list(M.FX_TYPES)}),
                  params=("object", "Effect parameters."), position=("integer", "1-based position in the chain.")))
         def add_effect(a):
             def fn(proj, t):
@@ -484,7 +484,7 @@ class RushDAWMCP:
                 t["notes"] = keep + new
             return self._pattern_edit(a, "notes", fn, "synth")
 
-        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (decay = seconds the pluck takes to fall to the sustain level, susLevel = 0..1 level a held note keeps – long notes keep ringing, release = fade after the note; engine sample|string|osc — 'sample' = real recorded guitar/bass, sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
+        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Choir Aah/Ooh/Ohh, Solo Hoo/Haa (voice), Keys, Synth Bass, Lead...) and/or params (decay = seconds the pluck takes to fall to the sustain level, susLevel = 0..1 level a held note keeps – long notes keep ringing, release = fade after the note; engine sample|voice|string|osc — 'sample' = real recorded guitar/bass, 'voice' = sung vowel (vowel a|e|i|o|u, voices 1-6, breath, vibrato), sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
               _S(project_id=PID, track=TRACK, preset=("string", "Synth preset (see get_reference)."), params=("object", "Parameters to change.")))
         def set_synth(a):
             def fn(proj, t):

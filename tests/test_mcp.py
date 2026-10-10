@@ -437,6 +437,20 @@ class MigrationTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(base, "NOTICE.txt")))
 
 
+class VocalMidiTest(unittest.TestCase):
+    def test_vocal_track_and_formant_fx(self):
+        proj = {"tracks": [], "bpm": 120, "sig": 4}
+        v = M.new_track(proj, "vocal")
+        self.assertEqual((v["type"], v["instrument"], v["name"], v["synth"]["engine"], v["synth"]["preset"]), ("synth", "vocal", "Voice", "voice", "Choir Aah"))
+        self.assertEqual([f["type"] for f in v["fx"]], ["eq", "chorus", "reverb"])
+        f = M.new_fx("formant", {"vowel": "u", "shift": 1.2})
+        self.assertEqual((f["p"]["vowel"], f["p"]["shift"], f["p"]["mix"]), ("u", 1.2, 0.8))
+        with self.assertRaises(M.ModelError):
+            M.new_fx("formant", {"vowel": "x"})
+        for name in ("Choir Ooh", "Solo Hoo", "Solo Haa", "Choir Ohh"):
+            self.assertEqual(M.SYNTH_PRESETS[name]["engine"], "voice")
+
+
 class ModelSyncTest(unittest.TestCase):
     """The Python model must mirror static/app.js so MCP edits load correctly in the UI."""
 
