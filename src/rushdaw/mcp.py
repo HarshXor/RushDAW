@@ -462,7 +462,8 @@ class RushDAWMCP:
             return self._pattern_edit(a, f"pattern {a['bars']} bars", fn, None)  # drum or synth track
 
         # ---------------- synth / guitar
-        @tool("set_notes", "Write notes of a synth/guitar track's pattern. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1)}. Range C2 (36) - C6 (84).",
+        @tool("set_notes", "Write notes of a synth/guitar/bass region. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1)}. "
+              "A long length = ONE sustained note over many steps (e.g. length 16 = a whole bar in 4/4); it rings with the track's decay/sustain and fades with its release. Range C2 (36) - C6 (84).",
               _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}}, "required": ["note", "step"]}}),
                  replace=("boolean", "Replace all existing notes (default true); false = add/overwrite."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_notes(a):
@@ -481,7 +482,7 @@ class RushDAWMCP:
                 t["notes"] = keep + new
             return self._pattern_edit(a, "notes", fn, "synth")
 
-        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (engine sample|string|osc — 'sample' = real recorded guitar/bass, sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
+        @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Keys, Synth Bass, Lead...) and/or params (decay = seconds the pluck takes to fall to the sustain level, susLevel = 0..1 level a held note keeps – long notes keep ringing, release = fade after the note; engine sample|string|osc — 'sample' = real recorded guitar/bass, sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",
               _S(project_id=PID, track=TRACK, preset=("string", "Synth preset (see get_reference)."), params=("object", "Parameters to change.")))
         def set_synth(a):
             def fn(proj, t):

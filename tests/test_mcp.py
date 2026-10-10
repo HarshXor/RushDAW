@@ -240,6 +240,24 @@ class McpTest(unittest.TestCase):
         self.assertIn("not found", self.call("set_notes", ok=False, project_id=pid, track=g["id"], clip_id="nope", notes=[])["error"])
         self.assertIn("either", self.call("add_region", ok=False, project_id=pid, track=g["id"], start_beat=0, empty=True, copy_from=g2)["error"])
 
+    def test_sustained_notes_and_envelope(self):
+        pid = self.call("create_project", name="Sustain", template="metal")["project_id"]
+        g = self.call("get_project", project_id=pid)["tracks"][2]
+        self.assertEqual((g["synth"]["decay"], g["synth"]["susLevel"]), (2.0, 0.35))   # Clean Guitar envelope
+        self.call("set_notes", project_id=pid, track=g["id"], clip_id=g["clips"][0]["id"], notes=[{"note": "A2", "step": 1, "length": 32}])
+        n = self.call("get_project", project_id=pid)["tracks"][2]["clips"][0]["notes"]
+        self.assertEqual([(x["note"], x["step"], x["length"]) for x in n], [("A2", 1, 32)])           # one long note over 2 bars
+        self.call("set_synth", project_id=pid, track=g["id"], params={"decay": 0.5, "susLevel": 0.8, "release": 1.2})
+        s = self.call("get_project", project_id=pid)["tracks"][2]["synth"]
+        self.assertEqual((s["decay"], s["susLevel"], s["release"]), (0.5, 0.8, 1.2))
+        self.assertIn("between", self.call("set_synth", ok=False, project_id=pid, track=g["id"], params={"susLevel": 2})["error"])
+        pm = M.SYNTH_PRESETS["Palm Mute Guitar"]
+        self.assertEqual((pm["susLevel"], pm["pluck"]), (0.0, 0))                                       # palm mute dies away
+        with open(APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        for needle in ("function prepSustain", "src.loop = true", "const envOf", "loopEnd", "drawEnv"):
+            self.assertIn(needle, js)
+
     def test_old_regions_get_their_own_copy(self):
         proj = {"sig": 4, "tracks": [
             {"type": "drum", "pattern": {"bars": 1, "grid": [[1] + [0] * 15 for _ in M.DRUMS], "ids": list(M.DRUM_IDS)},

@@ -38,7 +38,9 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .clip{position:absolute;top:4px;height:calc(var(--trackH) - 8px);border-radius:6px;background:color-mix(in srgb,var(--c) 28%,#050505);border:1px solid var(--c);overflow:hidden;cursor:grab;user-select:none}
 .clip.sel{outline:2px solid #fff}
 .clip .lbl{position:absolute;left:5px;top:2px;font-size:11px;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #000}
-.clip canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.clip canvas{position:absolute;left:0;top:0;height:100%;pointer-events:none}
+#editor .grid{position:relative}
+.edplayhead{position:absolute;top:0;bottom:6px;width:2px;margin-left:-1px;background:var(--acc2);box-shadow:0 0 6px var(--acc);pointer-events:none;z-index:1;display:none}
 .clip .rs{position:absolute;right:0;top:0;bottom:0;width:7px;cursor:ew-resize}
 #playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--acc);pointer-events:none;z-index:6}
 #loopRegion{position:absolute;top:0;height:28px;background:rgba(0,229,255,.28);z-index:6;pointer-events:none;display:none}
@@ -203,3 +205,7 @@ button,select,input{touch-action:manipulation}
 .ctxmenu button:hover:not(:disabled){background:rgba(0,229,255,.16)}
 .ctxmenu button:disabled{opacity:.35;cursor:default}
 .ctxmenu .ctxsep{height:1px;background:rgba(255,255,255,.12);margin:3px 4px}
+.envgraph{background:#05080a;border:1px solid rgba(0,229,255,.35);border-radius:4px;vertical-align:middle}
+.rollgrid .cell.on.nstart{border-top-left-radius:4px;border-bottom-left-radius:4px}
+.rollgrid .cell.on.ncont{opacity:.85}
+.rollgrid .cell.on.nend{border-top-right-radius:4px;border-bottom-right-radius:4px;box-shadow:inset -3px 0 0 rgba(255,255,255,.75);cursor:ew-resize}

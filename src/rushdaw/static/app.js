@@ -67,10 +67,10 @@ const DRUM_PRESETS = {
 };
 const SYNTH_PRESETS = {
   // --- real instruments (engine 'sample' = recorded guitar / bass, FluidR3_GM soundfont) ---
-  'Clean Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.25, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0 },
-  'Acoustic Guitar': { engine: 'sample', sample: 'acoustic_guitar_steel', wave: 'sawtooth', attack: 0.001, release: 0.35, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0 },
-  'Finger Bass': { engine: 'sample', sample: 'electric_bass_finger', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0 },
-  'Pick Bass': { engine: 'sample', sample: 'electric_bass_pick', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0 },
+  'Clean Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.3, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 0.35 },
+  'Acoustic Guitar': { engine: 'sample', sample: 'acoustic_guitar_steel', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 0.3 },
+  'Finger Bass': { engine: 'sample', sample: 'electric_bass_finger', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 0.45 },
+  'Pick Bass': { engine: 'sample', sample: 'electric_bass_pick', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 0.4 },
   // --- synth sounds (oscillators) ---
   'Keys': { wave: 'triangle', attack: 0.005, release: 0.4, cutoff: 5000, detune: 4, gain: 0.5 },
   'Synth Bass': { wave: 'sawtooth', attack: 0.005, release: 0.15, cutoff: 900, detune: 0, gain: 0.55 },
@@ -79,10 +79,10 @@ const SYNTH_PRESETS = {
   'Pluck': { wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 2600, detune: 5, gain: 0.4 },
   'Sub 808': { wave: 'sine', attack: 0.003, release: 0.6, cutoff: 400, detune: 0, gain: 0.8 },
   // --- amped guitars: the real clean guitar recording through amp distortion + cabinet ---
-  'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0 },
-  'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0 },
-  'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.12, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0 },
-  'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0.12 },
+  'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, decay: 3.0, susLevel: 0.6 },
+  'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.75 },
+  'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, decay: 4.0, susLevel: 0.75 },
+  'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, decay: 0.18, susLevel: 0.0 },
   // --- modeled string (Karplus-Strong), kept for experimenting ---
   'Modeled String': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
 };
@@ -459,7 +459,7 @@ function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
   return srcs;
 }
 const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
-const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
+const SYNTH_DEFAULTS = { engine: 'osc', sample: 'electric_guitar_clean', decay: 1.5, susLevel: 0.3, drive: 0, chord: 'none', pluck: 0, brightness: 0.5, sustain: 0.5, pick: 0.13, body: 0.5 };
 const DEFAULT_GUITAR_PRESET = 'Clean Guitar', DEFAULT_BASS_PRESET = 'Finger Bass';
 /* older projects stored guitar/bass as oscillator synths (no 'engine' key) or modeled strings:
    switch them to the real recorded instruments (same preset name when it exists, else the default) */
@@ -540,11 +540,41 @@ function loadSampleSet(id) {
         // skip the mp3 encoder delay / leading silence so notes start exactly on the beat
         const y = buf.getChannelData(0); let pk = 0; for (const v of y) pk = Math.max(pk, Math.abs(v));
         let i = 0; while (i < y.length && Math.abs(y[i]) < pk * 0.02) i++;
-        bank.set(m, { buf, off: Math.max(0, i - 24) / buf.sampleRate, peak: pk });
+        const off = Math.max(0, i - 24) / buf.sampleRate;
+        bank.set(m, { ...prepSustain(buf, midiFreq(m), off), off, peak: pk });
       }).catch(e => console.warn('sample', id, m, e)));
   }
   const p = Promise.all(jobs).then(() => { sampleBank.set(id, bank); });
   sampleLoads.set(id, p); return p;
+}
+/* Make a recording sustainable like a real sampler instrument:
+   1. after the pick attack (first ~80 ms) the recording's own fade-out is evened out to a steady level, so the
+      Decay / Sustain / Release envelope (not the length of the recording) decides how the note fades;
+   2. a pitch-synchronous sustain LOOP (~0.5 s, 1.0 s after the attack) with a 50 ms crossfade lets a note ring
+      for as long as it is held, without a click or a pulse at the seam. */
+function prepSustain(src, freq, off) {
+  const sr = src.sampleRate, N = src.length, s0 = Math.round(off * sr);
+  const out = sampleDecoder.createBuffer(src.numberOfChannels, N, sr);
+  const win = Math.round(sr * 0.02), hop = Math.round(sr * 0.005);
+  const mono = src.getChannelData(0), env = [];
+  for (let a = s0; a + win < N; a += hop) { let e = 0; for (let k = a; k < a + win; k++) e += mono[k] * mono[k]; env.push(Math.sqrt(e / win) + 1e-6); }
+  const envAt = idx => env[Math.max(0, Math.min(env.length - 1, Math.round((idx - s0) / hop)))];
+  const tA = s0 + Math.round(sr * 0.08), ramp = Math.round(sr * 0.05), ref = envAt(tA);
+  const P = sr / freq, ls = s0 + Math.round(sr * 1.0), Lp = Math.max(1, Math.round(Math.round(0.5 * sr / P) * P)), le = Math.min(ls + Lp, N - 1);
+  const X = Math.min(Math.round(sr * 0.05), ls - tA - 1, le - ls - 1);
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const x = src.getChannelData(ch), y = out.getChannelData(ch);
+    for (let n = 0; n < N; n++) {
+      if (n < tA) { y[n] = x[n]; continue; }
+      const gFlat = Math.min(8, ref / envAt(n)), w = Math.min(1, (n - tA) / ramp);
+      y[n] = x[n] * (1 + (gFlat - 1) * w);
+    }
+    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j; y[a] = y[a] * (1 - w) + y[b] * w; }  // seam crossfade
+    // re-pitched playback interpolates a few samples PAST loopEnd: make them the continuation of loopStart,
+    // otherwise every loop wrap clicks
+    for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k];
+  }
+  return { buf: out, loopStart: ls / sr, loopEnd: le / sr };
 }
 const loadAllSamples = () => Promise.all(Object.keys(SAMPLE_SETS).map(loadSampleSet));
 // before an offline render/export: make sure every sample set used by the project is decoded
@@ -557,6 +587,8 @@ function nearestSample(id, m) {
   const k = clamp(set.lo + Math.round((m - set.lo) / SAMPLE_STEP) * SAMPLE_STEP, set.lo, set.hi);
   const e = bank.get(k); return e ? { ...e, rate: Math.pow(2, (m - k) / 12) } : null;
 }
+// Decay (s) and Sustain (0..1) of the sample engine; older tracks without them use their preset's values
+const envOf = s => ({ decay: Math.max(0.03, s.decay ?? SYNTH_PRESETS[s.preset]?.decay ?? 1.5), sus: clamp(s.susLevel ?? SYNTH_PRESETS[s.preset]?.susLevel ?? 0.3, 0, 1) });
 function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   if (s.engine === 'sample' && !sampleBank.has(s.sample)) {
     // recordings still loading (first seconds after start): use the modeled string meanwhile
@@ -601,9 +633,16 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   }
   const peak = s.gain * vel, rel = Math.max(0.01, s.release), att = Math.max(0.001, s.attack), hold = Math.max(att, dur);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + att);
-  if (s.pluck > 0) { g.gain.setTargetAtTime(0.0001, t + att, s.pluck / 3); g.gain.setTargetAtTime(0.0001, t + hold, rel / 4); }
+  let end = t + hold + rel + 0.05;
+  if (s.engine === 'sample') {
+    // ADSR: pick attack -> DECAY (seconds to fall to the sustain level) -> SUSTAIN (level kept while the note is
+    // held, the recording loops so long notes keep ringing) -> RELEASE (fade after the note ends)
+    const { decay, sus } = envOf(s);
+    g.gain.setTargetAtTime(Math.max(0.0001, peak * sus), t + att, decay / 3);
+    g.gain.setTargetAtTime(0.0001, t + hold, rel / 3);
+    end = t + hold + rel * 2 + 0.05;
+  } else if (s.pluck > 0) { g.gain.setTargetAtTime(0.0001, t + att, s.pluck / 3); g.gain.setTargetAtTime(0.0001, t + hold, rel / 4); }
   else { g.gain.setValueAtTime(peak, t + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + hold + rel); }
-  const end = t + hold + rel + 0.05;
   const intervals = s.chord === 'power' ? [0, 7, 12] : [0];
   const oscs = extra;
   if (s.engine === 'sample') {
@@ -612,6 +651,7 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
       const smp = nearestSample(s.sample, midi + iv); if (!smp) return;
       const src = c.createBufferSource(), sg = c.createGain();
       src.buffer = smp.buf; src.playbackRate.value = smp.rate; src.detune.value = d + (Math.random() * 6 - 3);
+      src.loop = true; src.loopStart = smp.loopStart; src.loopEnd = smp.loopEnd;  // sustain loop: long notes keep ringing
       sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1) / Math.max(0.05, smp.peak);  // recordings normalized to 1.0
       src.connect(sg); sg.connect(input);
       src.start(t + k * (0.006 + Math.random() * 0.006), smp.off); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
@@ -903,7 +943,7 @@ function clipEl(t, c) {
   const w = Math.max(4, clipLenBeats(c) * pxB());
   const name = c.kind === 'audio' ? (bufNames.get(c.buf) || 'Audio') : (t.type === 'drum' ? 'Drum pattern' : 'MIDI');
   const d = el('div', { className: 'clip' + (c.id === selClipId ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
-  const cv = el('canvas'); cv.width = Math.min(Math.ceil(w), 8000); cv.height = 60; d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
+  const cv = el('canvas'); cv.height = 60; sizeClipCanvas(cv, w); d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
   requestAnimationFrame(() => drawClip(cv, t, c));
   d.addEventListener('pointerdown', e => clipMouseDown(e, t, c, d));
   d.addEventListener('dblclick', () => { if (c.kind === 'midi') { selectTrack(t.id); showTab('editor'); } });
@@ -917,6 +957,11 @@ function getPeaks(id) {
   for (let i = 0; i < n; i++) { let m = 0; for (const ch of chs) for (let j = i * per, e = Math.min(b.length, j + per); j < e; j += 4) { const v = Math.abs(ch[j]); if (v > m) m = v; } pk[i] = m; }
   peaksCache.set(id, pk); return pk;
 }
+// canvas pixel size follows the clip's on-screen width (never CSS-stretched), so pads keep their
+// position/size while the clip edge is dragged
+function sizeClipCanvas(cv, w) {
+  cv.width = Math.max(1, Math.min(Math.ceil(w), 8000)); cv.style.width = w + 'px'; cv._scale = cv.width / w;
+}
 function drawClip(cv, t, c) {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H); g.fillStyle = t.color;
   if (c.kind === 'audio') {
@@ -924,8 +969,8 @@ function drawClip(cv, t, c) {
     const pk = getPeaks(c.buf), p0 = c.offset * 200, pn = c.dur * 200;
     for (let x = 0; x < W; x++) { const i = Math.floor(p0 + (x / W) * pn); const v = (pk[i] || 0) * (H / 2 - 8); g.fillRect(x, H / 2 + 4 - v, 1, Math.max(1, v * 2)); }
   } else {
-    const h = isPatHolder(t, c) ? c : t, cols = Math.round(c.len * 4), cw = W / cols;
-    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r][k]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
+    const h = isPatHolder(t, c) ? c : t, cols = Math.round(c.len * 4), cw = pxB() / 4 * (cv._scale || 1);
+    if (t.type === 'drum') { const rh = (H - 16) / DRUMS.length; for (let k = 0; k < cols; k++) DRUMS.forEach((_, r) => { if (h.pattern.grid[r] && h.pattern.grid[r][k]) g.fillRect(k * cw, 16 + r * rh, Math.max(1, cw - 1), rh - 1); }); }
     else { const rh = (H - 16) / (HIGH_NOTE - LOW_NOTE + 1); h.notes.forEach(n => { if (n.s < cols) g.fillRect(n.s * cw, 16 + (HIGH_NOTE - n.p) * rh, Math.max(1, n.l * cw - 1), Math.max(2, rh)); }); }
     // bar lines inside the region
     g.fillStyle = 'rgba(255,255,255,.18)'; for (let k = stepsPerBar(); k < cols; k += stepsPerBar()) g.fillRect(k * cw, 0, 1, H);
@@ -945,6 +990,8 @@ function clipMouseDown(e, t, c, d) {
       let nl = Math.max(0.25, $('#snap').checked ? Math.round((s0 + l0 + db) * 4) / 4 - s0 : l0 + db);
       if (c.kind === 'audio') { const max = buffers.get(c.buf).duration - c.offset; c.dur = clamp(nl * spb(), 0.05, max); d.style.width = c.dur / spb() * pxB() + 'px'; }
       else { c.len = Math.max(0.25, nl); d.style.width = c.len * pxB() + 'px'; }
+      // redraw at the new size instead of stretching: filled pads stay where they are
+      const cv = d.querySelector('canvas'); if (cv) { sizeClipCanvas(cv, Math.max(4, clipLenBeats(c) * pxB())); drawClip(cv, t, c); }
     } else {
       c.start = Math.max(0, snapBeat(s0 + db, $('#snap').checked ? (c.kind === 'midi' ? 1 : 0.25) : 1)); d.style.left = c.start * pxB() + 'px';
       const laneEl = document.elementsFromPoint(ev.clientX, ev.clientY).find(x => x.classList && x.classList.contains('lane'));
@@ -973,6 +1020,7 @@ function deleteTrack(id) {
 }
 function drawPlayhead() {
   const b = currentBeat(); $('#playhead').style.left = Math.max(0, b) * pxB() + 'px';
+  highlightStep();
   const bb = Math.max(0, b), bar = Math.floor(bb / P.sig) + 1, beat = Math.floor(bb % P.sig) + 1, six = Math.floor((bb % 1) * 4) + 1;
   const sec = Math.max(0, b) * spb(), m = Math.floor(sec / 60), s = (sec % 60).toFixed(3).padStart(6, '0');
   $('#timeDisplay').textContent = (b < 0 ? 'COUNT ' + Math.ceil(-b) : `${bar}.${beat}.${six}`) + ` | ${String(m).padStart(2, '0')}:${s}`;
@@ -1182,13 +1230,34 @@ function renderEditor() {
   } else {
     const s = t.synth;
     const setS = (k, v) => { s[k] = v; };
+    // envelope preview: a note held for one bar, then released (Attack · Decay · Sustain · Release)
+    const envCanvas = el('canvas', { className: 'envgraph', width: 220, height: 54, title: 'Envelope of a note held for 1 bar: pluck → decay → sustain → release' });
+    const drawEnv = () => {
+      const g = envCanvas.getContext('2d'), W = envCanvas.width, H = envCanvas.height, { decay, sus } = envOf(s);
+      const hold = P.sig * spb(), rel = Math.max(0.01, s.release), total = hold + rel * 2, X = tt => 4 + (tt / total) * (W - 8), Y = v => H - 6 - v * (H - 14);
+      g.clearRect(0, 0, W, H); g.strokeStyle = 'rgba(255,255,255,.15)'; g.beginPath(); g.moveTo(X(hold), 0); g.lineTo(X(hold), H); g.stroke();
+      g.strokeStyle = '#00e5ff'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(0), Y(0));
+      let v = 1;
+      for (let i = 0; i <= 160; i++) {
+        const tt = total * i / 160;
+        v = tt <= hold ? sus + (1 - sus) * Math.exp(-3 * tt / decay) : (sus + (1 - sus) * Math.exp(-3 * hold / decay)) * Math.exp(-3 * (tt - hold) / rel);
+        g.lineTo(X(tt), Y(v));
+      }
+      g.stroke(); g.fillStyle = '#fff'; g.font = '9px ui-monospace,Menlo,monospace';
+      g.fillText('1 bar held', X(hold) - 52, 10); g.fillText('release', X(hold) + 3, 10);
+    };
+    requestAnimationFrame(drawEnv);
     tools.append('Sound', el('select', { onchange: e => { Object.assign(s, SYNTH_DEFAULTS, SYNTH_PRESETS[e.target.value], { preset: e.target.value }); renderEditor(); } }, Object.keys(SYNTH_PRESETS).map(k => el('option', { selected: k === s.preset }, k))),
       'Engine', el('select', { title: 'Real instrument = recorded guitar/bass, Modeled string = simulated plucked string, Synth = oscillators', onchange: e => { setS('engine', e.target.value); if (e.target.value === 'sample') loadSampleSet(s.sample || 'electric_guitar_clean'); renderEditor(); } },
         [['sample', 'Real instrument'], ['string', 'Modeled string'], ['osc', 'Synth']].map(([v, l]) => el('option', { value: v, selected: v === (s.engine || 'osc') }, l))),
       ...(s.engine === 'sample' ? [
         el('select', { title: 'Recorded instrument', onchange: e => { setS('sample', e.target.value); loadSampleSet(e.target.value); } },
           Object.entries(SAMPLE_SETS).map(([v, o]) => el('option', { value: v, selected: v === s.sample }, o.name))),
-        slider('Pluck decay', 0, 3, 0.01, s.pluck || 0, v => v ? v.toFixed(2) + 's' : 'off', v => setS('pluck', v)),
+        // note envelope of a held note: Decay = how long the pluck takes to fall to the Sustain level,
+        // Sustain = level kept while the note is held (0% = dies away like palm mute), Release = fade after note end
+        el('span', { title: 'Decay: time for the pluck to fall to the sustain level' }, slider('Decay', 0.03, 10, 0.01, envOf(s).decay, v => v.toFixed(2) + ' s', v => { setS('decay', v); drawEnv(); })),
+        el('span', { title: 'Sustain: level the note keeps while it is held (long notes keep ringing)' }, slider('Sustain', 0, 1, 0.01, envOf(s).sus, v => Math.round(v * 100) + '%', v => { setS('susLevel', v); drawEnv(); })),
+        envCanvas,
       ] : s.engine === 'string' ? [
         slider('Brightness', 0.05, 1, 0.01, s.brightness ?? 0.5, v => Math.round(v * 100) + '%', v => setS('brightness', v)),
         slider('Sustain', 0, 1, 0.01, s.sustain ?? 0.5, v => Math.round(v * 100) + '%', v => setS('sustain', v)),
@@ -1199,38 +1268,83 @@ function renderEditor() {
         slider('Attack', 0.001, 2, 0.001, s.attack, v => v.toFixed(3), v => setS('attack', v)),
         slider('Pluck decay', 0, 3, 0.01, s.pluck || 0, v => v ? v.toFixed(2) + 's' : 'off', v => setS('pluck', v)),
       ]),
-      slider('Release', 0.01, 3, 0.01, s.release, v => v.toFixed(2), v => setS('release', v)),
+      el('span', { title: 'Release: fade-out after the note ends' }, slider('Release', 0.01, 3, 0.01, s.release, v => v.toFixed(2) + ' s', v => { setS('release', v); drawEnv(); })),
       slider('Tone', 100, 12000, 10, s.cutoff, v => Math.round(v) + 'Hz', v => setS('cutoff', v)),
       slider('Drive', 0, 1, 0.01, s.drive || 0, v => Math.round(v * 100) + '%', v => setS('drive', v)),
       'Chord', el('select', { onchange: e => setS('chord', e.target.value) }, [['none', 'Single note'], ['power', 'Power chord (1-5-8)']].map(([v, l]) => el('option', { value: v, selected: v === (s.chord || 'none') }, l))),
       'Note length', el('select', { onchange: e => { noteLen = +e.target.value; } }, [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, '1 bar']].map(([v, l]) => el('option', { value: v, selected: v === noteLen }, l))),
       el('button', { onclick: () => { h.notes = []; render(); } }, 'Clear'));
     const covering = (p, i) => h.notes.find(n => n.p === p && i >= n.s && i < n.s + n.l);
+    // piano roll: one note can span many steps (a long, sustained note).
+    //   drag on empty cells  -> draw one long note (several pads become ONE note)
+    //   drag an existing note -> change its length      click a note (no drag) -> delete it
+    const rowCells = new Map();
+    const paintRow = p => (rowCells.get(p) || []).forEach((cell, i) => {
+      const n = covering(p, i);
+      cell.classList.toggle('on', !!n);
+      cell.classList.toggle('nstart', !!n && n.s === i);
+      cell.classList.toggle('ncont', !!n && n.s !== i);
+      cell.classList.toggle('nend', !!n && n.s + n.l - 1 === i);
+      cell.title = n ? `${NOTE_NAMES[p % 12]}${Math.floor(p / 12) - 1} · ${n.l} step${n.l > 1 ? 's' : ''} (${(n.l / 4).toFixed(2)} beats) – drag to resize, click to delete` : '';
+    });
+    const startDrag = (e, p, i) => {
+      e.preventDefault();
+      let note = covering(p, i), existing = !!note, moved = false;
+      if (!note) {
+        note = { p, s: i, l: Math.min(noteLen, steps - i) }; h.notes.push(note);
+        ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25);
+      }
+      paintRow(p);
+      // a note can't grow into the next note of the same pitch
+      const limit = () => Math.min(steps, ...h.notes.filter(x => x !== note && x.p === p && x.s > note.s).map(x => x.s)) - note.s;
+      // column under the pointer from its X position along this row (works over gaps / outside the cells too)
+      const row = rowCells.get(p), r0 = row[0].getBoundingClientRect();
+      const pitch = row.length > 1 ? row[1].getBoundingClientRect().left - r0.left : r0.width;
+      const mv = ev => {
+        const col = clamp(Math.floor((ev.clientX - r0.left) / pitch), 0, steps - 1);
+        if (col !== i) moved = true;
+        if (!moved) return;
+        note.l = clamp(col - note.s + 1, 1, limit()); paintRow(p);
+      };
+      const upFn = () => {
+        window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', upFn); window.removeEventListener('pointercancel', upFn);
+        if (existing && !moved) h.notes = h.notes.filter(x => x !== note);  // plain click on a note = delete
+        renderEditor(); renderArrange();
+      };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', upFn); window.addEventListener('pointercancel', upFn);
+    };
+    tools.append(el('span', { className: 'hint', style: { margin: 0 } }, 'Drag = long note · drag a note = resize · click a note = delete'));
     for (let p = HIGH_NOTE; p >= LOW_NOTE; p--) {
       const nm = NOTE_NAMES[p % 12], black = nm.includes('#');
       grid.append(el('div', { className: 'rowlbl' + (black ? ' black' : ''), onclick: () => { ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.3); } }, nm + (Math.floor(p / 12) - 1)));
+      const cells = [];
       for (let i = 0; i < steps; i++) {
-        const n = covering(p, i);
-        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i && i % spbar === 0 ? ' barline' : '') + (n ? ' on' : ''), style: n && n.s !== i ? { opacity: 0.6 } : {} });
-        cell.dataset.col = i;
-        cell.addEventListener('pointerdown', e => {
-          e.preventDefault(); const ex = covering(p, i);
-          if (ex) h.notes = h.notes.filter(x => x !== ex);
-          else { h.notes.push({ p, s: i, l: Math.min(noteLen, steps - i) }); ensureCtx(); playSynth(ctx, trackNodes(rt, t).in, s, p, ctx.currentTime + 0.01, 0.25); }
-          renderEditor(); renderArrange();
-        });
-        grid.append(cell);
+        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i && i % spbar === 0 ? ' barline' : '') });
+        cell.dataset.col = i; cell.dataset.p = p;
+        cell.addEventListener('pointerdown', e => startDrag(e, p, i));
+        cells.push(cell); grid.append(cell);
       }
+      rowCells.set(p, cells); paintRow(p);
     }
   }
+  grid._h = h; grid._steps = steps; grid._ph = el('div', { className: 'edplayhead' }); grid.append(grid._ph);
   ed.append(grid);
+  requestAnimationFrame(highlightStep);
 }
+// editor playhead: a vertical line over the pad grid at the transport position inside the edited
+// region (follows play, seek and stop), plus the step column under it is outlined while playing
 function highlightStep() {
-  const t = getTrack(selTrackId); document.querySelectorAll('.cell.play').forEach(c => c.classList.remove('play'));
-  if (!T.playing || !t || t.type === 'audio' || !$('#tab-editor').classList.contains('active')) return;
-  const b = currentBeat(), c = t.clips.find(c => b >= c.start && b < c.start + c.len); if (!c) return;
-  const col = Math.floor((b - c.start) * 4) % patSteps(t);
-  document.querySelectorAll(`#editor .cell[data-col="${col}"]`).forEach(x => x.classList.add('play'));
+  const grid = document.querySelector('#editor .grid'), line = grid && grid._ph;
+  document.querySelectorAll('#editor .cell.play').forEach(c => c.classList.remove('play'));
+  if (!line) return;
+  const h = grid._h, steps = grid._steps, b = Math.max(0, currentBeat());
+  const rel = h && h.kind === 'midi' ? (b - h.start) * 4 : -1;  // position in steps inside this region
+  if (rel < 0 || rel >= steps) { line.style.display = 'none'; return; }
+  const col = Math.floor(rel), cell = grid.querySelector(`.cell[data-col="${col}"]`);
+  if (!cell) { line.style.display = 'none'; return; }
+  const next = grid.querySelector(`.cell[data-col="${col + 1}"]`), pitch = next ? next.offsetLeft - cell.offsetLeft : cell.offsetWidth + 3;
+  line.style.left = cell.offsetLeft + (rel - col) * pitch + 'px'; line.style.display = 'block';
+  if (T.playing) grid.querySelectorAll(`.cell[data-col="${col}"]`).forEach(x => x.classList.add('play'));
 }
 
 /* ------------------------------------------------------------ effects tab */

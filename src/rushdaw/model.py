@@ -48,16 +48,16 @@ DRUM_PRESETS = {
     'Reggaeton': {'kick': 'x...x...x...x...', 'snare': '...x..x....x..x.', 'chh': 'x.x.x.x.x.x.x.x.'},
     'Empty': {},
 }
-SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
+SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'decay': 1.5, 'susLevel': 0.3, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5}
 DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
 SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick']
 _SMP = {'engine': 'sample', 'wave': 'sawtooth', 'attack': 0.001, 'detune': 0, 'pluck': 0}
 SYNTH_PRESETS = {
     # real instruments: recorded guitar / bass (FluidR3_GM soundfont)
-    'Clean Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.25, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none'},
-    'Acoustic Guitar': {**_SMP, 'sample': 'acoustic_guitar_steel', 'release': 0.35, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none'},
-    'Finger Bass': {**_SMP, 'sample': 'electric_bass_finger', 'release': 0.15, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none'},
-    'Pick Bass': {**_SMP, 'sample': 'electric_bass_pick', 'release': 0.12, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none'},
+    'Clean Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.3, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 0.35},
+    'Acoustic Guitar': {**_SMP, 'sample': 'acoustic_guitar_steel', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 0.3},
+    'Finger Bass': {**_SMP, 'sample': 'electric_bass_finger', 'release': 0.2, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 0.45},
+    'Pick Bass': {**_SMP, 'sample': 'electric_bass_pick', 'release': 0.15, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 0.4},
     # synth sounds (oscillators)
     'Keys': {'wave': 'triangle', 'attack': 0.005, 'release': 0.4, 'cutoff': 5000, 'detune': 4, 'gain': 0.5},
     'Synth Bass': {'wave': 'sawtooth', 'attack': 0.005, 'release': 0.15, 'cutoff': 900, 'detune': 0, 'gain': 0.55},
@@ -66,10 +66,10 @@ SYNTH_PRESETS = {
     'Pluck': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 2600, 'detune': 5, 'gain': 0.4},
     'Sub 808': {'wave': 'sine', 'attack': 0.003, 'release': 0.6, 'cutoff': 400, 'detune': 0, 'gain': 0.8},
     # amped guitars: real clean guitar recording -> amp distortion -> cabinet
-    'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.15, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none'},
-    'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.12, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none'},
-    'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.12, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power'},
-    'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'pluck': 0.12},
+    'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'decay': 3.0, 'susLevel': 0.6},
+    'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.75},
+    'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'decay': 4.0, 'susLevel': 0.75},
+    'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'decay': 0.18, 'susLevel': 0.0},
     # modeled string (Karplus-Strong), kept for experimenting
     'Modeled String': {'engine': 'string', 'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 3800, 'detune': 0, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.4, 'sustain': 0.55, 'pick': 0.14, 'body': 0.5},
 }
@@ -77,6 +77,7 @@ SYNTH_PARAMS = {  # name: (min, max) or list of choices
     'engine': ['sample', 'string', 'osc'], 'sample': list(SAMPLE_SETS), 'wave': ['sine', 'triangle', 'square', 'sawtooth'], 'attack': (0.001, 2), 'release': (0.01, 3),
     'cutoff': (100, 12000), 'detune': (0, 50), 'gain': (0, 1.5), 'drive': (0, 1), 'pluck': (0, 3), 'chord': ['none', 'power'],
     'brightness': (0.05, 1), 'sustain': (0, 1), 'pick': (0.02, 0.5), 'body': (0, 1),
+    'decay': (0.03, 10), 'susLevel': (0, 1),  # sample engine: Decay seconds, Sustain level while a note is held
 }
 MASTER_DEFAULT = {'vol': 1, 'eqLow': 0, 'eqMid': 0, 'eqHigh': 0, 'compThr': -18, 'compRatio': 2.5, 'compAtk': 0.01,
                   'compRel': 0.25, 'makeup': 3, 'ceiling': -1, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
