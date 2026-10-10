@@ -26,7 +26,7 @@ python3 -m rushdaw      # alternative
 | Area | Features |
 |---|---|
 | **Mixing** (main focus) | A mixer channel per track: volume fader (dB), pan, mute/solo, 3-band EQ, compressor, Reverb & Delay sends, peak meter |
-| **Drum machine** | Metal / hardcore / punk kit: acoustic underground-metal kit: triggered Metal Kick (low thump + beater click), **high-tuned ringing snare**, Ride, China, Crash, hi-hats, ringing toms, light room reverb + velocity variation. Step sequencer 1–8 bars. Presets: Metal Double Bass (default), Metal Gallop, Blast Beat, Hammer Blast, Thrash Skank, Hardcore Breakdown, Hardcore Two-Step, D-Beat, Punk Beat, Punk Polka, Pop-Punk Drive, plus Rock, Hip-Hop, Trap, House, Reggaeton. Default tempo 180 BPM |
+| **Drum machine** | Metal / hardcore / punk kit: acoustic underground-metal kit: triggered Metal Kick (low thump + beater click), **high-tuned ringing snare**, Ride, China, Crash, hi-hats, ringing toms, light room reverb + velocity variation. Per-part **Tune** (±12 semitones), **Decay** and **Level** controls under each part name. Snare with audible bottom-wire rattle; cymbals with a stick-hit transient for more punch. Step sequencer 1–8 bars. Presets: Metal Double Bass (default), Metal Gallop, Blast Beat, Hammer Blast, Thrash Skank, Hardcore Breakdown, Hardcore Two-Step, D-Beat, Punk Beat, Punk Polka, Pop-Punk Drive, plus Rock, Hip-Hop, Trap, House, Reggaeton. Default tempo 180 BPM |
 | **Per-track insert FX** | **Effects** tab / `FX…` button on each mixer strip: EQ, Compressor, Distortion, Filter (LP/HP/BP), Chorus, Tremolo, Delay (BPM sync), Reverb. Unlimited effects per track, on/off bypass, reordering, chain presets: Vocal, Guitar Amp, Metal Guitar, Drum Bus, Bass, Lo-Fi. Included in exports and saved projects |
 | **Guitar MIDI** | `+ Guitar` track: sawtooth → amp distortion → cabinet filter. Presets Power Chord / Distortion / Palm Mute / Crunch / Clean Guitar, Drive, Pluck decay, Chord mode (single note or power chord 1-5-8) |
 | **Synth / MIDI** | Piano roll C2–C6, presets Keys / Bass / Lead / Pad / Pluck / 808, wave, attack, release, filter cutoff, note length |
@@ -39,7 +39,7 @@ python3 -m rushdaw      # alternative
 | **Revision history** | Every 💾 Save (Ctrl/Cmd+S) creates a new revision with an optional note; History lets you open any old revision, restore it (non-destructive, becomes a new revision) or download it. Unsaved changes are auto-saved as a revision when you go back to Projects |
 
 ### Keyboard shortcuts
-`Space` play/stop · `R` record · `Home`/`Enter` back to start · `S` split · `Ctrl/Cmd+D` duplicate · `Delete` remove clip · `M` metronome toggle · `Shift + drag` on the ruler sets the loop region · double-click a Drum/Synth lane to add a pattern region.
+`Space` play/stop · `Ctrl/Cmd+C / X / V` copy / cut / paste the selected clip, track (layer) or drum part · `R` record · `Home`/`Enter` back to start · `S` split · `Ctrl/Cmd+D` duplicate · `Delete` remove clip · `M` metronome toggle · `Shift + drag` on the ruler sets the loop region · double-click a Drum/Synth lane to add a pattern region.
 
 ## Data storage
 
@@ -59,6 +59,46 @@ All data stays on your computer in `~/.rushdaw/` (change with `rushdaw --home PA
 - `db.sql` table `revisions`: project, revision number, note, file name, size, SHA-256, track count, time.
 - Project content (including audio) is **not** stored in the database. It lives in the `.rushdaw` files, written atomically.
 - Deleting a project only moves it to the Trash. Its files and history stay on disk.
+
+## MCP (edit projects from an AI agent)
+
+RushDAW includes an **MCP server** (Model Context Protocol) so AI assistants and agents can read and edit projects, tracks (layers), drum pads, notes and effects. The transport is **HTTP + SSE only**.
+
+The API key is **optional**. Without `--api-key` MCP is **off** and the DAW works normally. To turn MCP on, start with a key (or set `RUSHDAW_API_KEY`):
+
+```bash
+rushdaw --api-key "my-secret-key"
+# MCP:  http://localhost:8765/sse  (HTTP+SSE transport, header 'Authorization: Bearer <api key>')
+```
+
+- `GET /sse` opens the event stream. The first event, `endpoint`, gives the URL to post to: `/messages?session_id=...`.
+- `POST /messages?session_id=...` takes JSON-RPC messages and answers `202 Accepted`. The responses arrive as `message` events on the SSE stream.
+- Both endpoints require `Authorization: Bearer <api key>` (otherwise 401).
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "rushdaw": {
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
+      "headers": { "Authorization": "Bearer my-secret-key" }
+    }
+  }
+}
+```
+
+| Group | Tools |
+|---|---|
+| Info / projects | `get_reference`, `list_projects`, `get_project`, `create_project`, `update_project` (title/BPM/time signature), `list_revisions`, `restore_revision`, `delete_project` (to Trash), `set_master` |
+| Tracks / layers | `add_track` (audio/drum/synth/guitar), `update_track` (name, volume, pan, mute, solo, EQ, compressor, sends), `delete_track`, `duplicate_track`, `move_track` |
+| Effects | `set_track_effects`, `add_effect`, `update_effect` (params / bypass / remove) |
+| Drum pads | `set_drum_pads` (turn steps on/off), `set_drum_pattern` (`"x...x..."` strings), `apply_drum_preset`, `clear_drum_pads`, `set_drum_tuning` (pitch/decay/level), `set_pattern_length` |
+| Synth / guitar | `set_notes` (e.g. `{"note": "E2", "step": 1, "length": 2}`), `set_synth` |
+| Clips / regions | `add_region`, `update_clip`, `delete_clip` |
+
+Every MCP edit is saved as a **new revision** (`MCP: …` in History), so it can always be restored. An editor open in the browser reloads automatically when MCP changes the project. If you have unsaved changes, it shows a warning instead.
 
 ## Uploading to PyPI
 
@@ -81,4 +121,7 @@ python3 -m unittest discover -s tests
 ## Architecture
 - `src/rushdaw/server.py` – standard-library HTTP server (static UI + `/api/export`, `/api/info`)
 - `src/rushdaw/export.py` – converts the WAV mixdown to other formats with ffmpeg
+- `src/rushdaw/storage.py` – SQLite metadata + `.rushdaw` revision files
+- `src/rushdaw/model.py` – server-side project model (mirrors the web UI data)
+- `src/rushdaw/mcp.py` – MCP tools + JSON-RPC (served over HTTP+SSE by `server.py`, bearer auth)
 - `src/rushdaw/static/` – the DAW UI (HTML/CSS/JS, Web Audio engine, offline rendering for export)

@@ -10,6 +10,7 @@ The SQLite database keeps *metadata only* (project name, tempo, timestamps,
 revision numbers, messages, file name, size, checksum).  The heavy project
 content (tracks, notes, FX, embedded audio) lives in the ``.rushdaw`` files.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -73,11 +74,17 @@ class Storage:
             db.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)", (SCHEMA_VERSION,))
 
     # ------------------------------------------------------------ helpers
+    @contextlib.contextmanager
     def _connect(self):
+        """Transaction + guaranteed close (sqlite3's own context manager only commits)."""
         db = sqlite3.connect(self.db_path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys = ON")
-        return db
+        try:
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys = ON")
+            with db:
+                yield db
+        finally:
+            db.close()
 
     @staticmethod
     def _check_id(project_id):

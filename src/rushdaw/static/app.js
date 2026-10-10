@@ -283,58 +283,70 @@ function env(c, gainParam, t, peak, decay) {
   gainParam.setValueAtTime(0.0001, t); gainParam.exponentialRampToValueAtTime(peak, t + 0.002);
   gainParam.exponentialRampToValueAtTime(0.0001, t + decay);
 }
-function playDrum(c, dest, kind, t, vel = 1) {
+// per-part kit settings (stored on the drum track: t.kit[partId])
+const KIT_DEFAULT = { pitch: 0, decay: 1, level: 1 };
+function kitOf(track, id) {
+  track.kit = track.kit || {};
+  return (track.kit[id] = { ...KIT_DEFAULT, ...(track.kit[id] || {}) });
+}
+// kind = drum part id, t = start time, vel = velocity, kit = { pitch (semitones), decay (x), level (x) }
+function playDrum(c, dest, kind, t, vel = 1, kit = KIT_DEFAULT) {
   const srcs = [];
-  const out = c.createGain(); out.gain.value = vel; out.connect(dest);
-  const osc = (type, f0, f1, dur, peak) => {
-    const o = c.createOscillator(), g = c.createGain(); o.type = type;
-    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.6);
-    env(c, g.gain, t, peak, dur); o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05); srcs.push(o);
+  const pr = Math.pow(2, (kit.pitch || 0) / 12), dk = kit.decay || 1;
+  const F = f => Math.min(18000, f * pr), D = d => d * dk;
+  const out = c.createGain(); out.gain.value = vel * (kit.level ?? 1); out.connect(dest);
+  const osc = (type, f0, f1, dur, peak, start = t) => {
+    const o = c.createOscillator(), g = c.createGain(); o.type = type; dur = D(dur);
+    o.frequency.setValueAtTime(F(f0), start); o.frequency.exponentialRampToValueAtTime(F(f1), start + dur * 0.6);
+    env(c, g.gain, start, peak, dur); o.connect(g); g.connect(out); o.start(start); o.stop(start + dur + 0.05); srcs.push(o);
   };
   const nz = (ftype, freq, dur, peak, q = 0.7, start = t) => {
-    const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
-    s.buffer = noise(c); f.type = ftype; f.frequency.value = freq; f.Q.value = q;
-    const tt = t; env(c, g.gain, start, peak, dur); void tt;
+    const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); dur = D(dur);
+    s.buffer = noise(c); f.type = ftype; f.frequency.value = F(freq); f.Q.value = q;
+    env(c, g.gain, start, peak, dur);
     s.connect(f); f.connect(g); g.connect(out); s.start(start, Math.random()); s.stop(start + dur + 0.05); srcs.push(s);
   };
   // acoustic drumhead mode: sine with a small pitch drop and natural exponential ring
   const mode = (f, dur, peak, drop = 0.96, type = 'sine') => osc(type, f, f * drop, dur, peak);
   // metallic partials (inharmonic square bank) through a filter -> cymbal shimmer
   const metal = (base, ftype, ffreq, dur, peak, q = 0.7) => {
-    const f = c.createBiquadFilter(), g = c.createGain(); f.type = ftype; f.frequency.value = ffreq; f.Q.value = q;
+    const f = c.createBiquadFilter(), g = c.createGain(); f.type = ftype; f.frequency.value = F(ffreq); f.Q.value = q; dur = D(dur);
     env(c, g.gain, t, peak, dur); f.connect(g); g.connect(out);
     [1, 1.342, 1.2312, 1.6532, 1.9523, 2.1523].forEach(r => {
-      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = base * r; o.connect(f); o.start(t); o.stop(t + dur + 0.05); srcs.push(o);
+      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = F(base * r); o.connect(f); o.start(t); o.stop(t + dur + 0.05); srcs.push(o);
     });
   };
+  // stick hitting a cymbal: short bright "tick" that gives cymbals their punch
+  const stick = (freq, peak) => nz('bandpass', freq, 0.025, peak, 0.9);
   switch (kind) {
     // metal kick (triggered, underground style): low thump + punchy body + hard beater click
     case 'kick':
       // gains scaled so the raw (pre-fader) kick peak stays <= 1.0
-      osc('sine', 125, 52, 0.32, 0.45); mode(68, 0.22, 0.18, 0.85);
-      nz('highpass', 2800, 0.018, 0.29, 0.8); osc('triangle', 1600, 900, 0.012, 0.16); break;
-    // high-tuned ringing snare ("ping"): high fundamental + inharmonic head modes that ring out,
-    // stick crack, and bright but not dominant wires
+      osc('sine', 125, 52, 0.32, 0.42); mode(68, 0.22, 0.17, 0.85);
+      nz('highpass', 2800, 0.018, 0.25, 0.8); osc('triangle', 1600, 900, 0.012, 0.15); break;
+    // high-tuned ringing snare: high fundamental + head modes that ring out, stick crack,
+    // and a clearly audible bottom snare-wire rattle (sizzle that trails the hit)
     case 'snare': {
       const f0 = 345;
-      // gains scaled so the raw (pre-fader) snare peak stays <= 1.0 even with random noise
-      mode(f0, 0.75, 0.34, 0.975, 'triangle'); mode(f0 * 1.59, 0.55, 0.19); mode(f0 * 2.14, 0.4, 0.11); mode(f0 * 2.3, 0.32, 0.08);
-      nz('bandpass', 2600, 0.035, 0.4, 0.8);    // stick / rimshot crack
-      nz('highpass', 3200, 0.18, 0.25, 0.7);     // snare wires
-      nz('bandpass', 6500, 0.09, 0.2, 1.2); break;
+      mode(f0, 0.7, 0.27, 0.975, 'triangle'); mode(f0 * 1.59, 0.5, 0.15); mode(f0 * 2.14, 0.36, 0.09); mode(f0 * 2.3, 0.3, 0.07);
+      nz('bandpass', 2600, 0.03, 0.32, 0.8);              // stick / rimshot crack
+      nz('bandpass', 4800, 0.3, 0.3, 0.55);               // bottom wires: main sizzle
+      nz('highpass', 2200, 0.24, 0.22, 0.7);              // wires: body of the rattle
+      nz('bandpass', 3300, 0.2, 0.14, 1.4, t + 0.008);    // wires: delayed buzz (wires react after the head)
+      nz('highpass', 8000, 0.12, 0.12, 0.7); break;       // air / brightness
     }
-    // ride: bell ping + metallic wash
-    case 'ride': mode(2350, 0.7, 0.07, 1); mode(3520, 0.5, 0.05, 1); metal(480, 'bandpass', 6500, 1.1, 0.1, 0.6); nz('highpass', 7500, 0.8, 0.07); break;
-    // hi-hats: metallic partials + bright noise (acoustic-ish, not 808)
-    case 'chh': metal(420, 'highpass', 8000, 0.05, 0.16); nz('highpass', 9000, 0.06, 0.28); nz('bandpass', 4200, 0.02, 0.15, 1); break;
-    case 'ohh': metal(420, 'highpass', 7500, 0.45, 0.13); nz('highpass', 8000, 0.5, 0.22); break;
+    // ride: stick ping + strong bell + metallic wash
+    case 'ride': stick(3200, 0.38); mode(2350, 0.8, 0.14, 1); mode(3520, 0.55, 0.1, 1); metal(480, 'bandpass', 6000, 1.3, 0.2, 0.6); nz('highpass', 6500, 1.0, 0.14); break;
+    // hi-hats: stick tick + metallic partials + bright noise (acoustic, not 808)
+    case 'chh': stick(4500, 0.32); metal(420, 'highpass', 7500, 0.06, 0.24); nz('highpass', 8000, 0.07, 0.38); break;
+    case 'ohh': stick(4200, 0.3); metal(420, 'highpass', 7000, 0.55, 0.2); nz('highpass', 7500, 0.6, 0.32); break;
     // toms: ringing heads with natural small pitch drop + stick attack
     case 'tomh': mode(205, 0.6, 0.6, 0.9); mode(205 * 1.5, 0.3, 0.18); nz('lowpass', 3500, 0.03, 0.22); break;
     case 'toml': mode(105, 0.8, 0.68, 0.88); mode(105 * 1.5, 0.4, 0.18); nz('lowpass', 2500, 0.035, 0.22); break;
-    // china: trashy, bright, mid-length
-    case 'rim': metal(330, 'bandpass', 3800, 0.9, 0.16, 0.5); nz('bandpass', 3500, 0.85, 0.4, 0.6); nz('highpass', 6500, 0.4, 0.2); break;
-    // crash: long metallic wash
-    case 'crash': metal(380, 'highpass', 5000, 1.6, 0.1); nz('highpass', 4500, 1.9, 0.33); nz('bandpass', 3000, 0.08, 0.2, 0.8); break;
+    // china: hard stick hit + trashy, bright, mid-length body
+    case 'rim': stick(2800, 0.38); metal(330, 'bandpass', 3600, 1.0, 0.21, 0.5); nz('bandpass', 3200, 0.95, 0.38, 0.6); nz('highpass', 6000, 0.45, 0.25); break;
+    // crash: hard stick hit + loud metallic wash with a long tail
+    case 'crash': stick(2600, 0.42); metal(380, 'highpass', 4200, 1.9, 0.16); nz('highpass', 3800, 2.1, 0.38); nz('bandpass', 6000, 0.45, 0.23, 0.8); break;
   }
   return srcs;
 }
@@ -403,7 +415,7 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         if (to <= from) continue;
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           const beat = clip.start + k / 4, i = k % steps, when = tOf(beat);
-          if (t.type === 'drum') DRUMS.forEach((d, r) => { if (t.pattern.grid[r][i]) keep(playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14)); /* slight velocity variation = human feel */ });
+          if (t.type === 'drum') DRUMS.forEach((d, r) => { if (t.pattern.grid[r][i]) keep(playDrum(g.c, tn.in, d.id, when, 0.86 + Math.random() * 0.14, kitOf(t, d.id))); /* slight velocity variation = human feel */ });
           else t.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, when, n.l * S / 4)); });
         }
       }
@@ -556,7 +568,7 @@ function renderArrange() {
     const panIn = el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100), title: 'Pan: drag left/right · double-click = center',
       oninput: e => setPan(t, +e.target.value / 100, panOut), ondblclick: e => { e.target.value = 0; setPan(t, 0, panOut); }, onclick: stop, onpointerdown: stop });
     const quick = (txt, v) => el('button', { className: 'pq', title: v === 0 ? 'Center' : (v < 0 ? 'Hard left' : 'Hard right'), onclick: e => { stop(e); panIn.value = v * 100; setPan(t, v, panOut); } }, txt);
-    hdr.append(el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => selectTrack(t.id) },
+    hdr.append(el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { lastFocus = 'track'; selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); selectTrack(t.id); } },
       el('div', { className: 'row' },
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
         btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
@@ -568,7 +580,7 @@ function renderArrange() {
       el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut)));
     const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundSize: barPx + 'px 100%' } });
     lane.dataset.track = t.id;
-    lane.addEventListener('pointerdown', e => { if (e.target === lane) { selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
+    lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
     lane.addEventListener('dblclick', e => {
       if (e.target !== lane || t.type === 'audio') return;
       const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig;
@@ -629,7 +641,7 @@ function drawClip(cv, t, c) {
 }
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
-  selClipId = c.id; selectTrack(t.id, false);
+  selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
   document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); d.classList.add('sel');
   const resize = e.target.classList.contains('rs'), x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = clipLenBeats(c);
   let target = t, moved = false;
@@ -735,19 +747,42 @@ function renderEditor() {
   const tools = el('div', { className: 'edtools' }, el('b', {}, t.name), 'Pattern length', barsSel,
     el('button', { onclick: () => { const len = (t.type === 'drum' ? t.pattern.bars : t.bars) * P.sig; const last = t.clips.reduce((a, c) => Math.max(a, c.start + c.len), 0); const st = t.clips.length ? Math.ceil(last / P.sig) * P.sig : Math.floor(T.pos / P.sig) * P.sig; t.clips.push({ id: nid('c'), kind: 'midi', start: st, len }); render(); } }, '+ Add region'));
   ed.append(tools);
-  const grid = el('div', { className: 'grid', style: { gridTemplateColumns: `90px repeat(${steps}, 26px)` } });
+  const grid = el('div', { className: 'grid ' + (t.type === 'drum' ? 'drumgrid' : 'rollgrid'), style: { gridTemplateColumns: `${t.type === 'drum' ? 200 : 64}px repeat(${steps}, 28px)` } });
+  // step ruler: beat numbers above the grid
+  grid.append(el('div', { className: 'gcorner' }, t.type === 'drum' ? 'Part · tuning' : 'Note'));
+  for (let i = 0; i < steps; i++) grid.append(el('div', { className: 'ghead' + (i % 4 === 0 ? ' beat' : '') }, i % 4 === 0 ? String(Math.floor(i / 4) % P.sig + 1) : '·'));
   const up = () => { paintVal = null; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); renderArrange(); };
   grid.addEventListener('pointermove', e => { if (paintVal === null) return; const x = document.elementFromPoint(e.clientX, e.clientY); if (x && x._apply) x._apply(); });
   if (t.type === 'drum') {
     tools.append('Preset', el('select', { onchange: e => { applyDrumPreset(t, e.target.value); render(); } }, el('option', {}, '— choose —'), Object.keys(DRUM_PRESETS).map(k => el('option', {}, k))));
     DRUMS.forEach((d, r) => {
-      grid.append(el('div', { className: 'rowlbl' }, el('button', { title: 'Preview', onclick: () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01); } }, '▶'), d.name));
+      const kit = kitOf(t, d.id);
+      const preview = () => { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01, 1, kitOf(t, d.id)); };
+      const knob = (label, key, min, max, step, fmt) => {
+        const out = el('span', { className: 'kval' }, fmt(kit[key]));
+        return el('label', { className: 'kctl', title: label + ' (double-click = reset)' }, el('span', { className: 'klab' }, label),
+          el('input', { type: 'range', min, max, step, value: kit[key],
+            oninput: e => { kit[key] = +e.target.value; out.textContent = fmt(kit[key]); },
+            onchange: preview,
+            ondblclick: e => { kit[key] = KIT_DEFAULT[key]; e.target.value = kit[key]; out.textContent = fmt(kit[key]); preview(); } }), out);
+      };
+      const isSel = selPart && selPart.trackId === t.id && selPart.row === r;
+      const lbl = el('div', { className: 'drumlbl' + (isSel ? ' sel' : ''), onpointerdown: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; document.querySelectorAll('.drumlbl.sel').forEach(x => x.classList.remove('sel')); lbl.classList.add('sel'); } },
+        el('div', { className: 'dl-top' },
+          el('button', { className: 'dl-play', title: 'Preview', onclick: preview }, '▶'),
+          el('span', { className: 'dl-name', title: d.name }, d.name),
+          el('button', { className: 'dl-mini', title: 'Copy part (pattern + tuning) · Ctrl/Cmd+C', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; copySelection(); } }, '⧉'),
+          el('button', { className: 'dl-mini', title: 'Paste part here · Ctrl/Cmd+V', onclick: () => { selPart = { trackId: t.id, row: r }; lastFocus = 'part'; pasteClipboard(); } }, '📋')),
+        knob('Tune', 'pitch', -12, 12, 1, v => (v > 0 ? '+' : '') + v + ' st'),
+        knob('Decay', 'decay', 0.3, 2, 0.05, v => Math.round(v * 100) + '%'),
+        knob('Level', 'level', 0, 1.5, 0.01, v => Math.round(v * 100) + '%'));
+      grid.append(lbl);
       for (let i = 0; i < steps; i++) {
-        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (t.pattern.grid[r][i] ? ' on' : '') });
+        const cell = el('div', { className: 'cell' + (Math.floor(i / 4) % 2 ? '' : ' beat') + (i % 4 === 0 ? ' bstart' : '') + (t.pattern.grid[r][i] ? ' on' : '') });
         cell.dataset.col = i;
         const apply = () => { t.pattern.grid[r][i] = paintVal; cell.classList.toggle('on', !!paintVal); };
         cell._apply = apply;
-        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = t.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) { ensureCtx(); playDrum(ctx, trackNodes(rt, t).in, d.id, ctx.currentTime + 0.01); } window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
+        cell.addEventListener('pointerdown', e => { e.preventDefault(); if (cell.hasPointerCapture && cell.hasPointerCapture(e.pointerId)) cell.releasePointerCapture(e.pointerId); paintVal = t.pattern.grid[r][i] ? 0 : 1; apply(); if (paintVal) preview(); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); });
         grid.append(cell);
       }
     });
@@ -1100,6 +1135,76 @@ async function importProjectFile(file) {
   } catch (e) { status('Import failed: ' + e.message); alert('Import failed: ' + e.message); }
 }
 
+/* ------------------------------------------------- clipboard: copy / cut / paste */
+// Works on whatever was focused last: a clip/region ('clip'), a whole track/layer ('track')
+// or a drum part row ('part'). Audio buffers travel with the clipboard so pasting
+// still works after opening another project.
+let clipboard = null;        // { kind, data, buffers: Map }
+let selPart = null;          // { trackId, row } – selected drum part in the editor
+let lastFocus = null;        // 'clip' | 'track' | 'part'
+const deepCopy = o => JSON.parse(JSON.stringify(o));
+function buffersFor(clips) {
+  const m = new Map();
+  clips.forEach(c => { if (c.kind === 'audio' && buffers.has(c.buf)) m.set(c.buf, { buf: buffers.get(c.buf), name: bufNames.get(c.buf) }); });
+  return m;
+}
+function restoreBuffers(m) { m.forEach((v, id) => { if (!buffers.has(id)) { buffers.set(id, v.buf); bufNames.set(id, v.name); } }); }
+function copySelection(cut = false) {
+  if (lastFocus === 'part' && selPart) {
+    const t = getTrack(selPart.trackId); if (!t || t.type !== 'drum') return;
+    const d = DRUMS[selPart.row];
+    clipboard = { kind: 'part', data: { id: d.id, name: d.name, steps: t.pattern.grid[selPart.row].slice(), kit: { ...kitOf(t, d.id) } } };
+    if (cut) { t.pattern.grid[selPart.row].fill(0); render(); }
+    status(`${cut ? 'Cut' : 'Copied'} drum part “${d.name}” (pattern + tuning)`); return;
+  }
+  const [ct, c] = findClip(selClipId);
+  if (lastFocus === 'clip' && c) {
+    clipboard = { kind: 'clip', data: { clip: deepCopy(c), trackType: ct.type, trackId: ct.id }, buffers: buffersFor([c]) };
+    if (cut) { ct.clips = ct.clips.filter(x => x !== c); selClipId = null; render(); }
+    status(`${cut ? 'Cut' : 'Copied'} ${c.kind === 'audio' ? 'audio clip' : 'pattern region'}`); return;
+  }
+  const t = getTrack(selTrackId);
+  if (t) {
+    clipboard = { kind: 'track', data: deepCopy(t), buffers: buffersFor(t.clips) };
+    if (cut) deleteTrack(t.id);
+    status(`${cut ? 'Cut' : 'Copied'} track “${t.name}”`); return;
+  }
+  status('Nothing selected to copy – click a clip, a track or a drum part first');
+}
+function pasteClipboard() {
+  if (!clipboard) { status('Clipboard is empty'); return; }
+  const cb = clipboard;
+  if (cb.buffers) restoreBuffers(cb.buffers);
+  if (cb.kind === 'part') {
+    let t = getTrack(selTrackId);
+    if (!t || t.type !== 'drum') t = selPart && getTrack(selPart.trackId);
+    if (!t || t.type !== 'drum') { status('Select a drum track to paste the part into'); return; }
+    const row = selPart && selPart.trackId === t.id ? selPart.row : DRUMS.findIndex(d => d.id === cb.data.id);
+    const n = patSteps(t), src = cb.data.steps;
+    t.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i % src.length]);
+    t.kit = t.kit || {}; t.kit[DRUMS[row].id] = { ...cb.data.kit };
+    render(); status(`Pasted “${cb.data.name}” into ${DRUMS[row].name} on ${t.name}`); return;
+  }
+  if (cb.kind === 'clip') {
+    const want = cb.data.trackType;
+    let t = getTrack(selTrackId);
+    if (!t || t.type !== want) t = getTrack(cb.data.trackId) || P.tracks.find(x => x.type === want);
+    if (!t) { t = newTrack(want); }
+    const nc = { ...deepCopy(cb.data.clip), id: nid('c'), start: snapBeat(T.pos, 0.25) };
+    t.clips.push(nc); selClipId = nc.id; lastFocus = 'clip'; selectTrack(t.id, false);
+    render(); status(`Pasted clip on ${t.name} at bar ${Math.floor(nc.start / P.sig) + 1}`); return;
+  }
+  if (cb.kind === 'track') {
+    const t = deepCopy(cb.data);
+    t.id = nid('t'); t.name = t.name.replace(/( \(copy( \d+)?\))?$/, '') + ' (copy)';
+    t.solo = false; t.arm = false; t.color = COLORS[P.tracks.length % COLORS.length];
+    t.clips.forEach(c => { c.id = nid('c'); }); (t.fx || []).forEach(f => { f.id = nid('f'); });
+    const at = P.tracks.findIndex(x => x.id === selTrackId);
+    P.tracks.splice(at < 0 ? P.tracks.length : at + 1, 0, t);
+    selTrackId = t.id; lastFocus = 'track'; syncGraph(); render(); status(`Pasted track “${t.name}”`);
+  }
+}
+
 /* --------------------------------------------------------------- tab / misc */
 function showTab(name) {
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -1154,6 +1259,9 @@ function init() {
     selTrackId = t.id; syncGraph(); render(); if (t.type !== 'audio') showTab('editor');
   }; });
   $('#btnImport').onclick = () => $('#fileInput').click();
+  $('#btnCopy').onclick = () => copySelection(false);
+  $('#btnCut').onclick = () => copySelection(true);
+  $('#btnPaste').onclick = () => pasteClipboard();
   $('#fileInput').onchange = e => { const t = getTrack(selTrackId); importFiles([...e.target.files], t, null); e.target.value = ''; };
   $('#btnSave').onclick = () => saveRevision($('#revMsg').value);
   $('#revMsg').onkeydown = e => { if (e.key === 'Enter') saveRevision($('#revMsg').value); };
@@ -1168,6 +1276,26 @@ function init() {
   $('#projSearch').oninput = renderHome;
   $('#btnTrash').onclick = () => { showTrash = !showTrash; renderHome(); };
   setInterval(updateDirty, 1000);
+  // pick up edits made from outside the browser (MCP tools create new revisions)
+  let externalWarned = 0;
+  setInterval(async () => {
+    if (!currentProject || saving || $('#home').classList.contains('show') || document.hidden) return;
+    try {
+      const meta = await (await api(`/api/projects/${currentProject.id}`)).json();
+      if (meta.head_revision <= currentProject.head_revision) return;
+      const msg = meta.revisions[0]?.message || '';
+      if (!isDirty() && !T.playing && !T.recording) {
+        const keepTab = document.querySelector('.tabs button.active')?.dataset.tab, keepTrack = selTrackId;
+        await openProject(currentProject.id);
+        if (getTrack(keepTrack)) { selTrackId = keepTrack; render(); }
+        if (keepTab) showTab(keepTab);
+        status(`Reloaded – updated outside the editor: r${meta.head_revision} “${msg}”`);
+      } else if (externalWarned !== meta.head_revision) {
+        externalWarned = meta.head_revision;
+        status(`⚠ Project changed outside the editor (r${meta.head_revision} “${msg}”). Your unsaved changes are kept; Save creates a newer revision on top (open History to compare).`);
+      }
+    } catch (e) { /* server busy / offline – try again later */ }
+  }, 3000);
   window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
   $('#btnExport').onclick = exportSong;
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
@@ -1208,8 +1336,11 @@ function init() {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home' || e.key === 'Enter') seek(0);
     else if (e.key === 'r' || e.key === 'R') startRecording();
-    else if (e.key === 'Delete' || e.key === 'Backspace') { const [t, c] = findClip(selClipId); if (c) { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); } }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { const [t, c] = findClip(selClipId); if (c && lastFocus === 'clip') { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); } }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateClip(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); copySelection(false); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) { e.preventDefault(); copySelection(true); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); pasteClipboard(); }
     else if (e.key === 's' && !e.ctrlKey && !e.metaKey) splitClip();
     else if (e.key === 'm' || e.key === 'M') { $('#metronome').checked = !$('#metronome').checked; }
   });

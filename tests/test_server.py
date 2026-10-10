@@ -44,6 +44,7 @@ class ServerTest(unittest.TestCase):
         for path in ("/", "/app.js", "/style.css"):
             with urllib.request.urlopen(self.base + path) as r:
                 self.assertEqual(r.status, 200)
+                self.assertGreater(len(r.read()), 100)
 
     def test_info(self):
         with urllib.request.urlopen(self.base + "/api/info") as r:
