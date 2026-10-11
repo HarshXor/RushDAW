@@ -54,13 +54,15 @@ DEFAULT_VOCAL_PRESET = 'Choir Aah'
 DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
 SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick',
                'electric_guitar_muted', 'choir_aahs', 'voice_oohs', 'acoustic_grand_piano', 'electric_piano_1', 'string_ensemble_1']
+SUSTAINED_SAMPLE_SETS = ['choir_aahs', 'voice_oohs', 'string_ensemble_1']  # smooth sustain loop; all others ring out naturally
+LEGACY_DECAY_SUS = {'Clean Guitar': 0.35, 'Acoustic Guitar': 0.3, 'Finger Bass': 0.45, 'Pick Bass': 0.4, 'Crunch Guitar': 0.6, 'Distortion Guitar': 0.75, 'Power Chord Guitar': 0.75, 'Piano': 0.05, 'Electric Piano': 0.15}  # preset Sustain before 0.1.23
 _SMP = {'engine': 'sample', 'wave': 'sawtooth', 'attack': 0.001, 'detune': 0, 'pluck': 0}
 SYNTH_PRESETS = {
     # real instruments: recorded guitar / bass (FluidR3_GM soundfont)
-    'Clean Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.3, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 0.35},
-    'Acoustic Guitar': {**_SMP, 'sample': 'acoustic_guitar_steel', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 0.3},
-    'Finger Bass': {**_SMP, 'sample': 'electric_bass_finger', 'release': 0.2, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 0.45},
-    'Pick Bass': {**_SMP, 'sample': 'electric_bass_pick', 'release': 0.15, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 0.4},
+    'Clean Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.3, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 1},
+    'Acoustic Guitar': {**_SMP, 'sample': 'acoustic_guitar_steel', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 1},
+    'Finger Bass': {**_SMP, 'sample': 'electric_bass_finger', 'release': 0.2, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.5, 'susLevel': 1},
+    'Pick Bass': {**_SMP, 'sample': 'electric_bass_pick', 'release': 0.15, 'cutoff': 12000, 'gain': 0.75, 'drive': 0, 'chord': 'none', 'decay': 2.0, 'susLevel': 1},
     # synth sounds (oscillators)
     'Keys': {'wave': 'triangle', 'attack': 0.005, 'release': 0.4, 'cutoff': 5000, 'detune': 4, 'gain': 0.5},
     'Synth Bass': {'wave': 'sawtooth', 'attack': 0.005, 'release': 0.15, 'cutoff': 900, 'detune': 0, 'gain': 0.55},
@@ -69,13 +71,13 @@ SYNTH_PRESETS = {
     'Pluck': {'wave': 'sawtooth', 'attack': 0.002, 'release': 0.12, 'cutoff': 2600, 'detune': 5, 'gain': 0.4},
     'Sub 808': {'wave': 'sine', 'attack': 0.003, 'release': 0.6, 'cutoff': 400, 'detune': 0, 'gain': 0.8},
     # amped guitars: real clean guitar recording -> amp distortion -> cabinet
-    'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'decay': 3.0, 'susLevel': 0.6},
-    'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.75},
-    'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'decay': 4.0, 'susLevel': 0.75},
+    'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'decay': 3.0, 'susLevel': 1},
+    'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'decay': 4.0, 'susLevel': 1},
+    'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'decay': 4.0, 'susLevel': 1},
     'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_muted', 'release': 0.05, 'cutoff': 3500, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'decay': 0.3, 'susLevel': 0.0},
     # real keys / strings (recorded, FluidR3_GM)
-    'Piano': {**_SMP, 'sample': 'acoustic_grand_piano', 'release': 0.5, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.05},
-    'Electric Piano': {**_SMP, 'sample': 'electric_piano_1', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 3.0, 'susLevel': 0.15},
+    'Piano': {**_SMP, 'sample': 'acoustic_grand_piano', 'release': 0.5, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 4.0, 'susLevel': 1},
+    'Electric Piano': {**_SMP, 'sample': 'electric_piano_1', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 3.0, 'susLevel': 1},
     'Strings': {**_SMP, 'sample': 'string_ensemble_1', 'attack': 0.25, 'release': 0.8, 'cutoff': 12000, 'gain': 0.95, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.9},
     # choir: real recorded choir "aah" / "ooh" (FluidR3_GM), sustain-looped for long notes
     'Choir Aah': {**_SMP, 'sample': 'choir_aahs', 'attack': 0.15, 'release': 0.6, 'cutoff': 12000, 'gain': 1.5, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.85},
@@ -605,6 +607,10 @@ def migrate_strings(proj):
         kp = SYNTH_PRESETS.get(s.get('preset')) or {}
         if s.get('engine') == 'voice' and kp.get('engine') == 'sample':  # choir: formant synth -> real recording
             s.update({**SYNTH_DEFAULTS, **kp, 'preset': s['preset']})
+        legacy = LEGACY_DECAY_SUS.get(s.get('preset'))  # decay instruments ring out naturally now: old preset Sustain -> 100 %
+        if (s.get('engine') == 'sample' and s.get('sample') not in SUSTAINED_SAMPLE_SETS and legacy is not None
+                and abs(float(s.get('susLevel', -1)) - legacy) < 1e-9):
+            s['susLevel'] = 1
         if s.get('preset') == 'Palm Mute Guitar' and s.get('sample') == 'electric_guitar_clean':  # real palm-muted recording
             s.update({k: kp[k] for k in ('sample', 'cutoff', 'decay')})
         if not t.get('instrument') and s.get('preset') == 'Bass':

@@ -648,7 +648,8 @@ class RushDAWMCP:
         # ---------------- synth / guitar
         @tool("set_notes", "Write notes of a synth/guitar/bass region. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1), velocity: 1-127 (default 127)}. "
               "Notes on the SAME pitch never overlap: a note is cut where the next note of that pitch starts (duplicates: the last one wins). "
-              "A long length = ONE sustained note over many steps (e.g. length 16 = a whole bar in 4/4); it rings with the track's decay/sustain and fades with its release. Range C2 (36) - C6 (84).",
+              "A long length = ONE note over many steps (e.g. length 16 = a whole bar in 4/4), never a repeat/loop: guitar, bass and piano ring and DECAY naturally like the real instrument; "
+              "vocal/choir, strings and synths SUSTAIN smoothly for the whole length; then the note fades with its release. Range C2 (36) - C6 (84).",
               _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}, "velocity": {"type": "integer"}}, "required": ["note", "step"]}}),
                  replace=("boolean", "Replace all existing notes (default true); false = add/overwrite."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
         def set_notes(a):

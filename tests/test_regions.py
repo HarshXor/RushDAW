@@ -60,6 +60,25 @@ class MonoNotesTest(unittest.TestCase):
         self.assertEqual(out, [{"p": 57, "s": 0, "l": 4}, {"p": 60, "s": 0, "l": 16}, {"p": 57, "s": 4, "l": 8, "v": 0.5}])
 
 
+class SustainVsDecayTest(unittest.TestCase):
+    def test_js_and_python_agree(self):
+        import re
+        with open(T.APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        self.assertEqual(sorted(re.findall(r"(\w+): \{ name: '[^']+', lo: \d+, hi: \d+, sustained: true \}", js)), sorted(M.SUSTAINED_SAMPLE_SETS))
+        legacy = dict((k, float(v)) for k, v in re.findall(r"'([^']+)': ([0-9.]+)", js.split("const LEGACY_DECAY_SUS = {")[1].split("};")[0]))
+        self.assertEqual(legacy, M.LEGACY_DECAY_SUS)
+
+    def test_decay_presets_ring_naturally_and_old_tracks_migrate(self):
+        for name, p in M.SYNTH_PRESETS.items():
+            if p.get("engine") == "sample" and p["sample"] not in M.SUSTAINED_SAMPLE_SETS and name != "Palm Mute Guitar":
+                self.assertEqual(p["susLevel"], 1, name)
+        proj = {"tracks": [{"type": "synth", "instrument": "guitar", "synth": {**M.SYNTH_PRESETS["Clean Guitar"], "preset": "Clean Guitar", "susLevel": 0.35}},
+                           {"type": "synth", "instrument": "guitar", "synth": {**M.SYNTH_PRESETS["Clean Guitar"], "preset": "Clean Guitar", "susLevel": 0.5}}]}
+        M.migrate_strings(proj)
+        self.assertEqual([t["synth"]["susLevel"] for t in proj["tracks"]], [1, 0.5])  # user-edited value is kept
+
+
 class TrimStartMcpTest(T.McpTest):
     def rpc(self, method, params=None):
         TrimStartMcpTest.n += 1

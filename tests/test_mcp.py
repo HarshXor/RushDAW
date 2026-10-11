@@ -247,7 +247,7 @@ class McpTest(unittest.TestCase):
     def test_sustained_notes_and_envelope(self):
         pid = self.call("create_project", name="Sustain", template="metal")["project_id"]
         g = self.call("get_project", project_id=pid)["tracks"][2]
-        self.assertEqual((g["synth"]["decay"], g["synth"]["susLevel"]), (2.0, 0.35))   # Clean Guitar envelope
+        self.assertEqual((g["synth"]["decay"], g["synth"]["susLevel"]), (2.0, 1))   # Clean Guitar: natural decay (Sustain 100 %)
         self.call("set_notes", project_id=pid, track=g["id"], clip_id=g["clips"][0]["id"], notes=[{"note": "A2", "step": 1, "length": 32}])
         n = self.call("get_project", project_id=pid)["tracks"][2]["clips"][0]["notes"]
         self.assertEqual([(x["note"], x["step"], x["length"]) for x in n], [("A2", 1, 32)])           # one long note over 2 bars

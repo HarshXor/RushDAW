@@ -68,10 +68,10 @@ const DRUM_PRESETS = {
 };
 const SYNTH_PRESETS = {
   // --- real instruments (engine 'sample' = recorded guitar / bass, FluidR3_GM soundfont) ---
-  'Clean Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.3, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 0.35 },
-  'Acoustic Guitar': { engine: 'sample', sample: 'acoustic_guitar_steel', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 0.3 },
-  'Finger Bass': { engine: 'sample', sample: 'electric_bass_finger', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 0.45 },
-  'Pick Bass': { engine: 'sample', sample: 'electric_bass_pick', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 0.4 },
+  'Clean Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.3, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 1 },
+  'Acoustic Guitar': { engine: 'sample', sample: 'acoustic_guitar_steel', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 1 },
+  'Finger Bass': { engine: 'sample', sample: 'electric_bass_finger', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.5, susLevel: 1 },
+  'Pick Bass': { engine: 'sample', sample: 'electric_bass_pick', wave: 'sawtooth', attack: 0.001, release: 0.15, cutoff: 12000, detune: 0, gain: 0.75, drive: 0, chord: 'none', pluck: 0, decay: 2.0, susLevel: 1 },
   // --- synth sounds (oscillators) ---
   'Keys': { wave: 'triangle', attack: 0.005, release: 0.4, cutoff: 5000, detune: 4, gain: 0.5 },
   'Synth Bass': { wave: 'sawtooth', attack: 0.005, release: 0.15, cutoff: 900, detune: 0, gain: 0.55 },
@@ -80,13 +80,13 @@ const SYNTH_PRESETS = {
   'Pluck': { wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 2600, detune: 5, gain: 0.4 },
   'Sub 808': { wave: 'sine', attack: 0.003, release: 0.6, cutoff: 400, detune: 0, gain: 0.8 },
   // --- amped guitars: the real clean guitar recording through amp distortion + cabinet ---
-  'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, decay: 3.0, susLevel: 0.6 },
-  'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.75 },
-  'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, decay: 4.0, susLevel: 0.75 },
+  'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, decay: 3.0, susLevel: 1 },
+  'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, decay: 4.0, susLevel: 1 },
+  'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, decay: 4.0, susLevel: 1 },
   'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_muted', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 3500, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, decay: 0.3, susLevel: 0.0 },
   // --- real keys / strings (recorded, FluidR3_GM) ---
-  'Piano': { engine: 'sample', sample: 'acoustic_grand_piano', wave: 'sawtooth', attack: 0.001, release: 0.5, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.05 },
-  'Electric Piano': { engine: 'sample', sample: 'electric_piano_1', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 3.0, susLevel: 0.15 },
+  'Piano': { engine: 'sample', sample: 'acoustic_grand_piano', wave: 'sawtooth', attack: 0.001, release: 0.5, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 4.0, susLevel: 1 },
+  'Electric Piano': { engine: 'sample', sample: 'electric_piano_1', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 3.0, susLevel: 1 },
   'Strings': { engine: 'sample', sample: 'string_ensemble_1', wave: 'sawtooth', attack: 0.25, release: 0.8, cutoff: 12000, detune: 0, gain: 0.95, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.9 },
   // --- choir: real recorded choir "aah" / "ooh" (FluidR3_GM), sustain-looped for long notes ---
   'Choir Aah': { engine: 'sample', sample: 'choir_aahs', wave: 'sawtooth', attack: 0.15, release: 0.6, cutoff: 12000, detune: 0, gain: 1.5, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.85 },
@@ -648,9 +648,15 @@ function applySynthPreset(t, name) {
 }
 /* older projects stored guitar/bass as oscillator synths (no 'engine' key) or modeled strings:
    switch them to the real recorded instruments (same preset name when it exists, else the default) */
+// decay instruments (guitar, bass, piano) now ring out with the recording's NATURAL decay (no sustain loop):
+// their presets use Sustain 100 %; a track still carrying the old preset Sustain value is moved to 100 % so a long
+// note rings like the real instrument instead of being damped twice
+const LEGACY_DECAY_SUS = { 'Clean Guitar': 0.35, 'Acoustic Guitar': 0.3, 'Finger Bass': 0.45, 'Pick Bass': 0.4, 'Crunch Guitar': 0.6, 'Distortion Guitar': 0.75, 'Power Chord Guitar': 0.75, 'Piano': 0.05, 'Electric Piano': 0.15 };
 function migrateStringTrack(t) {
   if (t.type !== 'synth' || !t.synth) return;
   const kp = SYNTH_PRESETS[t.synth.preset];
+  if (t.synth.engine === 'sample' && !SAMPLE_SETS[t.synth.sample]?.sustained && LEGACY_DECAY_SUS[t.synth.preset] !== undefined
+      && Math.abs((t.synth.susLevel ?? -1) - LEGACY_DECAY_SUS[t.synth.preset]) < 1e-9) t.synth.susLevel = 1;
   // choir presets used to be formant-synthesized: now real recorded choir (same preset name, mixer/FX untouched)
   if (t.synth.engine === 'voice' && kp?.engine === 'sample') Object.assign(t.synth, SYNTH_DEFAULTS, kp, { preset: t.synth.preset });
   // palm mute used the clean recording + a gate: now the real palm-muted guitar recording
@@ -776,38 +782,74 @@ function loadSampleSet(id) {
         let i = 0; while (i < y.length && Math.abs(y[i]) < pk * 0.02) i++;
         const off = Math.max(0, i - 24) / buf.sampleRate;
         const cents = set.sustained ? measureCents(buf, off, midiFreq(m)) : 0;  // recording's own detune
-        // the sustain loop must be pitch-synchronous to the REAL pitch of the recording, else the seam beats
-        bank.set(m, { ...prepSustain(buf, midiFreq(m) * Math.pow(2, cents / 1200), off), off, peak: pk, tune: -cents });
+        // SUSTAIN instruments (choir, voice, strings): long smooth loop -> a held note is one continuous "luuuuuu".
+        // DECAY instruments (guitar, bass, piano...): the natural recording, NO loop -> a held note rings and dies away
+        // like the real instrument instead of repeating ("luu-luu-luu"). The loop must be pitch-synchronous to the
+        // REAL pitch of the recording, else the seam beats.
+        const prep = set.sustained ? prepSustain(buf, midiFreq(m) * Math.pow(2, cents / 1200), off) : { buf: fadeTail(buf), loopStart: 0, loopEnd: 0 };
+        bank.set(m, { ...prep, off, peak: pk, tune: -cents });
       }).catch(e => console.warn('sample', id, m, e)));
   }
   const p = Promise.all(jobs).then(() => { sampleBank.set(id, bank); });
   sampleLoads.set(id, p); return p;
 }
-/* Make a recording sustainable like a real sampler instrument:
-   1. after the pick attack (first ~80 ms) the recording's own fade-out is evened out to a steady level, so the
-      Decay / Sustain / Release envelope (not the length of the recording) decides how the note fades;
-   2. a pitch-synchronous sustain LOOP (~0.5 s, 1.0 s after the attack) with a 50 ms crossfade lets a note ring
-      for as long as it is held, without a click or a pulse at the seam. */
+/* Decay instruments: the recording as it is, with a 150 ms fade at its very end so a note held longer than the
+   recording ends without a click. */
+function fadeTail(src) {
+  const sr = src.sampleRate, N = src.length, F = Math.min(N, Math.round(sr * 0.15));
+  const out = sampleDecoder.createBuffer(src.numberOfChannels, N, sr);
+  for (let ch = 0; ch < src.numberOfChannels; ch++) { const x = src.getChannelData(ch), y = out.getChannelData(ch); y.set(x); for (let k = 0; k < F; k++) y[N - F + k] *= 1 - k / F; }
+  return out;
+}
+/* Sustain instruments (choir, voice, strings) - make the recording hold for as long as the note is held:
+   1. after the attack the recording's own slow level changes are evened out (100 ms RMS, smoothed), so the
+      Decay / Sustain / Release envelope decides the level, not the length of the recording;
+   2. ONE LONG pitch-synchronous loop over almost the whole recording (~2 s instead of 0.5 s) with a 250 ms
+      equal-power crossfade at the seam -> no audible repetition / pulsing ("luuuuuu", not "luu-luu-luu"). */
+function steadiestLoop(x, sr, a, b, P) {
+  const F = Math.round(sr * 0.05), n = Math.max(0, Math.floor((b - a) / F)), lv = [], zc = [];
+  for (let f = 0; f < n; f++) { let e = 0, z = 0; const i0 = a + f * F; for (let k = i0; k < i0 + F; k++) { e += x[k] * x[k]; if (k > i0 && (x[k] > 0) !== (x[k - 1] > 0)) z++; } lv.push(10 * Math.log10(e / F + 1e-12)); zc.push(z); }
+  const sd = (v, i, j) => { let m = 0; for (let k = i; k < j; k++) m += v[k]; m /= (j - i); let q = 0; for (let k = i; k < j; k++) q += (v[k] - m) ** 2; return Math.sqrt(q / (j - i)); };
+  let best = null;
+  for (const lenS of [2.2, 1.8, 1.5, 1.2]) {
+    const L = Math.round(lenS / 0.05); if (L > n) continue;
+    for (let i = 0; i + L <= n; i++) {
+      const zm = zc.slice(i, i + L).reduce((p, q) => p + q, 0) / L || 1;
+      const score = sd(lv, i, i + L) + 6 * sd(zc, i, i + L) / zm + 0.5 * Math.abs(lv[i] - lv[i + L - 1]) - 0.15 * lenS;  // longer = repeats less often
+      if (!best || score < best.score) best = { score, i, L };
+    }
+  }
+  if (!best) { const ls = a, Lp = Math.max(Math.round(P), Math.round(Math.round((b - a) / P) * P)); return { ls, le: Math.min(ls + Lp, x.length - 1) }; }
+  const ls = a + best.i * F, Lp = Math.max(Math.round(P), Math.round(Math.round(best.L * F / P) * P));
+  return { ls, le: Math.min(ls + Lp, x.length - 1) };
+}
+// detuned synth layers: centre oscillator + two detuned ones at 12 % level. Measured on Lead/Pad/Keys/Pluck held 8 s:
+// equal detuned pairs swelled 2.5-10 dB (beating = "wow-wow"); at 12 % the swell is 0.8-1.5 dB at the same loudness.
+const DETUNE_SIDE = 0.12, DETUNE_NORM = Math.SQRT2 / Math.sqrt(1 + 2 * DETUNE_SIDE * DETUNE_SIDE);
+const SUSTAIN_XF = 'linear', SUSTAIN_WIN = 0.1, SUSTAIN_GMAX = 8;  // measured: shorter windows / lower caps did not reduce the swell  // seam crossfade shape (the two halves are pitch-synchronous = correlated -> linear keeps the level)
 function prepSustain(src, freq, off) {
   const sr = src.sampleRate, N = src.length, s0 = Math.round(off * sr);
   const out = sampleDecoder.createBuffer(src.numberOfChannels, N, sr);
-  const win = Math.round(sr * 0.02), hop = Math.round(sr * 0.005);
+  const win = Math.round(sr * SUSTAIN_WIN), hop = Math.round(sr * 0.01);
   const mono = src.getChannelData(0), env = [];
   for (let a = s0; a + win < N; a += hop) { let e = 0; for (let k = a; k < a + win; k++) e += mono[k] * mono[k]; env.push(Math.sqrt(e / win) + 1e-6); }
-  const envAt = idx => env[Math.max(0, Math.min(env.length - 1, Math.round((idx - s0) / hop)))];
-  const tA = s0 + Math.round(sr * 0.08), ramp = Math.round(sr * 0.05), ref = envAt(tA);
-  const P = sr / freq, ls = s0 + Math.round(sr * 1.0), Lp = Math.max(1, Math.round(Math.round(0.5 * sr / P) * P)), le = Math.min(ls + Lp, N - 1);
-  const X = Math.min(Math.round(sr * 0.05), ls - tA - 1, le - ls - 1);
+  const envAt = idx => { const f = clamp((idx - s0 - win / 2) / hop, 0, env.length - 1), i = Math.floor(f), j = Math.min(env.length - 1, i + 1); return env[i] + (env[j] - env[i]) * (f - i); };
+  const tA = s0 + Math.round(sr * 0.12), ramp = Math.round(sr * 0.1), ref = envAt(tA + ramp);
+  // choose the STEADIEST section of the recording as the loop (least level + brightness movement inside it and the
+  // closest match between its end and its start), so the held note does not swell / change colour periodically
+  const P = sr / freq, { ls, le } = steadiestLoop(mono, sr, s0 + Math.round(sr * 0.4), N - Math.round(sr * 0.3), P);
+  const X = Math.max(1, Math.min(Math.round(sr * 0.25), ls - tA - 1, Math.floor((le - ls) / 2)));
   for (let ch = 0; ch < src.numberOfChannels; ch++) {
     const x = src.getChannelData(ch), y = out.getChannelData(ch);
     for (let n = 0; n < N; n++) {
       if (n < tA) { y[n] = x[n]; continue; }
-      const gFlat = Math.min(8, ref / envAt(n)), w = Math.min(1, (n - tA) / ramp);
+      const gFlat = Math.min(SUSTAIN_GMAX, ref / envAt(n)), w = Math.min(1, (n - tA) / ramp);
       y[n] = x[n] * (1 + (gFlat - 1) * w);
     }
-    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j; y[a] = y[a] * (1 - w) + y[b] * w; }  // seam crossfade
-    // re-pitched playback interpolates a few samples PAST loopEnd: make them the continuation of loopStart,
-    // otherwise every loop wrap clicks
+    // crossfade: the last X samples before loopEnd fade into the X samples before loopStart, so the
+    // jump loopEnd -> loopStart is seamless
+    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j, k = SUSTAIN_XF === 'power' ? [Math.cos(w * Math.PI / 2), Math.sin(w * Math.PI / 2)] : [1 - w, w]; y[a] = y[a] * k[0] + y[b] * k[1]; }
+    // re-pitched playback interpolates a few samples PAST loopEnd: make them the continuation of loopStart
     for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k];
   }
   return { buf: out, loopStart: ls / sr, loopEnd: le / sr };
@@ -934,7 +976,7 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
       const smp = nearestSample(s.sample, midi + iv, true); if (!smp) return;
       const src = c.createBufferSource(), sg = c.createGain(), vf = c.createBiquadFilter();
       src.buffer = smp.buf; src.playbackRate.value = smp.rate; src.detune.value = d + (Math.random() * 6 - 3);
-      src.loop = true; src.loopStart = smp.loopStart; src.loopEnd = smp.loopEnd;  // sustain loop: long notes keep ringing
+      if (smp.loopEnd > smp.loopStart) { src.loop = true; src.loopStart = smp.loopStart; src.loopEnd = smp.loopEnd; }  // sustain instruments only; decay instruments ring out naturally
       sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1) / Math.max(0.05, smp.peak);  // recordings normalized to 1.0
       // velocity -> tone: a softly played note is darker, a hard one bright (like a real string / key / voice)
       vf.type = 'lowpass'; vf.Q.value = 0.5; vf.frequency.value = Math.min(18000, 900 + 17000 * Math.pow(clamp(vel, 0, 1), 1.6));
@@ -956,9 +998,11 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
     })));
     return oscs;
   }
-  intervals.forEach(iv => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
-    const o = c.createOscillator(); o.type = s.wave; o.frequency.value = midiFreq(midi + iv); o.detune.value = d;
-    o.connect(f); o.start(t); o.stop(end); oscs.push(o);
+  // detuned synths: a dominant centre oscillator + two quiet detuned ones (DETUNE_SIDE) -> a held note SUSTAINS evenly
+  // ("luuuuu") instead of beating; DETUNE_NORM keeps the loudness of the old two-oscillator sum
+  intervals.forEach(iv => (s.detune ? [[0, 1], [-s.detune, DETUNE_SIDE], [s.detune, DETUNE_SIDE]].map(([d, g]) => [d, g * DETUNE_NORM]) : [[0, 1]]).forEach(([d, lv]) => {
+    const o = c.createOscillator(), og = c.createGain(); o.type = s.wave; o.frequency.value = midiFreq(midi + iv); o.detune.value = d; og.gain.value = lv;
+    o.connect(og); og.connect(f); o.start(t); o.stop(end); oscs.push(o);
   }));
   return oscs;
 }
