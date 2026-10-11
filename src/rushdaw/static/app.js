@@ -2520,7 +2520,12 @@ function init() {
   $('#btnCut').onclick = () => copySelection(true);
   $('#btnPaste').onclick = () => pasteClipboard();
   // top bar: a group that wraps to the start of a new row gets no left separator (keeps every row flush left)
-  const markRowStarts = () => { let top = null; $('#topbar').querySelectorAll(':scope > *').forEach(g => { const t = g.offsetTop; g.classList.toggle('rowstart', top !== null && t > top + 4); top = t; }); };
+  const markRowStarts = () => {  // visual order (CSS `order` may move groups): sort by row, then x
+    const els = [...$('#topbar').querySelectorAll(':scope > *')].filter(g => g.offsetParent !== null);
+    els.forEach(g => g.classList.remove('rowstart'));
+    els.sort((a, b) => (a.offsetTop - b.offsetTop) || (a.offsetLeft - b.offsetLeft));
+    let top = null; els.forEach(g => { const t = g.offsetTop; g.classList.toggle('rowstart', top !== null && t > top + 4); top = t; });
+  };
   new ResizeObserver(markRowStarts).observe($('#topbar')); window.addEventListener('resize', markRowStarts); markRowStarts();
   $('#btnUndo').onclick = () => undo();
   $('#btnRedo').onclick = () => redo();

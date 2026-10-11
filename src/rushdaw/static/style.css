@@ -259,7 +259,7 @@ button,select,input{touch-action:manipulation}
    Every control is exactly --ctl tall, icons are one SVG set (same size / stroke), labels are vertically centred,
    groups are separated by a 1px rule with equal spacing on both sides. */
 #topbar{--ctl:30px;--gap:6px;display:flex;flex-wrap:wrap;align-items:center;column-gap:0;row-gap:8px;padding:8px 12px}
-#topbar .logo{height:var(--ctl);display:flex;align-items:center;padding-right:14px;line-height:1}
+#topbar .logo{height:var(--ctl);display:flex;align-items:center;padding-right:12px;line-height:1}
 #topbar .group{display:flex;align-items:center;gap:var(--gap);flex-wrap:nowrap;padding:0 12px;border-left:1px solid var(--line);min-height:var(--ctl)}
 #topbar button,#topbar select,#topbar input:not([type=checkbox]):not([type=range]),#timeDisplay{height:var(--ctl);margin:0;line-height:1;vertical-align:middle}
 #topbar button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;white-space:nowrap;font-size:13px}
@@ -308,3 +308,7 @@ button,select,input{touch-action:manipulation}
   #topbar #title{width:110px}
 }
 #topbar .group.rowstart{border-left:none;padding-left:0}
+#topbar .group.export{margin-left:auto}
+#topbar .group.export.rowstart{margin-left:0}
+/* narrower than one long first row: Export goes to the end of the last row (right-aligned) instead of sitting alone */
+@media (max-width:1719px){ #topbar .group.export{order:1} }

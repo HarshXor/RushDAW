@@ -27,6 +27,11 @@
     <label class="toggle"><input id="loop" type="checkbox"> Loop</label>
     <label class="fld zoom">Zoom <input id="zoom" type="range" min="10" max="300" value="60"></label>
   </div>
+  <div class="group export">
+    <select id="exportFmt" title="Export format"><option value="wav">WAV</option></select>
+    <label class="toggle" title="Off = export sounds exactly like playback in the studio. On = raise the level to the master ceiling."><input id="normalize" type="checkbox"> Normalize</label>
+    <button id="btnExport" class="primary" title="Export the song"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg><span class="tx">Export</span></button>
+  </div>
   <div class="group add">
     <button id="addAudio"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="tx">Audio</span></button>
     <button id="addDrum"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="tx">Drum</span></button>
@@ -37,8 +42,8 @@
     <button id="btnImport" title="Import audio / video files"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v4h14v-4"/></svg><span class="tx">Import…</span></button>
   </div>
   <div class="group edit">
-    <button id="btnUndo" title="Undo (Ctrl/Cmd+Z)" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9a5 5 0 0 1 0 10h-2"/></svg><span class="tx">Undo</span></button>
-    <button id="btnRedo" title="Redo (Ctrl/Cmd+Shift+Z · Ctrl+Y)" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 4.5 4.5L15 16"/><path d="M19 11.5h-9a5 5 0 0 0 0 10h2"/></svg><span class="tx">Redo</span></button>
+    <button id="btnUndo" title="Undo (Ctrl/Cmd+Z)" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5 4.5 10 9 14.5"/><path d="M5 10h9a5 5 0 0 1 0 10h-2"/></svg><span class="tx">Undo</span></button>
+    <button id="btnRedo" title="Redo (Ctrl/Cmd+Shift+Z · Ctrl+Y)" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5.5 4.5 4.5-4.5 4.5"/><path d="M19 10h-9a5 5 0 0 0 0 10h2"/></svg><span class="tx">Redo</span></button>
     <button id="btnCopy" title="Copy selected clip(s) / track / drum part (Ctrl/Cmd+C)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/></svg><span class="tx">Copy</span></button>
     <button id="btnCut" title="Cut (Ctrl/Cmd+X)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M8.3 15.7 19 4M15.7 15.7 5 4"/></svg><span class="tx">Cut</span></button>
     <button id="btnPaste" title="Paste (Ctrl/Cmd+V) – clips at the playhead, tracks below the selected track"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3.5h6V5"/><path d="M9 11h6M9 15h4"/></svg><span class="tx">Paste</span></button>
@@ -51,11 +56,6 @@
     <button id="btnSave" title="Save a new revision (Ctrl/Cmd+S)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg><span class="tx">Save</span></button>
     <button id="btnHistory" title="Revision history"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg><span class="tx">History</span></button>
     <span id="dirtyDot" title="Unsaved changes"></span>
-  </div>
-  <div class="group export">
-    <select id="exportFmt" title="Export format"><option value="wav">WAV</option></select>
-    <label class="toggle" title="Off = export sounds exactly like playback in the studio. On = raise the level to the master ceiling."><input id="normalize" type="checkbox"> Normalize</label>
-    <button id="btnExport" class="primary" title="Export the song"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg><span class="tx">Export</span></button>
   </div>
 </header>
 
