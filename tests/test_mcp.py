@@ -441,14 +441,30 @@ class VocalMidiTest(unittest.TestCase):
     def test_vocal_track_and_formant_fx(self):
         proj = {"tracks": [], "bpm": 120, "sig": 4}
         v = M.new_track(proj, "vocal")
-        self.assertEqual((v["type"], v["instrument"], v["name"], v["synth"]["engine"], v["synth"]["preset"]), ("synth", "vocal", "Voice", "voice", "Choir Aah"))
+        self.assertEqual((v["type"], v["instrument"], v["name"], v["synth"]["engine"], v["synth"]["preset"], v["synth"]["sample"]), ("synth", "vocal", "Voice", "sample", "Choir Aah", "choir_aahs"))
         self.assertEqual([f["type"] for f in v["fx"]], ["eq", "chorus", "reverb"])
         f = M.new_fx("formant", {"vowel": "u", "shift": 1.2})
         self.assertEqual((f["p"]["vowel"], f["p"]["shift"], f["p"]["mix"]), ("u", 1.2, 0.8))
         with self.assertRaises(M.ModelError):
             M.new_fx("formant", {"vowel": "x"})
-        for name in ("Choir Ooh", "Solo Hoo", "Solo Haa", "Choir Ohh"):
+        for name in ("Choir Aah", "Choir Ooh", "Choir Ohh"):  # real recorded choir
+            self.assertEqual(M.SYNTH_PRESETS[name]["engine"], "sample")
+        for name in ("Solo Hoo", "Solo Haa"):  # formant-synthesized solo voice
             self.assertEqual(M.SYNTH_PRESETS[name]["engine"], "voice")
+
+    def test_natural_instruments_migration(self):
+        proj = {"tracks": [
+            {"type": "synth", "instrument": "vocal", "synth": {"preset": "Choir Ooh", "engine": "voice", "vowel": "u", "voices": 4}},
+            {"type": "synth", "instrument": "guitar", "synth": {**M.SYNTH_DEFAULTS, "preset": "Palm Mute Guitar", "engine": "sample", "sample": "electric_guitar_clean", "decay": 0.18, "cutoff": 1800}},
+            {"type": "synth", "instrument": "vocal", "synth": {"preset": "Solo Hoo", "engine": "voice"}},
+        ], "bpm": 120, "sig": 4}
+        M.migrate_strings(proj)
+        a, b, c = (t["synth"] for t in proj["tracks"])
+        self.assertEqual((a["engine"], a["sample"], a["preset"]), ("sample", "voice_oohs", "Choir Ooh"))
+        self.assertEqual((b["sample"], b["decay"], b["cutoff"]), ("electric_guitar_muted", 0.3, 3500))
+        self.assertEqual(c["engine"], "voice")
+        p = M.new_track({"tracks": [], "bpm": 120, "sig": 4}, "synth")
+        self.assertEqual((p["synth"]["preset"], p["synth"]["engine"], p["synth"]["sample"]), ("Piano", "sample", "acoustic_grand_piano"))
 
 
 class NaturalDrumTest(unittest.TestCase):

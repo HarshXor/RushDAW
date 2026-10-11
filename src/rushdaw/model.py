@@ -52,7 +52,8 @@ DRUM_PRESETS = {
 SYNTH_DEFAULTS = {'engine': 'osc', 'sample': 'electric_guitar_clean', 'decay': 1.5, 'susLevel': 0.3, 'drive': 0, 'chord': 'none', 'pluck': 0, 'brightness': 0.5, 'sustain': 0.5, 'pick': 0.13, 'body': 0.5, 'vowel': 'a', 'voices': 1, 'breath': 0, 'vibrato': 0}
 DEFAULT_VOCAL_PRESET = 'Choir Aah'
 DEFAULT_GUITAR_PRESET, DEFAULT_BASS_PRESET = 'Clean Guitar', 'Finger Bass'
-SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick']
+SAMPLE_SETS = ['electric_guitar_clean', 'acoustic_guitar_steel', 'electric_bass_finger', 'electric_bass_pick',
+               'electric_guitar_muted', 'choir_aahs', 'voice_oohs', 'acoustic_grand_piano', 'electric_piano_1', 'string_ensemble_1']
 _SMP = {'engine': 'sample', 'wave': 'sawtooth', 'attack': 0.001, 'detune': 0, 'pluck': 0}
 SYNTH_PRESETS = {
     # real instruments: recorded guitar / bass (FluidR3_GM soundfont)
@@ -71,11 +72,16 @@ SYNTH_PRESETS = {
     'Crunch Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 6000, 'gain': 0.4, 'drive': 0.35, 'chord': 'none', 'decay': 3.0, 'susLevel': 0.6},
     'Distortion Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.32, 'drive': 0.8, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.75},
     'Power Chord Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.2, 'cutoff': 5000, 'gain': 0.26, 'drive': 0.8, 'chord': 'power', 'decay': 4.0, 'susLevel': 0.75},
-    'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_clean', 'release': 0.05, 'cutoff': 1800, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'decay': 0.18, 'susLevel': 0.0},
-    # voice (formant-synthesized human voice: choir / solo "hooo" / "haaa", sustains like a held note)
-    'Choir Aah': {'engine': 'voice', 'vowel': 'a', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.12, 'release': 0.6, 'cutoff': 7000, 'detune': 9, 'gain': 0.5, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
-    'Choir Ooh': {'engine': 'voice', 'vowel': 'u', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.14, 'release': 0.7, 'cutoff': 6000, 'detune': 9, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
-    'Choir Ohh': {'engine': 'voice', 'vowel': 'o', 'voices': 4, 'wave': 'sawtooth', 'attack': 0.12, 'release': 0.6, 'cutoff': 6500, 'detune': 9, 'gain': 0.55, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.15, 'vibrato': 0.35, 'decay': 1.0, 'susLevel': 0.85},
+    'Palm Mute Guitar': {**_SMP, 'sample': 'electric_guitar_muted', 'release': 0.05, 'cutoff': 3500, 'gain': 0.32, 'drive': 0.75, 'chord': 'power', 'decay': 0.3, 'susLevel': 0.0},
+    # real keys / strings (recorded, FluidR3_GM)
+    'Piano': {**_SMP, 'sample': 'acoustic_grand_piano', 'release': 0.5, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 4.0, 'susLevel': 0.05},
+    'Electric Piano': {**_SMP, 'sample': 'electric_piano_1', 'release': 0.4, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 3.0, 'susLevel': 0.15},
+    'Strings': {**_SMP, 'sample': 'string_ensemble_1', 'attack': 0.25, 'release': 0.8, 'cutoff': 12000, 'gain': 0.95, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.9},
+    # choir: real recorded choir "aah" / "ooh" (FluidR3_GM), sustain-looped for long notes
+    'Choir Aah': {**_SMP, 'sample': 'choir_aahs', 'attack': 0.15, 'release': 0.6, 'cutoff': 12000, 'gain': 1.5, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.85},
+    'Choir Ooh': {**_SMP, 'sample': 'voice_oohs', 'attack': 0.15, 'release': 0.7, 'cutoff': 12000, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.85},
+    'Choir Ohh': {**_SMP, 'sample': 'voice_oohs', 'attack': 0.15, 'release': 0.6, 'cutoff': 2600, 'gain': 0.65, 'drive': 0, 'chord': 'none', 'decay': 1.0, 'susLevel': 0.85},
+    # solo voice (formant-synthesized single voice "hooo" / "haaa"; no free solo recordings)
     'Solo Hoo': {'engine': 'voice', 'vowel': 'u', 'voices': 1, 'wave': 'sawtooth', 'attack': 0.06, 'release': 0.35, 'cutoff': 6000, 'detune': 0, 'gain': 0.6, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.35, 'vibrato': 0.5, 'decay': 0.8, 'susLevel': 0.8},
     'Solo Haa': {'engine': 'voice', 'vowel': 'a', 'voices': 1, 'wave': 'sawtooth', 'attack': 0.05, 'release': 0.35, 'cutoff': 7500, 'detune': 0, 'gain': 0.5, 'drive': 0, 'chord': 'none', 'pluck': 0, 'breath': 0.35, 'vibrato': 0.5, 'decay': 0.8, 'susLevel': 0.8},
     # modeled string (Karplus-Strong), kept for experimenting
@@ -338,6 +344,11 @@ def migrate_strings(proj):
         s = t.get('synth')
         if t.get('type') != 'synth' or not s:
             continue
+        kp = SYNTH_PRESETS.get(s.get('preset')) or {}
+        if s.get('engine') == 'voice' and kp.get('engine') == 'sample':  # choir: formant synth -> real recording
+            s.update({**SYNTH_DEFAULTS, **kp, 'preset': s['preset']})
+        if s.get('preset') == 'Palm Mute Guitar' and s.get('sample') == 'electric_guitar_clean':  # real palm-muted recording
+            s.update({k: kp[k] for k in ('sample', 'cutoff', 'decay')})
         if not t.get('instrument') and s.get('preset') == 'Bass':
             t['instrument'] = 'bass'
         if t.get('instrument') not in ('guitar', 'bass'):
@@ -411,7 +422,7 @@ def new_track(proj, kind, name=None):
         t['kit'] = {}
         t['feel'] = {'hum': 6, 'swing': 0, 'push': 0}
     if ttype == 'synth':
-        preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET, 'vocal': DEFAULT_VOCAL_PRESET}.get(kind, 'Keys')
+        preset = {'guitar': DEFAULT_GUITAR_PRESET, 'bass': DEFAULT_BASS_PRESET, 'vocal': DEFAULT_VOCAL_PRESET}.get(kind, 'Piano')  # natural (recorded) by default
         t['synth'] = {'preset': preset, **SYNTH_DEFAULTS, **SYNTH_PRESETS[preset]}
         t['bars'] = 1
         t['notes'] = []

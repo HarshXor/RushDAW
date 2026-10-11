@@ -82,11 +82,16 @@ const SYNTH_PRESETS = {
   'Crunch Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 6000, detune: 0, gain: 0.4, drive: 0.35, chord: 'none', pluck: 0, decay: 3.0, susLevel: 0.6 },
   'Distortion Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.32, drive: 0.8, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.75 },
   'Power Chord Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.2, cutoff: 5000, detune: 0, gain: 0.26, drive: 0.8, chord: 'power', pluck: 0, decay: 4.0, susLevel: 0.75 },
-  'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_clean', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 1800, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, decay: 0.18, susLevel: 0.0 },
-  // --- voice (engine 'voice' = formant-synthesized human voice: choir / solo "hooo" / "haaa", sustains like a held note) ---
-  'Choir Aah': { engine: 'voice', vowel: 'a', voices: 4, wave: 'sawtooth', attack: 0.12, release: 0.6, cutoff: 7000, detune: 9, gain: 0.5, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
-  'Choir Ooh': { engine: 'voice', vowel: 'u', voices: 4, wave: 'sawtooth', attack: 0.14, release: 0.7, cutoff: 6000, detune: 9, gain: 0.6, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
-  'Choir Ohh': { engine: 'voice', vowel: 'o', voices: 4, wave: 'sawtooth', attack: 0.12, release: 0.6, cutoff: 6500, detune: 9, gain: 0.55, drive: 0, chord: 'none', pluck: 0, breath: 0.15, vibrato: 0.35, decay: 1.0, susLevel: 0.85 },
+  'Palm Mute Guitar': { engine: 'sample', sample: 'electric_guitar_muted', wave: 'sawtooth', attack: 0.001, release: 0.05, cutoff: 3500, detune: 0, gain: 0.32, drive: 0.75, chord: 'power', pluck: 0, decay: 0.3, susLevel: 0.0 },
+  // --- real keys / strings (recorded, FluidR3_GM) ---
+  'Piano': { engine: 'sample', sample: 'acoustic_grand_piano', wave: 'sawtooth', attack: 0.001, release: 0.5, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 4.0, susLevel: 0.05 },
+  'Electric Piano': { engine: 'sample', sample: 'electric_piano_1', wave: 'sawtooth', attack: 0.001, release: 0.4, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 3.0, susLevel: 0.15 },
+  'Strings': { engine: 'sample', sample: 'string_ensemble_1', wave: 'sawtooth', attack: 0.25, release: 0.8, cutoff: 12000, detune: 0, gain: 0.95, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.9 },
+  // --- choir: real recorded choir "aah" / "ooh" (FluidR3_GM), sustain-looped for long notes ---
+  'Choir Aah': { engine: 'sample', sample: 'choir_aahs', wave: 'sawtooth', attack: 0.15, release: 0.6, cutoff: 12000, detune: 0, gain: 1.5, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.85 },
+  'Choir Ooh': { engine: 'sample', sample: 'voice_oohs', wave: 'sawtooth', attack: 0.15, release: 0.7, cutoff: 12000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.85 },
+  'Choir Ohh': { engine: 'sample', sample: 'voice_oohs', wave: 'sawtooth', attack: 0.15, release: 0.6, cutoff: 2600, detune: 0, gain: 0.65, drive: 0, chord: 'none', pluck: 0, decay: 1.0, susLevel: 0.85 },
+  // --- solo voice (engine 'voice' = formant-synthesized single voice "hooo" / "haaa"; no free solo recordings) ---
   'Solo Hoo': { engine: 'voice', vowel: 'u', voices: 1, wave: 'sawtooth', attack: 0.06, release: 0.35, cutoff: 6000, detune: 0, gain: 0.6, drive: 0, chord: 'none', pluck: 0, breath: 0.35, vibrato: 0.5, decay: 0.8, susLevel: 0.8 },
   'Solo Haa': { engine: 'voice', vowel: 'a', voices: 1, wave: 'sawtooth', attack: 0.05, release: 0.35, cutoff: 7500, detune: 0, gain: 0.5, drive: 0, chord: 'none', pluck: 0, breath: 0.35, vibrato: 0.5, decay: 0.8, susLevel: 0.8 },
   // --- modeled string (Karplus-Strong), kept for experimenting ---
@@ -136,7 +141,7 @@ function newTrack(type) {
     eq: { low: 0, mid: 0, high: 0 }, comp: { thr: 0, ratio: 1 }, rev: 0, dly: 0, fx: [], clips: [],
   };
   if (type === 'drum') { t.pattern = { bars: 1, grid: DRUMS.map(() => Array(stepsPerBar()).fill(0)), ids: DRUM_IDS.slice() }; applyDrumPreset(t, DEFAULT_DRUM_PRESET); t.rev = 0.12; t.feel = { hum: 6, swing: 0, push: 0 }; /* a little room + drummer timing = acoustic kit feel */ }
-  if (type === 'synth') { t.synth = { preset: 'Keys', ...SYNTH_PRESETS.Keys }; t.bars = 1; t.notes = []; }
+  if (type === 'synth') { t.synth = { preset: 'Piano', ...SYNTH_DEFAULTS, ...SYNTH_PRESETS.Piano }; t.bars = 1; t.notes = []; }  // natural (recorded) by default
   if (type === 'audio') t.arm = !P.tracks.some(x => x.arm);
   P.tracks.push(t);
   return t;
@@ -587,6 +592,11 @@ function applySynthPreset(t, name) {
    switch them to the real recorded instruments (same preset name when it exists, else the default) */
 function migrateStringTrack(t) {
   if (t.type !== 'synth' || !t.synth) return;
+  const kp = SYNTH_PRESETS[t.synth.preset];
+  // choir presets used to be formant-synthesized: now real recorded choir (same preset name, mixer/FX untouched)
+  if (t.synth.engine === 'voice' && kp?.engine === 'sample') Object.assign(t.synth, SYNTH_DEFAULTS, kp, { preset: t.synth.preset });
+  // palm mute used the clean recording + a gate: now the real palm-muted guitar recording
+  if (t.synth.preset === 'Palm Mute Guitar' && t.synth.sample === 'electric_guitar_clean') Object.assign(t.synth, { sample: kp.sample, cutoff: kp.cutoff, decay: kp.decay });
   if (!t.instrument && t.synth.preset === 'Bass') t.instrument = 'bass';
   if (t.instrument !== 'guitar' && t.instrument !== 'bass') return;
   const known = SYNTH_PRESETS[t.synth.preset];
@@ -646,6 +656,12 @@ const SAMPLE_SETS = {
   acoustic_guitar_steel: { name: 'Acoustic Guitar (steel)', lo: 40, hi: 88 },
   electric_bass_finger: { name: 'Electric Bass (finger)', lo: 28, hi: 67 },
   electric_bass_pick: { name: 'Electric Bass (pick)', lo: 28, hi: 67 },
+  electric_guitar_muted: { name: 'Electric Guitar (palm muted)', lo: 40, hi: 88 },
+  choir_aahs: { name: 'Choir Aahs', lo: 48, hi: 84 },
+  voice_oohs: { name: 'Voice Oohs', lo: 48, hi: 84 },
+  acoustic_grand_piano: { name: 'Acoustic Grand Piano', lo: 36, hi: 84 },
+  electric_piano_1: { name: 'Electric Piano', lo: 36, hi: 84 },
+  string_ensemble_1: { name: 'String Ensemble', lo: 36, hi: 84 },
 };
 const SAMPLE_STEP = 3;
 const sampleBank = new Map();   // set id -> Map(midi -> { buf, off })  (AudioBuffers are shared by all contexts)
@@ -705,9 +721,16 @@ async function samplesReady() {
   await Promise.all([...ids].map(loadSampleSet));
   if (P.tracks.some(t => t.type === 'drum' && t.drumEngine !== 'synth')) await loadDrumSamples();
 }
-function nearestSample(id, m) {
+// rr = round-robin: a repeated note sometimes uses the neighbouring recording (re-pitched <= 2 semitones),
+// so the same note played twice is not the identical sample (like a real player hitting it twice)
+const rrLast = new Map();
+function nearestSample(id, m, rr = false) {
   const set = SAMPLE_SETS[id], bank = sampleBank.get(id); if (!set || !bank) return null;
-  const k = clamp(set.lo + Math.round((m - set.lo) / SAMPLE_STEP) * SAMPLE_STEP, set.lo, set.hi);
+  let k = clamp(set.lo + Math.round((m - set.lo) / SAMPLE_STEP) * SAMPLE_STEP, set.lo, set.hi);
+  if (rr) {
+    const alt = clamp(m > k ? k + SAMPLE_STEP : k - SAMPLE_STEP, set.lo, set.hi), key = id + ':' + m;
+    if (alt !== k && Math.abs(m - alt) <= 2 && bank.has(alt)) { if (rrLast.get(key) === k) k = alt; rrLast.set(key, k); }
+  }
   const e = bank.get(k); return e ? { ...e, rate: Math.pow(2, (m - k) / 12) } : null;
 }
 // Decay (s) and Sustain (0..1) of the sample engine; older tracks without them use their preset's values
@@ -810,12 +833,14 @@ function playSynth(c, dest, s, midi, t, dur, vel = 1) {
   if (s.engine === 'sample') {
     // real recording: re-pitch the nearest sample, tiny random tuning (+-3 cents) like a real player
     intervals.forEach((iv, k) => (s.detune ? [-s.detune, s.detune] : [0]).forEach(d => {
-      const smp = nearestSample(s.sample, midi + iv); if (!smp) return;
-      const src = c.createBufferSource(), sg = c.createGain();
+      const smp = nearestSample(s.sample, midi + iv, true); if (!smp) return;
+      const src = c.createBufferSource(), sg = c.createGain(), vf = c.createBiquadFilter();
       src.buffer = smp.buf; src.playbackRate.value = smp.rate; src.detune.value = d + (Math.random() * 6 - 3);
       src.loop = true; src.loopStart = smp.loopStart; src.loopEnd = smp.loopEnd;  // sustain loop: long notes keep ringing
       sg.gain.value = (intervals.length > 1 ? 0.6 : 1) * (s.detune ? 0.7 : 1) / Math.max(0.05, smp.peak);  // recordings normalized to 1.0
-      src.connect(sg); sg.connect(input);
+      // velocity -> tone: a softly played note is darker, a hard one bright (like a real string / key / voice)
+      vf.type = 'lowpass'; vf.Q.value = 0.5; vf.frequency.value = Math.min(18000, 900 + 17000 * Math.pow(clamp(vel, 0, 1), 1.6));
+      src.connect(sg); sg.connect(vf); vf.connect(input);
       src.start(t + k * (0.006 + Math.random() * 0.006), smp.off); src.stop(end); oscs.push(src);  // chord notes strummed a few ms apart
     }));
     return oscs;

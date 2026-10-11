@@ -1,7 +1,7 @@
 RushDAW instrument samples
 ==========================
 
-The recorded guitar and bass notes in this folder come from the
+The recorded guitar, bass, piano, strings and choir notes in this folder come from the
 Fluid (R3) General MIDI SoundFont (FluidR3_GM.sf2) by Frank Wen,
 as pre-rendered to MP3 by the "MIDI.js Soundfonts" project
 (https://github.com/gleitz/midi-js-soundfonts).
@@ -14,6 +14,12 @@ Instruments used (one note every 3 semitones; file name = MIDI note number):
   acoustic_guitar_steel/   Acoustic Guitar (steel)   MIDI 40-88
   electric_bass_finger/    Electric Bass (finger)    MIDI 28-67
   electric_bass_pick/      Electric Bass (pick)      MIDI 28-67
+  electric_guitar_muted/   Electric Guitar (muted)   MIDI 40-88   (palm mute)
+  choir_aahs/              Choir Aahs                MIDI 48-84
+  voice_oohs/              Voice Oohs                MIDI 48-84
+  acoustic_grand_piano/    Acoustic Grand Piano      MIDI 36-84
+  electric_piano_1/        Electric Piano 1          MIDI 36-84
+  string_ensemble_1/       String Ensemble 1         MIDI 36-84
 
 The files are unmodified copies; RushDAW re-pitches and processes them at playback.
 
