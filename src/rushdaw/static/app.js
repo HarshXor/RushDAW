@@ -848,9 +848,29 @@ function prepSustain(src, freq, off) {
     }
     // crossfade: the last X samples before loopEnd fade into the X samples before loopStart, so the
     // jump loopEnd -> loopStart is seamless
-    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j, k = SUSTAIN_XF === 'power' ? [Math.cos(w * Math.PI / 2), Math.sin(w * Math.PI / 2)] : [1 - w, w]; y[a] = y[a] * k[0] + y[b] * k[1]; }
+    // correlation-compensated: a linear fade of two only partly similar sections dips (~-4 dB measured on Choir Aah,
+    // heard as "luu..luu" once per loop); dividing by the expected level of the mix keeps the seam at full level
+    let sab = 0, saa = 0, sbb = 0;
+    for (let j = 0; j < X; j++) { const p = y[le - X + j], q = y[ls - X + j]; sab += p * q; saa += p * p; sbb += q * q; }
+    const rho = clamp(sab / Math.sqrt(saa * sbb + 1e-20), -0.2, 1);
+    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j, k0 = 1 - w, k1 = w, nrm = Math.sqrt(Math.max(0.25, k0 * k0 + k1 * k1 + 2 * rho * k0 * k1)); y[a] = (y[a] * k0 + y[b] * k1) / nrm; }
     // re-pitched playback interpolates a few samples PAST loopEnd: make them the continuation of loopStart
     for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k];
+  }
+  // 3. re-level the whole looped section AFTER the seam crossfade (20 ms RMS, smoothed): any level hole left at the
+  //    seam (partly cancelling sections, e.g. Choir Ooh A4 measured -4.6 dB) is filled, so the held note stays even
+  const ow = Math.round(sr * 0.02), oh = Math.round(sr * 0.005), a0 = Math.max(tA + ramp, ls - X - ow), a1 = Math.min(N - ow, le + 256);
+  if (a1 > a0 + ow) {
+    const y0 = out.getChannelData(0), gs = [];
+    for (let a = a0; a + ow <= a1; a += oh) { let e = 0; for (let k = a; k < a + ow; k++) e += y0[k] * y0[k]; gs.push(clamp(ref / (Math.sqrt(e / ow) + 1e-6), 0.5, 2.5)); }
+    for (let i = 1; i < gs.length; i++) gs[i] = gs[i - 1] + (gs[i] - gs[i - 1]) * 0.35;  // smooth: no zipper
+    for (let i = gs.length - 2; i >= 0; i--) gs[i] = gs[i + 1] + (gs[i] - gs[i + 1]) * 0.35;
+    const gAt = n => { const f = clamp((n - a0 - ow / 2) / oh, 0, gs.length - 1), i = Math.floor(f), j = Math.min(gs.length - 1, i + 1); return gs[i] + (gs[j] - gs[i]) * (f - i); };
+    const edge = Math.round(sr * 0.05);
+    for (let ch = 0; ch < out.numberOfChannels; ch++) { const y = out.getChannelData(ch);
+      for (let n = a0; n < a1; n++) { const w = Math.min(1, (n - a0) / edge, (a1 - n) / edge); y[n] *= 1 + (gAt(n) - 1) * w; } }
+    // keep the samples past loopEnd = continuation of loopStart (interpolation guard)
+    for (let ch = 0; ch < out.numberOfChannels; ch++) { const y = out.getChannelData(ch); for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k]; }
   }
   return { buf: out, loopStart: ls / sr, loopEnd: le / sr };
 }
