@@ -2072,6 +2072,10 @@ function masterChanged() {
     const up = document.getElementById('mpUpdate'); if (up) up.disabled = !(mod && findMasterPreset(M.preset) && !findMasterPreset(M.preset).builtin);
   }
 }
+// "Custom" in the dropdown: keep every current value, drop the preset link -> the label is just "Custom"
+function setMasterCustom() {
+  P.master.preset = null; P.master.presetParams = null; renderMaster(); undoCaptureSoon(); status('Mastering: Custom');
+}
 function chooseMasterPreset(name) {
   const p = findMasterPreset(name); if (!p) return;
   applyMasterPreset(P.master, p.name, p.params); if (rt) applyMaster(rt); renderMaster(); undoCaptureSoon();
@@ -2229,7 +2233,7 @@ function renderMaster() {
   const dB = v => (v > 0 ? '+' : '') + (+v).toFixed(1) + ' dB', Hz = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + ' kHz' : Math.round(v) + ' Hz', ms = v => (v * 1000).toFixed(v < 0.01 ? 1 : 0) + ' ms';
   // preset selector: built-in + "My presets"; the current one stays selected while it is edited (label gets "(custom)")
   const cur = findMasterPreset(M.preset), selVal = cur ? (cur.builtin ? 'b:' : 'u:') + cur.name : '';
-  const sel = el('select', { id: 'mpSel', title: 'Choose a mastering preset', onchange: e => { const v = e.target.value; if (v) chooseMasterPreset(v.slice(2)); } },
+  const sel = el('select', { id: 'mpSel', title: 'Choose a mastering preset', onchange: e => { const v = e.target.value; if (v) chooseMasterPreset(v.slice(2)); else setMasterCustom(); } },
     el('option', { value: '' }, M.preset && !cur ? `${M.preset} (deleted)` : 'Custom'),
     el('optgroup', { label: 'Built-in' }, Object.keys(MASTER_PRESETS).map(k => el('option', { value: 'b:' + k }, k))),
     userMasterPresets.length ? el('optgroup', { label: 'My presets' }, userMasterPresets.map(p => el('option', { value: 'u:' + p.name }, p.name))) : null);
