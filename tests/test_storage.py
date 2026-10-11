@@ -66,25 +66,6 @@ class StorageTest(unittest.TestCase):
         db = sqlite3.connect(os.path.join(self.tmp.name, "db.sql"))
         self.assertIsNotNone(db.execute("SELECT mix FROM revisions WHERE number = 2").fetchone()[0]); db.close()
 
-    def test_live_mix_wins_until_next_save(self):
-        tr = [{"id": n, "name": n, "mute": False, "solo": False} for n in ("Drums", "Bass", "Guitar")]
-        doc = lambda tracks: json.dumps({"app": "rushdaw", "version": 1, "audio": {}, "project": {"title": "Live", "bpm": 120, "sig": 4, "tracks": tracks}}).encode()
-        p = self.st.create_project("Live")
-        self.st.save_revision(p["id"], doc(tr))
-        # editor: solo Guitar, then mute Drums instead (last change wins), never saved
-        self.st.set_live_mix(p["id"], [dict(t, solo=t["id"] == "Guitar") for t in tr])
-        self.st.set_live_mix(p["id"], [dict(t, mute=t["id"] == "Drums") for t in tr])
-        row = self.st.query_projects(q="Live")["projects"][0]
-        self.assertEqual((row["mix"]["audible"], row["mix_unsaved"]), (["Bass", "Guitar"], True))
-        self.assertNotIn("live_mix", row)
-        self.assertEqual(self.st.get_project(p["id"])["live_mix"][0]["mute"], True)
-        with zipfile.ZipFile(io.BytesIO(self.st.export_package(p["id"])[0])) as z:  # export uses the latest mute / solo
-            self.assertTrue(json.loads(z.read("project.rushdaw"))["project"]["tracks"][0]["mute"])
-        self.st.save_revision(p["id"], doc(tr))  # a save stores its own mute / solo and clears the live mix
-        row = self.st.query_projects(q="Live")["projects"][0]
-        self.assertEqual((row["mix_unsaved"], row["mix"]["mute"]), (False, []))
-        self.assertIsNone(self.st.get_project(p["id"])["live_mix"])
-
     def test_db_holds_metadata_only(self):
         p = self.st.create_project("Meta")
         self.st.save_revision(p["id"], project_bytes(), "x")

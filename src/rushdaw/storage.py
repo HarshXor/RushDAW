@@ -85,9 +85,6 @@ class Storage:
             # mute / solo state of each revision (what Download renders), added later -> migrate older databases
             if "mix" not in {r[1] for r in db.execute("PRAGMA table_info(revisions)")}:
                 db.execute("ALTER TABLE revisions ADD COLUMN mix TEXT")
-            # live mute / solo from the editor (unsaved): always what Play / Download use; cleared by the next save
-            if "live_mix" not in {r[1] for r in db.execute("PRAGMA table_info(projects)")}:
-                db.execute("ALTER TABLE projects ADD COLUMN live_mix TEXT")
 
     # ------------------------------------------------------------ helpers
     @contextlib.contextmanager
@@ -131,37 +128,6 @@ class Storage:
         name = lambda t: str(t.get("name") or "Track")
         return {"solo": [name(t) for t in tracks if t.get("solo")], "mute": [name(t) for t in tracks if t.get("mute")],
                 "audible": [name(t) for t in tracks if not t.get("mute") and (not any_solo or t.get("solo"))]}
-
-    @staticmethod
-    def apply_live_mix(proj, live):
-        """Put the editor's latest mute / solo (live mix, matched by track id) onto a project document."""
-        if not live:
-            return proj
-        by_id = {str(x.get("id")): x for x in live if isinstance(x, dict)}
-        for t in proj.get("tracks") or []:
-            x = by_id.get(str(t.get("id")))
-            if x is not None:
-                t["mute"], t["solo"] = bool(x.get("mute")), bool(x.get("solo"))
-        return proj
-
-    def set_live_mix(self, project_id, tracks):
-        """Store the editor's current mute / solo of every layer (no new revision)."""
-        self.get_project(project_id)
-        if not isinstance(tracks, list) or len(tracks) > 500:
-            raise StorageError("tracks must be a list")
-        clean = [{"id": str(t.get("id"))[:64], "name": str(t.get("name") or "Track")[:120], "mute": bool(t.get("mute")),
-                  "solo": bool(t.get("solo"))} for t in tracks if isinstance(t, dict) and t.get("id") is not None]
-        with self._lock, self._connect() as db:
-            db.execute("UPDATE projects SET live_mix = ? WHERE id = ?", (json.dumps(clean), project_id))
-        return {"project_id": project_id, "mix": self.mix_summary({"tracks": clean})}
-
-    def live_mix(self, project_id):
-        with self._connect() as db:
-            r = db.execute("SELECT live_mix FROM projects WHERE id = ?", (project_id,)).fetchone()
-        try:
-            return json.loads(r[0]) if r and r[0] else None
-        except ValueError:
-            return None
 
     def _backfill_mix(self, project_id, number):
         """Revisions saved before the 'mix' column existed: compute it once from the revision file and store it."""
@@ -248,10 +214,6 @@ class Storage:
                 "SELECT number, message, file_name, size, sha256, track_count, created_at, mix FROM revisions "
                 "WHERE project_id = ? ORDER BY number DESC", (project_id,)).fetchall()
         out = dict(p)
-        try:
-            out["live_mix"] = json.loads(out["live_mix"]) if out.get("live_mix") else None
-        except ValueError:
-            out["live_mix"] = None
         out["revisions"] = []
         for r in revs:
             d = dict(r)
@@ -318,7 +280,7 @@ class Storage:
                 (project_id, number, (message or "").strip()[:200] or f"Revision {number}", file_name, len(raw), digest,
                  len(proj.get("tracks") or []), now, json.dumps(self.mix_summary(proj))))
             db.execute(
-                "UPDATE projects SET head_revision = ?, updated_at = ?, name = ?, bpm = ?, sig = ?, live_mix = NULL WHERE id = ?",
+                "UPDATE projects SET head_revision = ?, updated_at = ?, name = ?, bpm = ?, sig = ? WHERE id = ?",
                 (number, now, self._clean_name(proj.get("title"), "Untitled"), float(proj.get("bpm") or 120),
                  int(proj.get("sig") or 4), project_id))
         return {"project_id": project_id, "number": number, "size": len(raw), "sha256": digest, "file_name": file_name}
@@ -360,11 +322,6 @@ class Storage:
     def export_package(self, project_id, number=None):
         """Project package (.zip) of a saved revision: project.rushdaw + audio/ files. Returns (bytes, file name)."""
         data, rev, p = self.read_revision(project_id, number)
-        live = self.live_mix(project_id) if number is None or int(number) == p["head_revision"] else None
-        if live:  # the latest mute / solo from the editor (not saved yet) goes with the latest revision
-            obj = self._parse_project(data)
-            self.apply_live_mix(obj["project"], live)
-            data = json.dumps(obj).encode()
         return build_package(data), f"{safe_file_name(p['name'])}-rev{rev['number']}.rushdaw.zip"
 
     # ------------------------------------------------------------ listing (search / filter / pagination)
@@ -417,14 +374,6 @@ class Storage:
                 d["mix"] = None
             if d["mix"] is None and d.get("head_revision"):
                 d["mix"] = self._backfill_mix(d["id"], d["head_revision"])
-            live, raw = None, d.pop("live_mix", None)
-            try:
-                live = json.loads(raw) if raw else None
-            except ValueError:
-                pass
-            d["mix_unsaved"] = bool(live)
-            if live:
-                d["mix"] = self.mix_summary({"tracks": live})
             projects.append(d)
         return {"projects": projects, "total": total, "page": page, "per_page": per_page, "pages": pages}
 
