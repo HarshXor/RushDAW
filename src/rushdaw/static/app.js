@@ -1325,7 +1325,7 @@ function clipEl(t, c) {
   const w = Math.max(4, clipLenBeats(c) * pxB());
   const name = c.kind === 'audio' ? (bufNames.get(c.buf) || 'Audio') : (t.type === 'drum' ? 'Drum pattern' : 'MIDI');
   const d = el('div', { className: 'clip' + (isClipSel(c.id) ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
-  const cv = el('canvas'); cv.height = 60; sizeClipCanvas(cv, w); d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
+  const cv = el('canvas'); cv.height = 60; sizeClipCanvas(cv, w); d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs rsl', title: 'Drag: resize from the start' }), el('div', { className: 'rs', title: 'Drag: resize from the end' }));
   // fade handles (top corners): drag inward to set the fade-in / fade-out length, drag back to the edge = off
   ['fi', 'fo'].forEach(key => {
     const h = el('div', { className: 'fh ' + key, title: (key === 'fi' ? 'Fade in' : 'Fade out') + ' – drag to set the length (double-click = off)' });
@@ -1503,7 +1503,9 @@ function clipMouseDown(e, t, c, d) {
   refreshClipSelClasses();
   if (c.kind === 'midi' && prevSel !== c.id) renderEditor();  // the editor follows the clicked region
   if (group) return groupDrag(e, c);
-  const resize = e.target.classList.contains('rs'), x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = clipLenBeats(c);
+  const resizeL = e.target.classList.contains('rsl'), resize = !resizeL && e.target.classList.contains('rs');
+  const x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = clipLenBeats(c);
+  if (resizeL) return frontResize(e, t, c, d);
   let target = t, moved = false;
   const mm = ev => {
     moved = true; const db = (ev.clientX - x0) / pxB();
@@ -1782,7 +1784,7 @@ function renderEditor() {
   const ed = $('#editor'); ed.innerHTML = '';
   const t = getTrack(selTrackId);
   if (!t || t.type === 'audio') {
-    ed.append(el('p', { className: 'hint' }, t ? `“${t.name}” is an audio track: import or record audio, drag clips to position them, drag the right edge to trim, S = split at playhead, Ctrl/Cmd+D = duplicate, Delete = remove.` : 'Select a Drum or Synth track to edit its pattern. Double-click an empty spot in its lane to add a pattern region.'));
+    ed.append(el('p', { className: 'hint' }, t ? `“${t.name}” is an audio track: import or record audio, drag clips to position them, drag the left or right edge to trim, S = split at playhead, Ctrl/Cmd+D = duplicate, Delete = remove.` : 'Select a Drum or Synth track to edit its pattern. Double-click an empty spot in its lane to add a pattern region.'));
     return;
   }
   const h = edHolder(t);  // the region being edited (each region has its own pattern)
@@ -2810,6 +2812,44 @@ function splitClip() {
 function duplicateClip() {
   const [t, c] = findClip(selClipId); if (!c) return;
   const nc = { ...deepCopy(c), id: nid('c'), start: c.start + clipLenBeats(c) }; t.clips.push(nc); selClipId = nc.id; render();  // independent copy
+}
+/* Resize from the FRONT (left edge). MIDI regions move their start in whole 16th steps: shrinking cuts the first
+   steps, growing adds EMPTY steps in front - every pad / note stays at its song position (same as model.trim_region_start).
+   Audio clips move start + file offset together (cannot reveal audio before the start of the recording). */
+function shiftRegionData(t, c, k) {
+  if (t.type === 'drum') c.pattern.grid = c.pattern.grid.map(r => k >= 0 ? r.slice(k) : Array(-k).fill(0).concat(r));
+  else c.notes = c.notes.map(x => { const s = x.s - k, e = x.s + x.l - k; return e <= 0 ? null : { ...x, s: Math.max(0, s), l: e - Math.max(0, s) }; }).filter(Boolean);
+}
+function frontResize(e, t, c, d) {
+  ensureRegions();
+  const x0 = e.clientX, s0 = c.start, l0 = clipLenBeats(c), end = s0 + l0, snap = $('#snap').checked;
+  const orig = c.kind === 'midi' ? deepCopy({ pattern: c.pattern, notes: c.notes }) : { offset: c.offset || 0, dur: c.dur };
+  let moved = false;
+  const apply = ns => {
+    if (c.kind === 'midi') {
+      const k = Math.round((ns - s0) * 4);
+      if (t.type === 'drum') c.pattern = deepCopy(orig.pattern); else c.notes = deepCopy(orig.notes);
+      shiftRegionData(t, c, k); c.start = s0 + k / 4; c.len = l0 - k / 4; fitRegion(t, c);
+    } else {
+      const S = spb(), db = clamp(ns - s0, -orig.offset / S, (orig.dur - 0.05) / S);
+      c.start = s0 + db; c.offset = orig.offset + db * S; c.dur = orig.dur - db * S;
+    }
+    const w = clipLenBeats(c) * pxB(); d.style.left = c.start * pxB() + 'px'; d.style.width = w + 'px';
+    const cv = d.querySelector('canvas'); if (cv) { sizeClipCanvas(cv, Math.max(4, w)); drawClip(cv, t, c); }
+    const fo = d.querySelector('.fh.fo'); if (fo) fo.style.left = (clipLenBeats(c) - clipFades(c).fo) * pxB() + 'px';
+  };
+  const mm = ev => {
+    if (Math.abs(ev.clientX - x0) > 2) moved = true; if (!moved) return;
+    let ns = s0 + (ev.clientX - x0) / pxB();
+    ns = snap ? snapGrid(ns) : (c.kind === 'midi' ? Math.round(ns * 4) / 4 : ns);
+    ns = clamp(ns, 0, end - (c.kind === 'midi' ? 0.25 : 0.05 / spb()));
+    apply(ns); status(`Start: bar ${Math.floor(c.start / P.sig) + 1} beat ${(c.start % P.sig + 1).toFixed(2)} · length ${clipLenBeats(c).toFixed(2)} beats`);
+  };
+  const mu = () => {
+    window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu);
+    if (moved) render();
+  };
+  window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
 }
 // drop the first k steps of a region (split: the right half starts where the cut was)
 function shiftLeft(t, h, k) {

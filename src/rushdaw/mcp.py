@@ -728,10 +728,12 @@ class RushDAWMCP:
                 return {"clip_id": c["id"]}
             return self._track_edit(a, "add region", fn)
 
-        @tool("update_clip", "Move/resize a clip or region, move it to another compatible track, set the region volume, or set fade in / fade out "
+        @tool("update_clip", "Move/resize a clip or region (end: length_beats / duration_sec; front: trim_start_beats), move it to another compatible track, set the region volume, or set fade in / fade out "
               "(same as the UI's right-click 'Fade in / out' dialog: seconds, per region, max = the region's own length, so a fade can cover the whole region).",
               _S(project_id=PID, clip_id=("string", "Clip id (from get_project).", True), start_beat=("number", "New start beat."),
-                 length_beats=("number", "New length (MIDI regions)."), duration_sec=("number", "New duration in seconds (audio clips, trims the end)."),
+                 length_beats=("number", "New length (MIDI regions), changes the END: longer = empty steps added, shorter = end cut."),
+                 trim_start_beats=("number", "Resize from the FRONT (like dragging the left edge): > 0 cuts that many beats off the start, "
+                                             "< 0 extends the clip backwards (MIDI: empty steps; audio: reveals earlier audio). Pads/notes/audio keep their song position."), duration_sec=("number", "New duration in seconds (audio clips, trims the end)."),
                  gain=("number", "Clip / region volume as linear gain 0..2 (1 = 100%)."), volume_percent=("number", "Clip / region volume 0..200 % (100 = default)."),
                  fade_in_sec=("number", "Fade-in length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
                  fade_out_sec=("number", "Fade-out length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
@@ -743,6 +745,8 @@ class RushDAWMCP:
                 t, c = M.find_clip(proj, a["clip_id"])
                 if "start_beat" in a:
                     c["start"] = M.num(a["start_beat"], "start_beat", 0, 100000)
+                if "trim_start_beats" in a:
+                    M.trim_region_start(proj, t, c, M.num(a["trim_start_beats"], "trim_start_beats", -100000, 100000))
                 if "length_beats" in a:
                     if c["kind"] != "midi":
                         raise M.ModelError("length_beats is for MIDI regions; use duration_sec for audio clips")
@@ -767,7 +771,12 @@ class RushDAWMCP:
                     t["clips"].remove(c)
                     nt["clips"].append(c)
                     t = nt
-                return {"clip": {"id": c["id"], "track": t["name"], "start_beat": c["start"]}}
+                out = {"id": c["id"], "track": t["name"], "start_beat": c["start"]}
+                if c["kind"] == "midi":
+                    out["length_beats"] = c["len"]
+                else:
+                    out.update(offset_sec=c.get("offset", 0), duration_sec=c["dur"])
+                return {"clip": out}
             return self._edit(a["project_id"], "update clip", run)
 
         @tool("merge_regions", "Merge 2+ pattern (MIDI) regions of ONE track into a single region (same as selecting them in the UI "

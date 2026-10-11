@@ -362,6 +362,43 @@ def fit_region(proj, t, c):
         c['bars'] = c['len'] / proj.get('sig', 4)
 
 
+def shift_region_data(t, c, k):
+    """Move a region's START by k steps (k > 0: cut k steps from the front, k < 0: add -k empty steps in front);
+    every pad / note keeps its absolute position in the song. A note crossing the new start is shortened."""
+    if t['type'] == 'drum':
+        c['pattern']['grid'] = [list(r[k:]) if k >= 0 else [0] * (-k) + list(r) for r in c['pattern']['grid']]
+    else:
+        out = []
+        for x in c['notes']:
+            s, e = x['s'] - k, x['s'] + x['l'] - k
+            if e <= 0:
+                continue
+            out.append(dict(x, s=max(0, s), l=e - max(0, s)))
+        c['notes'] = out
+
+
+def trim_region_start(proj, t, c, delta_beats):
+    """Resize from the FRONT (= dragging the left edge in the UI): delta > 0 shortens the clip from its start,
+    delta < 0 extends it backwards. MIDI regions: whole 16th steps, new front steps are empty. Audio clips:
+    moves the start and the file offset together (cannot go before the start of the recording)."""
+    if c['kind'] == 'midi':
+        k = int(round(delta_beats * 4))
+        k = max(-int(round(c['start'] * 4)), min(k, region_steps(c) - 1))  # not before bar 1, keep >= 1 step
+        if k == 0:
+            return 0.0
+        shift_region_data(t, c, k)
+        c['start'] = round(c['start'] + k / 4, 6)
+        c['len'] = round(c['len'] - k / 4, 6)
+        fit_region(proj, t, c)
+        return k / 4
+    spb = 60.0 / float(proj.get('bpm', 120))
+    d = max(-c['start'], -float(c.get('offset', 0)) / spb, min(delta_beats, (float(c['dur']) - 0.05) / spb))
+    c['start'] = round(c['start'] + d, 6)
+    c['offset'] = round(float(c.get('offset', 0)) + d * spb, 6)
+    c['dur'] = round(float(c['dur']) - d * spb, 6)
+    return d
+
+
 def merge_regions(proj, clip_ids):
     """Merge MIDI regions of ONE track into a single region (= mergeSelected in app.js): it spans the first start
     to the last end, every pad / note keeps its exact position, gaps are empty, overlapping pads keep the louder velocity.
