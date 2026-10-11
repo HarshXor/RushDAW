@@ -1110,7 +1110,7 @@ function punchReplace(track, b0, b1, keepBuf = null) {  // keepBuf = the new tak
   const used = new Set(); P.tracks.forEach(t => t.clips.forEach(c => c.kind === 'audio' && used.add(c.buf)));
   const cb = typeof clipboard !== 'undefined' && clipboard ? JSON.stringify(clipboard) : '';
   if (keepBuf) used.add(keepBuf);
-  for (const id of [...buffers.keys()]) if (!used.has(id) && !cb.includes(id)) { buffers.delete(id); bufNames.delete(id); peaksCache.delete(id); }
+  for (const id of [...buffers.keys()]) if (!used.has(id) && !cb.includes(id) && !undoKeepsBuffer(id)) { buffers.delete(id); bufNames.delete(id); peaksCache.delete(id); }
   return changed;
 }
 function finishRecording() {
@@ -1152,7 +1152,7 @@ async function importFiles(files, track = null, beat = null) {
 }
 
 /* ------------------------------------------------------------------ render */
-function render() { ensureRegions(); renderArrange(); renderMixer(); renderEditor(); renderFx(); renderMaster(); }
+function render() { ensureRegions(); renderArrange(); renderMixer(); renderEditor(); renderFx(); renderMaster(); if (typeof undoCaptureSoon === 'function') undoCaptureSoon(); }
 
 function timelineBeats() { return Math.max(64, Math.ceil((songEndBeats() + P.sig * 8) / P.sig) * P.sig); }
 
@@ -1998,6 +1998,47 @@ async function api(path, opts = {}) {
 const snapshot = () => JSON.stringify(P) + '|' + [...buffers.keys()].join(',');
 const isDirty = () => !!currentProject && snapshot() !== savedSnapshot;
 function markClean() { savedSnapshot = snapshot(); updateDirty(); }
+
+/* ------------------------------------------------------------ undo / redo
+   Snapshot based: after every user action (pointer up, change, key up, and every render()) the project state P is
+   compared with the last snapshot; if it changed, the previous snapshot goes onto the undo stack. A whole slider
+   drag / knob drag therefore becomes ONE undo step. Audio buffers are kept while any undo/redo step uses them
+   (punch-in recording cleanup checks undoKeepsBuffer). Opening a project starts a fresh history. */
+const UNDO_MAX = 100;
+let undoStack = [], redoStack = [], undoLast = null, undoBusy = false;
+function undoReset() { undoStack = []; redoStack = []; undoLast = JSON.stringify(P); updateUndoButtons(); }
+function undoCapture() {
+  if (undoBusy || undoLast === null) return;
+  const now = JSON.stringify(P);
+  if (now === undoLast) return;
+  undoStack.push(undoLast); if (undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack = []; undoLast = now; updateUndoButtons();
+}
+const undoCaptureSoon = () => setTimeout(undoCapture, 0);
+function undoKeepsBuffer(id) { return (undoLast || '').includes(id) || undoStack.some(s => s.includes(id)) || redoStack.some(s => s.includes(id)); }
+function undoApply(from, to, label) {
+  undoCapture();  // anything not captured yet becomes its own step first
+  if (!from.length) { status(label === 'Undo' ? 'Nothing to undo' : 'Nothing to redo'); return; }
+  const target = from.pop(); to.push(undoLast);
+  undoBusy = true;
+  try {
+    const s = JSON.parse(target);
+    for (const k of Object.keys(P)) delete P[k];
+    Object.assign(P, s);
+    $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title || '';
+    if (!getTrack(selTrackId)) selTrackId = P.tracks[0]?.id || null;
+    if (selClipId && !findClip(selClipId)[1]) selClipId = null;
+    syncGraph(); render(); updateDirty();
+  } finally { undoLast = JSON.stringify(P); undoBusy = false; updateUndoButtons(); }
+  status(`${label} (${undoStack.length} undo · ${redoStack.length} redo left)`);
+}
+const undo = () => undoApply(undoStack, redoStack, 'Undo');
+const redo = () => undoApply(redoStack, undoStack, 'Redo');
+function updateUndoButtons() {
+  const u = $('#btnUndo'), r = $('#btnRedo');
+  if (u) u.disabled = !undoStack.length && JSON.stringify(P) === undoLast;
+  if (r) r.disabled = !redoStack.length;
+}
 function updateDirty() { const d = $('#dirtyDot'); if (d) d.classList.toggle('on', isDirty()); }
 
 async function serializeProject() {
@@ -2062,7 +2103,7 @@ async function loadProjectData(j) {
   P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); normalizeAmp(t); });
   ensureRegions();  // older projects: every region gets its own copy of the track pattern
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
-  selTrackId = P.tracks[0]?.id || null; syncGraph(); render();
+  selTrackId = P.tracks[0]?.id || null; syncGraph(); render(); undoReset();  // a freshly opened project starts a new undo history
 }
 async function openProject(id, rev = null) {
   try {
@@ -2333,6 +2374,10 @@ function init() {
   $('#btnCopy').onclick = () => copySelection(false);
   $('#btnCut').onclick = () => copySelection(true);
   $('#btnPaste').onclick = () => pasteClipboard();
+  $('#btnUndo').onclick = () => undo();
+  $('#btnRedo').onclick = () => redo();
+  // undo checkpoints: one step per finished user action (slider drags merge into one step)
+  for (const ev of ['pointerup', 'change', 'keyup', 'drop']) window.addEventListener(ev, undoCaptureSoon, true);
   $('#fileInput').onchange = e => { const t = getTrack(selTrackId); importFiles([...e.target.files], t, null); e.target.value = ''; };
   $('#btnSave').onclick = () => saveRevision($('#revMsg').value);
   $('#revMsg').onkeydown = e => { if (e.key === 'Enter') saveRevision($('#revMsg').value); };
@@ -2419,7 +2464,9 @@ function init() {
   }, true);
   window.addEventListener('keydown', e => {
     if ($('#home').classList.contains('show') || $('#historyDlg').classList.contains('show') || document.querySelector('.rdmodal')) return;  // no editor shortcuts behind a dialog
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;  // typing: native text undo
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (e.ctrlKey && !e.metaKey && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }  // Windows-style redo
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home' || e.key === 'Enter') seek(0);
     else if (e.key === 'r' || e.key === 'R') startRecording();
