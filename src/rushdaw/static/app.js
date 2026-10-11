@@ -1156,6 +1156,41 @@ function render() { ensureRegions(); renderArrange(); renderMixer(); renderEdito
 
 function timelineBeats() { return Math.max(64, Math.ceil((songEndBeats() + P.sig * 8) / P.sig) * P.sig); }
 
+/* Reorder tracks (layers) by drag & drop on the header: grab the ⠿ handle (or the track-type row) and drop it
+   between other tracks. Works with mouse and touch (pointer events); a small move threshold keeps clicks as clicks. */
+let trackDragJustEnded = false;
+function startTrackDrag(e, t, head) {
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const hdr = $('#trackHeaders'), y0 = e.clientY; let active = false, target = -1;
+  const heads = () => [...hdr.querySelectorAll('.thead')];
+  const clear = () => heads().forEach(h => h.classList.remove('drop-before', 'drop-after', 'dragging'));
+  const mv = ev => {
+    if (!active && Math.abs(ev.clientY - y0) < 5) return;
+    if (!active) { active = true; head.classList.add('dragging'); document.body.classList.add('track-dragging'); }
+    const hs = heads(); clear(); head.classList.add('dragging');
+    let idx = hs.length;  // insertion index in the current order
+    for (let i = 0; i < hs.length; i++) { const r = hs[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { idx = i; break; } }
+    target = idx;
+    if (idx < hs.length) hs[idx].classList.add('drop-before'); else hs[hs.length - 1].classList.add('drop-after');
+    // auto-scroll the timeline when dragging near the top / bottom edge
+    const wrap = $('#timelineWrap') || hdr.parentElement, wr = wrap.getBoundingClientRect();
+    if (ev.clientY < wr.top + 24) wrap.scrollTop -= 12; else if (ev.clientY > wr.bottom - 24) wrap.scrollTop += 12;
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    document.body.classList.remove('track-dragging'); clear();
+    if (!active) return;
+    trackDragJustEnded = true; setTimeout(() => { trackDragJustEnded = false; }, 0);
+    const from = P.tracks.indexOf(t); if (from < 0 || target < 0) return;
+    let to = target > from ? target - 1 : target;
+    if (to === from) return;
+    P.tracks.splice(from, 1); P.tracks.splice(to, 0, t);
+    selTrackId = t.id; render(); status(`Moved ${t.name} to position ${to + 1}`);
+  };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+
 function renderArrange() {
   const hdr = $('#trackHeaders'), lanes = $('#lanes'); hdr.innerHTML = ''; lanes.innerHTML = '';
   const W = timelineBeats() * pxB(), barPx = pxB() * P.sig;
@@ -1173,17 +1208,19 @@ function renderArrange() {
     const panIn = el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100), title: 'Pan: drag left/right · double-click = center',
       oninput: e => setPan(t, +e.target.value / 100, panOut), ondblclick: e => { e.target.value = 0; setPan(t, 0, panOut); }, onclick: stop, onpointerdown: stop });
     const quick = (txt, v) => el('button', { className: 'pq', title: v === 0 ? 'Center' : (v < 0 ? 'Hard left' : 'Hard right'), onclick: e => { stop(e); panIn.value = v * 100; setPan(t, v, panOut); } }, txt);
-    hdr.append(el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { lastFocus = 'track'; selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); selectTrack(t.id); } },
+    const head = el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { if (trackDragJustEnded) return; lastFocus = 'track'; selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); selectTrack(t.id); } },
       el('div', { className: 'row' },
+        el('span', { className: 'grip', title: 'Drag to move this track up / down', onpointerdown: e => startTrackDrag(e, t, head) }, '⠿'),
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
         btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
         t.type === 'audio' ? el('button', { className: 'mon' + (monIds.has(t.id) ? ' on' : ''), title: 'Input monitoring: hear the microphone live on this track (on/off). Use headphones.', onclick: e => { e.stopPropagation(); toggleMonitor(t); } }, '🎧') : null,
         el('button', { title: 'Delete track', onclick: e => { stop(e); deleteTrack(t.id); } }, '✕')),
-      el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : t.instrument === 'vocal' ? 'Vocal / MIDI' : 'Synth / MIDI') : 'Audio')),
+      el('div', { className: 'row kindrow', title: 'Drag to move this track up / down', onpointerdown: e => { if (e.pointerType !== 'mouse' || e.target.closest('input,button,select')) return; startTrackDrag(e, t, head); } }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : t.instrument === 'vocal' ? 'Vocal / MIDI' : 'Synth / MIDI') : 'Audio')),
       el('div', { className: 'row ctl' }, el('span', { className: 'lab' }, 'Vol'),
         el('input', { type: 'range', min: 0, max: 1.5, step: 0.01, value: t.vol, title: 'Volume',
           oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
-      el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut)));
+      el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut));
+    head.dataset.track = t.id; hdr.append(head);
     const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundSize: barPx + 'px 100%' } });
     lane.dataset.track = t.id;
     lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
@@ -2364,7 +2401,7 @@ function init() {
     if (tlw.scrollTop !== before) e.preventDefault();
   }, { passive: false });
   let hdrTouchY = null;
-  hdrCol.addEventListener('touchstart', e => { hdrTouchY = e.target.closest('input, select, button') ? null : e.touches[0].clientY; }, { passive: true });
+  hdrCol.addEventListener('touchstart', e => { hdrTouchY = e.target.closest('input, select, button, .grip') ? null : e.touches[0].clientY; }, { passive: true });
   hdrCol.addEventListener('touchmove', e => {
     if (hdrTouchY === null) return;
     const y = e.touches[0].clientY; tlw.scrollTop += hdrTouchY - y; hdrTouchY = y; e.preventDefault();

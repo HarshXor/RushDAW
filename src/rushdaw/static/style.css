@@ -21,6 +21,13 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .ruler-spacer{height:28px;border-bottom:1px solid var(--line)}
 .thead{height:var(--trackH);border-bottom:1px solid var(--line);padding:5px 8px;display:flex;flex-direction:column;justify-content:space-between;gap:2px;overflow:hidden;cursor:pointer;border-left:4px solid var(--c,#666)}
 .thead.sel{background:var(--panel2)}
+.thead .grip{cursor:grab;touch-action:none;user-select:none;color:var(--mut,#888);font-size:14px;line-height:1;padding:2px 3px;border-radius:3px}
+.thead .grip:hover{color:var(--acc);background:rgba(0,229,255,.12)}
+.thead .kindrow{cursor:grab}
+.thead.dragging{opacity:.55;outline:1px dashed var(--acc);outline-offset:-1px}
+.thead.drop-before{box-shadow:inset 0 3px 0 var(--acc)}
+.thead.drop-after{box-shadow:inset 0 -3px 0 var(--acc)}
+body.track-dragging,body.track-dragging *{cursor:grabbing!important;user-select:none}
 .thead .row{display:flex;gap:4px;align-items:center}
 .thead input.name{flex:1;min-width:0;background:transparent;border:none;padding:0;font-weight:600}
 .thead button{padding:1px 6px;font-size:11px}
