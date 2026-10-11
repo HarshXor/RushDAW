@@ -154,6 +154,19 @@ class McpTest(unittest.TestCase):
         self.assertEqual(json.loads(res["content"][0]["text"]), res["structuredContent"])
         return res["structuredContent"]
 
+    def test_multi_solo_audible(self):
+        pid = self.call("create_project", name="Solo rule", template="band")["project_id"]
+        names = [t["name"] for t in self.call("get_project", project_id=pid)["tracks"]]
+        self.call("update_track", project_id=pid, track=names[0], solo=True)
+        self.call("update_track", project_id=pid, track=names[1], solo=True)
+        aud = {t["name"]: t["audible"] for t in self.call("get_project", project_id=pid)["tracks"]}
+        self.assertEqual(aud, {n: i < 2 for i, n in enumerate(names)})  # both soloed play, all others silent
+        self.call("update_track", project_id=pid, track=names[1], mute=True)  # mute beats solo
+        self.assertFalse(self.call("get_project", project_id=pid)["tracks"][1]["audible"])
+        for n in names[:2]:
+            self.call("update_track", project_id=pid, track=n, solo=False, mute=False)
+        self.assertTrue(all(t["audible"] for t in self.call("get_project", project_id=pid)["tracks"]))
+
     def test_protocol(self):
         init = self.rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})["result"]
         self.assertEqual(init["protocolVersion"], "2024-11-05")

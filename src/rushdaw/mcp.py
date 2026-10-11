@@ -449,7 +449,7 @@ class RushDAWMCP:
                 return {"track": M.track_summary(proj, t)}
             return self._edit(a["project_id"], f"add {a['type']} track", run)
 
-        @tool("update_track", "Mixer + feel settings of a track/layer: name, volume (0-1.5, 0.8 default), pan (-1 left .. 0 center .. 1 right), mute, solo, channel EQ (dB), compressor, reverb/delay sends.",
+        @tool("update_track", "Mixer + feel settings of a track/layer: name, volume (0-1.5, 0.8 default), pan (-1 left .. 0 center .. 1 right), mute, solo (when any track is soloed, ALL soloed tracks play and every other track is silent - in playback, Download and export; get_project shows each track's 'audible'), channel EQ (dB), compressor, reverb/delay sends.",
               _S(project_id=PID, track=TRACK, name=("string", "New name."), volume=("number", "0 - 1.5"), pan=("number", "-1 (hard left) .. 0 (center) .. 1 (hard right)"),
                  mute=("boolean", "Mute the layer."), solo=("boolean", "Solo the layer."), eq_low=("number", "-15..15 dB"), eq_mid=("number", "-15..15 dB"), eq_high=("number", "-15..15 dB"),
                  comp_threshold=("number", "-60..0 dB"), comp_ratio=("number", "1..20"), reverb_send=("number", "0..1"), delay_send=("number", "0..1"), color=("string", "CSS color, e.g. #00e5ff"),

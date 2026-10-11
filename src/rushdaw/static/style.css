@@ -105,6 +105,8 @@ body.track-dragging,body.track-dragging *{cursor:grabbing!important;user-select:
 /* ---- track header controls: mute / volume / pan ---- */
 .thead.muted,.lane.muted,.strip.muted{opacity:.5}
 .thead.muted .name{text-decoration:line-through}
+.thead.solomuted,.lane.solomuted,.strip.solomuted{opacity:.45}
+.thead.solomuted .name{font-style:italic}
 .thead .row.ctl{gap:4px}
 .thead .lab{font-size:10px;color:var(--mut);width:26px}
 .thead .row.ctl input[type=range]{flex:1;min-width:0}

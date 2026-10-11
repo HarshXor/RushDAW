@@ -769,9 +769,15 @@ def _region_detail(t, c):
     return {'pattern_bars': c.get('bars', 1), 'notes': _notes_out(c['notes'])}
 
 
+def track_audible(proj, t):
+    """Same rule as the studio, Download and export: muted = silent; when any track is soloed only soloed tracks play."""
+    any_solo = any(x.get('solo') for x in proj.get('tracks', []))
+    return (not t.get('mute')) and (not any_solo or bool(t.get('solo')))
+
+
 def track_summary(proj, t, detail=True):
     out = {'id': t['id'], 'name': t['name'], 'type': t.get('instrument') or t['type'],
-           'volume': t['vol'], 'pan': t['pan'], 'mute': t['mute'], 'solo': t['solo'],
+           'volume': t['vol'], 'pan': t['pan'], 'mute': t['mute'], 'solo': t['solo'], 'audible': track_audible(proj, t),
            'eq': t['eq'], 'comp': t['comp'], 'reverb_send': t['rev'], 'delay_send': t['dly'],
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],
            'clips': [{'id': c['id'], 'kind': c['kind'], 'start_beat': c['start'],

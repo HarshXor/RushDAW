@@ -364,6 +364,8 @@ function trackNodes(g, t) {
   g.tracks.set(t.id, n); applyTrack(g, t);
   return n;
 }
+// Solo: when ANY track is soloed, every soloed track plays and every other track is silent (playback, Download, export)
+const soloSilenced = t => !t.solo && P.tracks.some(x => x.solo);
 function applyTrack(g, t) {
   const n = trackNodes(g, t), c = g.c, L = g.live;
   buildFxChain(g, t, n);
@@ -828,38 +830,54 @@ function steadiestLoop(x, sr, a, b, P) {
 const DETUNE_SIDE = 0.12, DETUNE_NORM = Math.SQRT2 / Math.sqrt(1 + 2 * DETUNE_SIDE * DETUNE_SIDE);
 const SUSTAIN_XF = 'linear', SUSTAIN_WIN = 0.1, SUSTAIN_GMAX = 8;  // measured: shorter windows / lower caps did not reduce the swell  // seam crossfade shape (the two halves are pitch-synchronous = correlated -> linear keeps the level)
 function prepSustain(src, freq, off) {
-  const sr = src.sampleRate, N = src.length, s0 = Math.round(off * sr);
-  const out = sampleDecoder.createBuffer(src.numberOfChannels, N, sr);
+  const sr = src.sampleRate, N = src.length, s0 = Math.round(off * sr), nCh = src.numberOfChannels;
   const win = Math.round(sr * SUSTAIN_WIN), hop = Math.round(sr * 0.01);
   const mono = src.getChannelData(0), env = [];
   for (let a = s0; a + win < N; a += hop) { let e = 0; for (let k = a; k < a + win; k++) e += mono[k] * mono[k]; env.push(Math.sqrt(e / win) + 1e-6); }
   const envAt = idx => { const f = clamp((idx - s0 - win / 2) / hop, 0, env.length - 1), i = Math.floor(f), j = Math.min(env.length - 1, i + 1); return env[i] + (env[j] - env[i]) * (f - i); };
   const tA = s0 + Math.round(sr * 0.12), ramp = Math.round(sr * 0.1), ref = envAt(tA + ramp);
-  // choose the STEADIEST section of the recording as the loop (least level + brightness movement inside it and the
-  // closest match between its end and its start), so the held note does not swell / change colour periodically
+  // 1. the STEADIEST section of the recording = the source material of the sustain
   const P = sr / freq, { ls, le } = steadiestLoop(mono, sr, s0 + Math.round(sr * 0.4), N - Math.round(sr * 0.3), P);
-  const X = Math.max(1, Math.min(Math.round(sr * 0.25), ls - tA - 1, Math.floor((le - ls) / 2)));
-  for (let ch = 0; ch < src.numberOfChannels; ch++) {
-    const x = src.getChannelData(ch), y = out.getChannelData(ch);
-    for (let n = 0; n < N; n++) {
-      if (n < tA) { y[n] = x[n]; continue; }
-      const gFlat = Math.min(SUSTAIN_GMAX, ref / envAt(n)), w = Math.min(1, (n - tA) / ramp);
-      y[n] = x[n] * (1 + (gFlat - 1) * w);
-    }
-    // crossfade: the last X samples before loopEnd fade into the X samples before loopStart, so the
-    // jump loopEnd -> loopStart is seamless
-    // correlation-compensated: a linear fade of two only partly similar sections dips (~-4 dB measured on Choir Aah,
-    // heard as "luu..luu" once per loop); dividing by the expected level of the mix keeps the seam at full level
-    let sab = 0, saa = 0, sbb = 0;
-    for (let j = 0; j < X; j++) { const p = y[le - X + j], q = y[ls - X + j]; sab += p * q; saa += p * p; sbb += q * q; }
-    const rho = clamp(sab / Math.sqrt(saa * sbb + 1e-20), -0.2, 1);
-    for (let j = 0; j < X; j++) { const w = j / X, a = le - X + j, b = ls - X + j, k0 = 1 - w, k1 = w, nrm = Math.sqrt(Math.max(0.25, k0 * k0 + k1 * k1 + 2 * rho * k0 * k1)); y[a] = (y[a] * k0 + y[b] * k1) / nrm; }
-    // re-pitched playback interpolates a few samples PAST loopEnd: make them the continuation of loopStart
-    for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k];
+  // 2. level-flatten the recording after the attack (the envelope decides the level, not the recording)
+  const flat = [];
+  for (let ch = 0; ch < nCh; ch++) {
+    const x = src.getChannelData(ch), y = new Float32Array(N);
+    for (let n = 0; n < N; n++) { if (n < tA) { y[n] = x[n]; continue; } const g = Math.min(SUSTAIN_GMAX, ref / envAt(n)), w = Math.min(1, (n - tA) / ramp); y[n] = x[n] * (1 + (g - 1) * w); }
+    flat.push(y);
   }
-  // 3. re-level the whole looped section AFTER the seam crossfade (20 ms RMS, smoothed): any level hole left at the
-  //    seam (partly cancelling sections, e.g. Choir Ooh A4 measured -4.6 dB) is filled, so the held note stays even
-  const ow = Math.round(sr * 0.02), oh = Math.round(sr * 0.005), a0 = Math.max(tA + ramp, ls - X - ow), a1 = Math.min(N - ow, le + 256);
+  // 3. GRANULAR sustain: looping one fixed section repeats the choir's own vowel/colour drift every loop
+  //    (measured: centroid 1010-1620 Hz repeating every 1.88 s = "ou-ou-ou"). Instead the held part is rebuilt from
+  //    120 ms Hann grains (50 % overlap, windows sum to 1) taken at RANDOM places of the steady section, each shifted
+  //    by a whole number of pitch periods -> grains stay in phase (no comb / no level change), the slow drift averages
+  //    out and nothing repeats for EXT seconds -> one even "oooo".
+  const G = Math.max(64, Math.round(sr * 0.12)) & ~1, H = G / 2, EXT = Math.round(sr * 5), M = ls + EXT;
+  const out = sampleDecoder.createBuffer(nCh, M, sr), hw = j => Math.sin(Math.PI * j / G) ** 2;
+  const grains = [];
+  for (let o = ls - H; o + G <= M; o += H) {
+    const kmin = Math.ceil((ls - o) / P), kmax = Math.floor((le - G - o) / P);
+    const k = o < ls ? Math.max(kmin, Math.min(kmax, 0)) : kmin + Math.floor(Math.random() * Math.max(1, kmax - kmin + 1));
+    grains.push([o, o + Math.round(k * P)]);
+  }
+  for (let ch = 0; ch < nCh; ch++) {
+    const y = out.getChannelData(ch), f = flat[ch];
+    for (let n = 0; n < ls - H; n++) y[n] = f[n];
+    for (let j = 0; j < H; j++) y[ls - H + j] = f[ls - H + j] * (1 - hw(j));  // original fades out under the 1st grain
+    for (const [o, q] of grains) for (let j = 0; j < G; j++) { const qi = Math.min(N - 1, Math.max(0, q + j)); y[o + j] += f[qi] * hw(j); }
+  }
+  // 4. loop the (non-repeating) granular texture: a whole number of periods, seam crossfaded with correlation
+  //    compensation (a plain linear fade of partly similar sections dips ~-4 dB), guard samples past loopEnd
+  const ls2 = ls + Math.round(sr * 0.3), le2 = ls2 + Math.round(Math.round((EXT - sr * 0.9) / P) * P);
+  const X = Math.round(sr * 0.25);
+  for (let ch = 0; ch < nCh; ch++) {
+    const y = out.getChannelData(ch);
+    let sab = 0, saa = 0, sbb = 0;
+    for (let j = 0; j < X; j++) { const p = y[le2 - X + j], q = y[ls2 - X + j]; sab += p * q; saa += p * p; sbb += q * q; }
+    const rho = clamp(sab / Math.sqrt(saa * sbb + 1e-20), -0.2, 1);
+    for (let j = 0; j < X; j++) { const w = j / X, a = le2 - X + j, b = ls2 - X + j, k0 = 1 - w, k1 = w, nrm = Math.sqrt(Math.max(0.25, k0 * k0 + k1 * k1 + 2 * rho * k0 * k1)); y[a] = (y[a] * k0 + y[b] * k1) / nrm; }
+    for (let k = 0; k < 256 && le2 + k < M; k++) y[le2 + k] = y[ls2 + k];
+  }
+  // 5. re-level the sustained part (20 ms RMS, smoothed) so no level hole is left anywhere (seam, grain joins)
+  const ow = Math.round(sr * 0.02), oh = Math.round(sr * 0.005), a0 = Math.max(tA + ramp, ls - H - ow), a1 = Math.min(M - ow, le2 + 256);
   if (a1 > a0 + ow) {
     const y0 = out.getChannelData(0), gs = [];
     for (let a = a0; a + ow <= a1; a += oh) { let e = 0; for (let k = a; k < a + ow; k++) e += y0[k] * y0[k]; gs.push(clamp(ref / (Math.sqrt(e / ow) + 1e-6), 0.5, 2.5)); }
@@ -867,12 +885,11 @@ function prepSustain(src, freq, off) {
     for (let i = gs.length - 2; i >= 0; i--) gs[i] = gs[i + 1] + (gs[i] - gs[i + 1]) * 0.35;
     const gAt = n => { const f = clamp((n - a0 - ow / 2) / oh, 0, gs.length - 1), i = Math.floor(f), j = Math.min(gs.length - 1, i + 1); return gs[i] + (gs[j] - gs[i]) * (f - i); };
     const edge = Math.round(sr * 0.05);
-    for (let ch = 0; ch < out.numberOfChannels; ch++) { const y = out.getChannelData(ch);
-      for (let n = a0; n < a1; n++) { const w = Math.min(1, (n - a0) / edge, (a1 - n) / edge); y[n] *= 1 + (gAt(n) - 1) * w; } }
-    // keep the samples past loopEnd = continuation of loopStart (interpolation guard)
-    for (let ch = 0; ch < out.numberOfChannels; ch++) { const y = out.getChannelData(ch); for (let k = 0; k < 256 && le + k < N; k++) y[le + k] = y[ls + k]; }
+    for (let ch = 0; ch < nCh; ch++) { const y = out.getChannelData(ch);
+      for (let n = a0; n < a1; n++) { const w = Math.min(1, (n - a0) / edge, (a1 - n) / edge); y[n] *= 1 + (gAt(n) - 1) * w; }
+      for (let k = 0; k < 256 && le2 + k < M; k++) y[le2 + k] = y[ls2 + k]; }
   }
-  return { buf: out, loopStart: ls / sr, loopEnd: le / sr };
+  return { buf: out, loopStart: ls2 / sr, loopEnd: le2 / sr };
 }
 const loadAllSamples = () => Promise.all(Object.keys(SAMPLE_SETS).map(loadSampleSet));
 // before an offline render/export: make sure every sample set used by the project is decoded
@@ -1350,7 +1367,7 @@ function renderArrange() {
     const panIn = el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100), title: 'Pan: drag left/right · double-click = center',
       oninput: e => setPan(t, +e.target.value / 100, panOut), ondblclick: e => { e.target.value = 0; setPan(t, 0, panOut); }, onclick: stop, onpointerdown: stop });
     const quick = (txt, v) => el('button', { className: 'pq', title: v === 0 ? 'Center' : (v < 0 ? 'Hard left' : 'Hard right'), onclick: e => { stop(e); panIn.value = v * 100; setPan(t, v, panOut); } }, txt);
-    const head = el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { if (trackDragJustEnded) return; lastFocus = 'track'; clearClipSel(); selectTrack(t.id); } },
+    const head = el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : '') + (soloSilenced(t) ? ' solomuted' : ''), title: soloSilenced(t) ? 'Silent: another track is soloed (also silent in Download / export)' : '', style: { '--c': t.color }, onclick: () => { if (trackDragJustEnded) return; lastFocus = 'track'; clearClipSel(); selectTrack(t.id); } },
       el('div', { className: 'row' },
         el('span', { className: 'grip', title: 'Drag to move this track up / down', onpointerdown: e => startTrackDrag(e, t, head) }, '⠿'),
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
@@ -1363,7 +1380,7 @@ function renderArrange() {
           oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
       el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut));
     head.dataset.track = t.id; hdr.append(head);
-    const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundImage: 'linear-gradient(90deg,#262626 1px,transparent 1px),linear-gradient(90deg,#151515 1px,transparent 1px),linear-gradient(90deg,#0d0d0d 1px,transparent 1px)', backgroundSize: `${barPx}px 100%, ${pxB()}px 100%, ${gridBeats() * pxB()}px 100%` } });
+    const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : '') + (soloSilenced(t) ? ' solomuted' : ''), style: { backgroundImage: 'linear-gradient(90deg,#262626 1px,transparent 1px),linear-gradient(90deg,#151515 1px,transparent 1px),linear-gradient(90deg,#0d0d0d 1px,transparent 1px)', backgroundSize: `${barPx}px 100%, ${pxB()}px 100%, ${gridBeats() * pxB()}px 100%` } });
     lane.dataset.track = t.id;
     lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); clearClipSel(); } });
     lane.addEventListener('dblclick', e => {
@@ -1744,7 +1761,7 @@ function renderMixer() {
   const m = $('#mixer'); m.innerHTML = '';
   P.tracks.forEach(t => {
     const set = fn => v => { fn(v); syncGraph(); };
-    m.append(el('div', { className: 'strip' + (t.mute ? ' muted' : ''), style: { '--c': t.color } },
+    m.append(el('div', { className: 'strip' + (t.mute ? ' muted' : '') + (soloSilenced(t) ? ' solomuted' : ''), title: soloSilenced(t) ? 'Silent: another track is soloed' : '', style: { '--c': t.color } },
       el('div', { className: 't', title: t.name }, t.name),
       el('div', { className: 'meter' }, el('div', { id: 'meter-' + t.id })),
       slider('Vol', 0, 1.5, 0.01, t.vol, fmtDb, set(v => { t.vol = v; })),
