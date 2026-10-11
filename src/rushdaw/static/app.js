@@ -2458,14 +2458,24 @@ function download(blob, name) {
 }
 // Render the project that is currently loaded (P = exactly what the studio plays: muted / soloed tracks,
 // saved or not) and download it in the given format.
+// Every Download gets its OWN file name: "<title> - <solo/mute> - <date time>". With one fixed name the browser saved
+// "Song (1).mp3", "Song (2).mp3"… and opening "Song.mp3" played the FIRST download, so later solo/mute changes looked ignored.
+function downloadName(title, opts = {}) {
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`;
+  const sol = P.tracks.filter(t => t.solo).map(t => t.name), mut = P.tracks.filter(t => t.mute).map(t => t.name);
+  const mix = opts.only ? 'region' : sol.length ? 'solo ' + sol.join('+') : mut.length ? 'muted ' + mut.join('+') : 'full mix';
+  return `${title} - ${mix} - ${stamp}`.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 150);
+}
 async function renderAndDownload(fmt, title, opts = {}) {
   status(opts.only ? 'Rendering region…' : 'Rendering mixdown…');
+  title = downloadName(title, opts);
   const wav = encodeWAV(await renderMix(opts));
-  if (fmt === 'wav') { download(wav, title + '.wav'); status('Exported WAV'); return; }
+  if (fmt === 'wav') { download(wav, title + '.wav'); status('Downloaded ' + title + '.wav'); return; }
   status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
   const r = await fetch(`/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch (e) { /* ignore */ } throw new Error(m); }
-  download(await r.blob(), `${title}.${fmt}`); status('Exported ' + fmt.toUpperCase());
+  download(await r.blob(), `${title}.${fmt}`); status(`Downloaded ${title}.${fmt}`);
 }
 async function exportSong() {
   const fmt = $('#exportFmt').value, title = $('#title').value || 'RushDAW';
