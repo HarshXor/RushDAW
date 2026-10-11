@@ -98,21 +98,44 @@ const SYNTH_PRESETS = {
   // --- modeled string (Karplus-Strong), kept for experimenting ---
   'Modeled String': { engine: 'string', wave: 'sawtooth', attack: 0.002, release: 0.12, cutoff: 3800, detune: 0, gain: 0.55, drive: 0, chord: 'none', pluck: 0, brightness: 0.4, sustain: 0.55, pick: 0.14, body: 0.5 },
 };
+/* Mastering. Generated from model.py (MASTER_KEYS / MASTER_DEFAULT / MASTER_PARAMS / MASTER_PRESETS) - a test keeps them identical.
+   MASTER_KEYS = the mastering chain stored by a preset; trim (input gain, set by 'Match loudness') and the send buses reverbSize/delayDiv/delayFb are not part of a preset. */
+const MASTER_KEYS = ["vol", "hpf", "eqLow", "eqLowF", "eqMid", "eqMidF", "eqMidQ", "eqHigh", "eqHighF", "compThr", "compRatio", "compKnee", "compAtk", "compRel", "makeup", "sat", "width", "limRel", "ceiling"];
+const MASTER_DEFAULTS = {"vol": 1, "hpf": 20, "eqLow": 0, "eqLowF": 120, "eqMid": 0, "eqMidF": 1200, "eqMidQ": 0.8, "eqHigh": 0, "eqHighF": 8000, "compThr": -18, "compRatio": 2.5, "compKnee": 30, "compAtk": 0.01, "compRel": 0.25, "makeup": 3, "sat": 0, "width": 1, "limRel": 0.08, "ceiling": -1, "trim": 0, "reverbSize": 2.5, "delayDiv": 0.75, "delayFb": 0.35};
+const MASTER_RANGES = {"vol": [0, 1.5], "hpf": [20, 300], "eqLow": [-12, 12], "eqLowF": [30, 400], "eqMid": [-12, 12], "eqMidF": [200, 8000], "eqMidQ": [0.3, 4], "eqHigh": [-12, 12], "eqHighF": [2000, 16000], "compThr": [-50, 0], "compRatio": [1, 20], "compKnee": [0, 40], "compAtk": [0.001, 0.2], "compRel": [0.02, 1], "makeup": [0, 18], "sat": [0, 1], "width": [0, 2], "limRel": [0.01, 1], "ceiling": [-12, 0], "trim": [-24, 12], "reverbSize": [0.3, 6], "delayDiv": [0.25, 2], "delayFb": [0, 0.9]};
 const MASTER_PRESETS = {
-  'Flat (off)': { eqLow: 0, eqMid: 0, eqHigh: 0, compThr: 0, compRatio: 1, makeup: 0, ceiling: -0.3 },
-  'Balanced': { eqLow: 1, eqMid: 0, eqHigh: 1.5, compThr: -18, compRatio: 2.5, makeup: 3, ceiling: -1 },
-  'Loud Pop': { eqLow: 2, eqMid: -1, eqHigh: 3, compThr: -24, compRatio: 4, makeup: 7, ceiling: -0.5 },
-  'Warm': { eqLow: 3, eqMid: 0.5, eqHigh: -2, compThr: -20, compRatio: 3, makeup: 4, ceiling: -1 },
-  'Bass Boost': { eqLow: 5, eqMid: -1, eqHigh: 0.5, compThr: -20, compRatio: 3, makeup: 4, ceiling: -1 },
-  'Bright': { eqLow: -1, eqMid: 1, eqHigh: 4, compThr: -18, compRatio: 2.5, makeup: 3, ceiling: -1 },
+  'Default': {},
+  'Flat (off)': {"eqLow": 0, "eqMid": 0, "eqHigh": 0, "compThr": 0, "compRatio": 1, "makeup": 0, "ceiling": -0.3},
+  'Balanced': {"hpf": 25, "eqLow": 1, "eqMid": 0, "eqHigh": 1.5, "compThr": -18, "compRatio": 2.5, "compKnee": 10, "makeup": 3, "sat": 0.1, "width": 1.05, "ceiling": -1},
+  'Loud Pop': {"hpf": 30, "eqLow": 2, "eqMid": -1, "eqHigh": 3, "compThr": -24, "compRatio": 4, "compKnee": 6, "compAtk": 0.008, "compRel": 0.15, "makeup": 7, "sat": 0.2, "width": 1.15, "limRel": 0.05, "ceiling": -0.5},
+  'Warm': {"hpf": 25, "eqLow": 3, "eqMid": 0.5, "eqHigh": -2, "compThr": -20, "compRatio": 3, "compKnee": 12, "compAtk": 0.02, "compRel": 0.3, "makeup": 4, "sat": 0.3, "ceiling": -1},
+  'Bass Boost': {"hpf": 25, "eqLow": 5, "eqLowF": 90, "eqMid": -1, "eqHigh": 0.5, "compThr": -20, "compRatio": 3, "compKnee": 10, "makeup": 4, "sat": 0.1, "ceiling": -1},
+  'Bright': {"hpf": 30, "eqLow": -1, "eqMid": 1, "eqHigh": 4, "eqHighF": 7000, "compThr": -18, "compRatio": 2.5, "compKnee": 10, "makeup": 3, "width": 1.1, "ceiling": -1},
+  'Punk / Crust': {"hpf": 35, "eqLow": 2, "eqLowF": 90, "eqMid": -2, "eqMidF": 450, "eqMidQ": 1, "eqHigh": 2.5, "eqHighF": 6000, "compThr": -20, "compRatio": 4, "compKnee": 6, "compAtk": 0.02, "compRel": 0.15, "makeup": 5, "sat": 0.35, "width": 1.1, "limRel": 0.05, "ceiling": -1},
+  'Metal': {"hpf": 35, "eqLow": 2.5, "eqLowF": 80, "eqMid": -2.5, "eqMidF": 500, "eqMidQ": 0.9, "eqHigh": 2, "eqHighF": 5000, "compThr": -22, "compRatio": 4, "compKnee": 6, "compAtk": 0.015, "compRel": 0.12, "makeup": 6, "sat": 0.25, "width": 1.2, "limRel": 0.04, "ceiling": -0.8},
+  'Acoustic / Natural': {"hpf": 25, "eqLow": 0.5, "eqHigh": 1, "compThr": -16, "compRatio": 2, "compKnee": 12, "compAtk": 0.03, "compRel": 0.3, "makeup": 2, "sat": 0.05, "width": 1.05, "ceiling": -1},
+  'Vocal / Podcast': {"hpf": 80, "eqLow": -1, "eqMid": 2, "eqMidF": 3000, "eqMidQ": 1, "eqHigh": 1, "compThr": -24, "compRatio": 3.5, "compKnee": 10, "compAtk": 0.005, "compRel": 0.2, "makeup": 6, "width": 0.8, "ceiling": -1},
+  'Lo-Fi Tape': {"hpf": 60, "eqLow": 1, "eqHigh": -6, "eqHighF": 6000, "compThr": -20, "compRatio": 3, "compKnee": 12, "makeup": 3, "sat": 0.6, "width": 0.9, "ceiling": -1},
 };
+const masterFull = p => Object.fromEntries(MASTER_KEYS.map(k => [k, (p && p[k] !== undefined) ? +p[k] : MASTER_DEFAULTS[k]]));
+const masterDiffers = (m, pp) => MASTER_KEYS.some(k => Math.abs(+(m[k] ?? MASTER_DEFAULTS[k]) - +(pp[k] ?? MASTER_DEFAULTS[k])) > 1e-6);
+// 'Balanced' -> 'Balanced (custom)' once edited after choosing it -> 'Custom' when no preset is chosen
+function masterLabel(m = P.master) { return !m.preset || !m.presetParams ? 'Custom' : m.preset + (masterDiffers(m, m.presetParams) ? ' (custom)' : ''); }
+function applyMasterPreset(m, name, params) { const f = masterFull(params); Object.assign(m, f); m.preset = name; m.presetParams = { ...f }; return m; }
+function defaultMaster() { return applyMasterPreset({ ...MASTER_DEFAULTS }, 'Default', MASTER_PRESETS['Default']); }
+// older projects carry no preset info: recognise an exact built-in match, otherwise 'Custom'
+function migrateMaster(m) {
+  m = { ...MASTER_DEFAULTS, ...(m || {}) };
+  if (!('preset' in m)) { m.preset = null; m.presetParams = null; for (const [n, p] of Object.entries(MASTER_PRESETS)) { const f = masterFull(p); if (!masterDiffers(m, f)) { m.preset = n; m.presetParams = f; break; } } }
+  return m;
+}
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const LOW_NOTE = 36, HIGH_NOTE = 84;
 
 /* ------------------------------------------------------------------ state */
 const P = {
   title: 'My Song', bpm: 180, sig: 4, tracks: [], loop: { start: 0, end: 16 },
-  master: { vol: 1, eqLow: 0, eqMid: 0, eqHigh: 0, compThr: -18, compRatio: 2.5, compAtk: 0.01, compRel: 0.25, makeup: 3, ceiling: -1, reverbSize: 2.5, delayDiv: 0.75, delayFb: 0.35 },
+  master: defaultMaster(),
 };
 const buffers = new Map();   // bufId -> AudioBuffer
 const bufNames = new Map();  // bufId -> file name
@@ -261,12 +284,19 @@ function createGraph(c, live) {
   g.comp = c.createDynamicsCompressor(); g.makeup = c.createGain();
   g.lim = c.createDynamicsCompressor(); g.lim.knee.value = 0; g.lim.ratio.value = 20; g.lim.attack.value = 0.001; g.lim.release.value = 0.08;
   g.out = c.createGain(); g.an = c.createAnalyser(); g.an.fftSize = 2048;
-  g.in.connect(g.low); g.low.connect(g.mid); g.mid.connect(g.high); g.high.connect(g.comp);
+  // mastering chain: HPF -> 3-band EQ -> bus comp -> saturation -> make-up -> stereo width (M/S) -> limiter -> output -> clipper
+  g.hpf = c.createBiquadFilter(); g.hpf.type = 'highpass'; g.hpf.Q.value = Math.SQRT1_2;
+  g.in.connect(g.hpf); g.hpf.connect(g.low); g.low.connect(g.mid); g.mid.connect(g.high); g.high.connect(g.comp);
+  g.satIn = c.createGain(); g.sat = c.createWaveShaper(); g.sat.oversample = '4x';
+  g.wSplit = c.createChannelSplitter(2); g.wMerge = c.createChannelMerger(2);
+  g.wLL = c.createGain(); g.wLR = c.createGain(); g.wRL = c.createGain(); g.wRR = c.createGain();
+  g.wSplit.connect(g.wLL, 0); g.wSplit.connect(g.wLR, 0); g.wSplit.connect(g.wRL, 1); g.wSplit.connect(g.wRR, 1);
+  g.wLL.connect(g.wMerge, 0, 0); g.wRL.connect(g.wMerge, 0, 0); g.wLR.connect(g.wMerge, 0, 1); g.wRR.connect(g.wMerge, 0, 1);
   // True-peak guard after the limiter (the Web Audio compressor overshoots and adds auto make-up gain):
   // a soft-knee clipper that never exceeds the ceiling. Same node in live playback and export,
   // so what you hear in the studio is exactly what gets rendered.
   g.clipIn = c.createGain(); g.clipIn.gain.value = 0.5; g.clip = c.createWaveShaper(); g.clip.oversample = '4x';
-  g.comp.connect(g.makeup); g.makeup.connect(g.lim); g.lim.connect(g.out); g.out.connect(g.clipIn); g.clipIn.connect(g.clip); g.clip.connect(g.an); g.an.connect(c.destination);
+  g.comp.connect(g.satIn); g.satIn.connect(g.sat); g.sat.connect(g.makeup); g.makeup.connect(g.wSplit); g.wMerge.connect(g.lim); g.lim.connect(g.out); g.out.connect(g.clipIn); g.clipIn.connect(g.clip); g.clip.connect(g.an); g.an.connect(c.destination);
   g.revIn = c.createGain(); g.conv = c.createConvolver(); g.irSize = P.master.reverbSize; g.conv.buffer = makeIR(c, g.irSize);
   g.revIn.connect(g.conv); g.conv.connect(g.in);
   g.dlyIn = c.createGain(); g.dly = c.createDelay(5); g.fb = c.createGain(); g.dlyLp = c.createBiquadFilter(); g.dlyLp.frequency.value = 4500;
@@ -277,14 +307,31 @@ function createGraph(c, live) {
 }
 function applyMaster(g) {
   const m = P.master, c = g.c, L = g.live;
+  setP(g.in.gain, dbToGain(m.trim || 0), c, L);  // input trim into the mastering chain (tracks + send returns)
+  // HPF: 20 Hz = off (a 1 Hz DC blocker keeps the old chain bit-for-bit transparent)
+  setP(g.hpf.frequency, m.hpf > 20.5 ? m.hpf : 1, c, L);
+  setP(g.low.frequency, m.eqLowF, c, L); setP(g.mid.frequency, m.eqMidF, c, L); setP(g.mid.Q, m.eqMidQ, c, L); setP(g.high.frequency, m.eqHighF, c, L);
   setP(g.low.gain, m.eqLow, c, L); setP(g.mid.gain, m.eqMid, c, L); setP(g.high.gain, m.eqHigh, c, L);
-  setP(g.comp.threshold, m.compThr, c, L); setP(g.comp.ratio, m.compRatio, c, L);
+  setP(g.comp.threshold, m.compThr, c, L); setP(g.comp.ratio, m.compRatio, c, L); setP(g.comp.knee, m.compKnee, c, L);
   setP(g.comp.attack, m.compAtk, c, L); setP(g.comp.release, m.compRel, c, L);
-  setP(g.makeup.gain, dbToGain(m.makeup), c, L); setP(g.lim.threshold, m.ceiling, c, L);
+  setP(g.makeup.gain, dbToGain(m.makeup), c, L); setP(g.lim.threshold, m.ceiling, c, L); setP(g.lim.release, m.limRel, c, L);
   setP(g.out.gain, m.vol, c, L);
+  // stereo width (mid/side): L' = a*L + b*R, R' = b*L + a*R with a = (1+w)/2, b = (1-w)/2 -> w = 1 is the identity, 0 = mono
+  const wa = (1 + m.width) / 2, wb = (1 - m.width) / 2;
+  setP(g.wLL.gain, wa, c, L); setP(g.wRR.gain, wa, c, L); setP(g.wLR.gain, wb, c, L); setP(g.wRL.gain, wb, c, L);
+  if (g.satAmt !== m.sat) { g.satAmt = m.sat; g.sat.curve = satCurve(m.sat); g.satIn.gain.value = m.sat > 0 ? 0.25 : 1; }
   setP(g.dly.delayTime, Math.min(4.9, m.delayDiv * spb()), c, L); setP(g.fb.gain, m.delayFb, c, L);
   if (Math.abs(g.irSize - m.reverbSize) > 0.01) { g.irSize = m.reverbSize; g.conv.buffer = makeIR(c, m.reverbSize); }
   if (g.clipCeil !== m.ceiling) { g.clipCeil = m.ceiling; g.clip.curve = clipCurve(dbToGain(Math.min(-0.3, m.ceiling))); }
+}
+// Tape-style saturation: input is pre-scaled by 0.25 (u in [-1,1] = signal / 4), output y = tanh(k*x)/k
+// -> unity gain for quiet signals (no level jump when you turn it up), smooth even-order-free soft compression
+// of peaks; sat = 0 -> no curve at all (bit-exact bypass).
+function satCurve(sat) {
+  if (!(sat > 0)) return null;
+  const n = 4096, y = new Float32Array(n), k = 0.15 + sat * 1.6;
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1) * 2 - 1) * 4; y[i] = Math.tanh(k * x) / k; }
+  return y;
 }
 // input u in [-1,1] is the signal / 2 (so peaks up to 2.0 are shaped); linear up to 85% of the ceiling,
 // then a smooth tanh knee that approaches (never passes) the ceiling.
@@ -1619,7 +1666,7 @@ function renderMixer() {
   });
   m.append(el('div', { className: 'strip mst' }, el('div', { className: 't' }, 'MASTER'),
     el('div', { className: 'meter' }, el('div', { id: 'meter-master' })), el('div', { id: 'peak-master' }, '-∞ dB'),
-    slider('Vol', 0, 1.5, 0.01, P.master.vol, fmtDb, v => { P.master.vol = v; syncGraph(); }),
+    slider('Vol', 0, 1.5, 0.01, P.master.vol, fmtDb, v => { P.master.vol = v; syncGraph(); masterChanged(); }),
     el('button', { onclick: () => showTab('master') }, 'Mastering →')));
 }
 
@@ -1980,33 +2027,242 @@ function renderFx() {
   box.append(chain);
 }
 
-/* --------------------------------------------------------------- mastering */
+/* --------------------------------------------------------------- mastering
+   The project remembers the chosen preset (P.master.preset + a snapshot of its values in presetParams):
+   unchanged -> "Balanced", edited afterwards -> "Balanced (custom)", nothing chosen -> "Custom".
+   User presets live in SQLite (/api/master-presets) and can be exported / imported as .rushmaster.json. */
+let userMasterPresets = [], masterTarget = '-14';
+async function loadUserMasterPresets() {
+  try { userMasterPresets = (await (await api('/api/master-presets')).json()).user || []; } catch (e) { userMasterPresets = []; }
+  if (document.getElementById('mpSel')) renderMaster();
+}
+function findMasterPreset(name) {
+  if (MASTER_PRESETS[name]) return { name, params: masterFull(MASTER_PRESETS[name]), builtin: true };
+  const u = userMasterPresets.find(p => p.name.toLowerCase() === String(name).toLowerCase());
+  return u ? { name: u.name, params: masterFull(u.params), builtin: false } : null;
+}
+function masterChanged() {
+  if (rt) applyMaster(rt);
+  const M = P.master, lbl = document.getElementById('mpLabel');
+  if (lbl) {
+    const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams);
+    lbl.innerHTML = ''; lbl.append(M.preset ? M.preset : 'Custom'); if (mod) lbl.append(el('em', {}, ' (custom)'));
+    lbl.title = masterLabel();
+    const rv = document.getElementById('mpRevert'); if (rv) rv.disabled = !mod;
+    const up = document.getElementById('mpUpdate'); if (up) up.disabled = !(mod && findMasterPreset(M.preset) && !findMasterPreset(M.preset).builtin);
+  }
+}
+function chooseMasterPreset(name) {
+  const p = findMasterPreset(name); if (!p) return;
+  applyMasterPreset(P.master, p.name, p.params); if (rt) applyMaster(rt); renderMaster(); undoCaptureSoon();
+  status('Mastering preset: ' + p.name);
+}
+const masterFileName = n => (n || 'preset').replace(/[\\/:*?"<>|]+/g, '_').trim() + '.rushmaster.json';
+function masterPresetFile(items) {
+  return { app: 'rushdaw', kind: 'master-preset', version: 1, presets: items.map(p => ({ name: p.name, params: masterFull(p.params) })) };
+}
+function exportMasterPresets(items, fname) {
+  download(new Blob([JSON.stringify(masterPresetFile(items), null, 2)], { type: 'application/json' }), masterFileName(fname));
+}
+function openSaveMasterPreset() {
+  const M = P.master, cur = findMasterPreset(M.preset);
+  const name = el('input', { type: 'text', maxLength: 60, value: cur && !cur.builtin ? cur.name : '', placeholder: 'e.g. My Crust Master' });
+  const err = el('p', { className: 'hint merr' });
+  let overwrite = false;
+  const save = async close => {
+    const n = name.value.trim().replace(/\s+/g, ' ');
+    if (!n) { err.textContent = 'Enter a name.'; return; }
+    try {
+      const r = await api('/api/master-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: n, params: masterFull(M), overwrite }) });
+      const saved = await r.json(); close();
+      await loadUserMasterPresets(); applyMasterPreset(P.master, saved.name, saved.params); if (rt) applyMaster(rt); renderMaster(); undoCaptureSoon();
+      status(`Saved mastering preset “${saved.name}”`);
+    } catch (e) {
+      if (/already exists/.test(e.message)) { overwrite = true; err.textContent = `“${n}” already exists – press Save again to overwrite it.`; }
+      else err.textContent = e.message;
+    }
+  };
+  name.oninput = () => { overwrite = false; err.textContent = ''; };
+  name.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); save(m.close); } };
+  const m = openModal('Save mastering preset', el('div', { className: 'mform' },
+    el('label', {}, 'Preset name', name),
+    el('p', { className: 'hint' }, 'Saves all current mastering values (HPF, EQ, compressor, saturation, width, limiter, output). Reverb/delay send settings are not part of a preset. Saved presets are available in every project.'), err),
+    [{ label: 'Cancel', run: c => c() }, { label: 'Save', primary: true, run: save }]);
+  setTimeout(() => name.focus(), 0);
+}
+function confirmDeleteMasterPreset(name) {
+  openModal('Delete preset', el('p', {}, `Delete the mastering preset “${name}”? Projects that use it keep their values.`),
+    [{ label: 'Cancel', run: c => c() }, { label: 'Delete', primary: true, run: async close => {
+      try { await api('/api/master-presets/' + encodeURIComponent(name), { method: 'DELETE' }); close(); await loadUserMasterPresets(); status(`Deleted preset “${name}”`); }
+      catch (e) { close(); status('Delete failed: ' + e.message); } } }]);
+}
+async function importMasterPresetFile(file) {
+  try {
+    const r = await api('/api/master-presets/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+    const res = (await r.json()).imported || [];
+    await loadUserMasterPresets();
+    status('Imported preset' + (res.length > 1 ? 's' : '') + ': ' + res.map(x => x.name + (x.renamed_from ? ` (was “${x.renamed_from}”)` : '')).join(', '));
+    if (res.length === 1) chooseMasterPreset(res[0].name);
+  } catch (e) { status('Import failed: ' + e.message); }
+}
+
+/* Loudness analysis (ITU-R BS.1770-4 / EBU R128): K-weighting (any sample rate),
+   400 ms blocks / 75 % overlap, absolute gate -70 LUFS + relative gate -10 LU -> integrated; 3 s short-term max;
+   LRA = 10th..95th percentile of gated short-term values; true peak = 4x oversampled (windowed-sinc) peak. */
+function kWeight(x, sr) {
+  const biq = (b0, b1, b2, a1, a2) => { const y = new Float32Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) { const v = x[i], o = b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = o; y[i] = o; } return y; };
+  // BS.1770 K-weighting for any sample rate (B. De Man's derivation; reproduces the 48 kHz coefficients of the
+  // standard exactly: shelf b = [1.53512486, -2.69169619, 1.19839281], a = [-1.69065929, 0.73248077];
+  // high pass b = [1, -2, 1], a = [-1.99004745, 0.99007225])
+  let K = Math.tan(Math.PI * 1681.974450955533 / sr), Q = 0.7071752369554196;
+  const Vh = Math.pow(10, 3.999843853973347 / 20), Vb = Math.pow(Vh, 0.4996667741545416), a0 = 1 + K / Q + K * K;
+  const s1 = biq((Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0);
+  K = Math.tan(Math.PI * 38.13547087602444 / sr); Q = 0.5003270373238773;
+  const h0 = 1 + K / Q + K * K;
+  x = s1; return biq(1, -2, 1, 2 * (K * K - 1) / h0, (1 - K / Q + K * K) / h0);
+}
+// sample peak + true peak (4x oversampling, 32-tap Hann-windowed sinc per phase - BS.1770 Annex 2 style)
+function samplePeakOf(buf) { let p = 0; for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > p) p = a; } } return p; }
+const TP_TAPS = 16, TP_PH = 4, TP_H = [];
+for (let p = 1; p < TP_PH; p++) { const r = []; for (let k = -TP_TAPS + 1; k <= TP_TAPS; k++) { const t = k - p / TP_PH, x = Math.PI * t; r.push((t === 0 ? 1 : Math.sin(x) / x) * (0.5 + 0.5 * Math.cos(Math.PI * t / TP_TAPS))); } TP_H.push(r); }
+function truePeakOf(buf) {
+  let tp = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const ch = buf.getChannelData(c), n = ch.length;
+    for (let i = 0; i < n; i++) { const a = Math.abs(ch[i]); if (a > tp) tp = a;
+      // inter-sample peaks (between i and i+1) are at most a few dB above their neighbours -> skip intervals whose two
+      // samples are both > 9 dB under the running max (keeps it fast; real-world overs are < 3 dB)
+      if (a < 0.35 * tp && Math.abs(ch[i + 1] || 0) < 0.35 * tp) continue;
+      for (let p = 0; p < TP_PH - 1; p++) { let acc = 0; const r = TP_H[p]; for (let k = 0; k < r.length; k++) { const j = i + k - TP_TAPS + 1; if (j >= 0 && j < n) acc += ch[j] * r[k]; } const v = Math.abs(acc); if (v > tp) tp = v; } } }
+  return tp;
+}
+function analyzeLoudness(buf) {
+  const sr = buf.sampleRate, chs = [...Array(buf.numberOfChannels).keys()].map(i => buf.getChannelData(i));
+  const sub = Math.round(sr * 0.1), nSub = Math.floor(buf.length / sub);
+  const e = new Float64Array(nSub);  // energy (sum of channel mean squares, K-weighted) per 100 ms
+  for (const ch of chs) { const k = kWeight(ch, sr); for (let s = 0; s < nSub; s++) { let a = 0; for (let i = s * sub, n = i + sub; i < n; i++) a += k[i] * k[i]; e[s] += a / sub; } }
+  const L = z => -0.691 + 10 * Math.log10(z);
+  const blocks = (n) => { const out = []; for (let s = 0; s + n <= nSub; s++) { let a = 0; for (let j = 0; j < n; j++) a += e[s + j]; out.push(a / n); } return out; };
+  const mom = blocks(4), st = blocks(30);
+  const abs = mom.filter(z => L(z) > -70);
+  let integrated = -Infinity;
+  if (abs.length) { const rel = L(abs.reduce((a, b) => a + b, 0) / abs.length) - 10, g = abs.filter(z => L(z) > rel); if (g.length) integrated = L(g.reduce((a, b) => a + b, 0) / g.length); }
+  const stL = st.map(L), stAbs = st.filter(z => L(z) > -70);
+  let lra = 0;
+  if (stAbs.length) { const rel = L(stAbs.reduce((a, b) => a + b, 0) / stAbs.length) - 20, v = stAbs.map(L).filter(x => x > rel).sort((a, b) => a - b);
+    if (v.length > 1) { const q = p => v[Math.min(v.length - 1, Math.max(0, Math.round(p * (v.length - 1))))]; lra = q(0.95) - q(0.10); } }
+  const sp = samplePeakOf(buf), tp = truePeakOf(buf);
+  const db = v => v > 0 ? 20 * Math.log10(v) : -Infinity;
+  return { integrated, shortMax: stL.length ? Math.max(...stL) : -Infinity, lra, truePeak: db(tp), samplePeak: db(sp), seconds: buf.length / sr };
+}
+/* Match loudness: adjust the input trim (into the whole chain, so compressor/limiter react like on a real master)
+   until the integrated loudness of the export render is within 0.3 LU of the target (secant steps, max 6 renders). */
+async function matchMasterLoudness(target) {
+  const out = document.getElementById('mpAnalysis'), btn = document.getElementById('mpMatch'); if (!out) return;
+  const M = P.master, rows = [];
+  btn.disabled = true;
+  try {
+    let t0 = M.trim || 0, L0 = null, t1 = t0, L1, best = null;
+    for (let it = 0; it < 6; it++) {
+      M.trim = clamp(+t1.toFixed(2), MASTER_RANGES.trim[0], MASTER_RANGES.trim[1]); if (rt) applyMaster(rt);
+      out.textContent = `Matching ${target} LUFS… render ${it + 1}`;
+      const buf = await renderMix(); L1 = analyzeLoudness(buf).integrated; rows.push([M.trim, L1]);
+      if (!best || Math.abs(L1 - target) < Math.abs(best[1] - target)) best = [M.trim, L1];
+      if (Math.abs(L1 - target) <= 0.3) break;
+      // slope dL/dtrim: 1 at first (linear), then secant; the limiter flattens it near the ceiling -> keep >= 0.15
+      const slope = L0 === null || Math.abs(t1 - t0) < 1e-3 ? 1 : Math.max(0.15, (L1 - L0) / (t1 - t0));
+      const next = clamp(t1 + (target - L1) / slope, MASTER_RANGES.trim[0], MASTER_RANGES.trim[1]);
+      if (Math.abs(next - t1) < 0.05) break;  // at the trim limit / cannot get closer
+      t0 = t1; L0 = L1; t1 = next;
+    }
+    M.trim = best[0]; if (rt) applyMaster(rt); renderMaster(); undoCaptureSoon();
+    await runMasterAnalysis();
+    const ok = Math.abs(best[1] - target) <= 0.3;
+    status(ok ? `Loudness matched: ${best[1].toFixed(1)} LUFS (target ${target}) with input trim ${best[0] >= 0 ? '+' : ''}${best[0].toFixed(1)} dB`
+      : `Closest reachable: ${best[1].toFixed(1)} LUFS (target ${target}) – trim ${best[0].toFixed(1)} dB; ${best[1] < target ? 'raise make-up / lower threshold for more loudness' : 'the mix is quieter than the trim range allows'}`);
+  } catch (e) { out.textContent = 'Match failed: ' + e.message; }
+  btn.disabled = false;
+}
+async function runMasterAnalysis() {
+  const out = document.getElementById('mpAnalysis'), btn = document.getElementById('mpAnalyze'); if (!out) return;
+  btn.disabled = true; out.textContent = 'Rendering + measuring…';
+  try {
+    const r = analyzeLoudness(await renderMix()), f = v => isFinite(v) ? v.toFixed(1) : '-∞';
+    const row = (k, v, cls = '') => el('div', { className: 'lrow ' + cls }, el('span', {}, k), el('b', {}, v));
+    out.innerHTML = '';
+    out.append(row('Integrated', f(r.integrated) + ' LUFS', r.integrated > -9 ? 'warn' : ''), row('Short-term max', f(r.shortMax) + ' LUFS'),
+      row('Loudness range', r.lra.toFixed(1) + ' LU'), row('True peak', f(r.truePeak) + ' dBTP', r.truePeak > -1 ? 'warn' : ''),
+      row('Sample peak', f(r.samplePeak) + ' dBFS'),
+      el('p', { className: 'hint' }, `Measured on the export render (${fmtClock(r.seconds)}, Normalize ${$('#normalize').checked ? 'on' : 'off'}). Streaming targets ≈ −14 LUFS, true peak ≤ −1 dBTP.`));
+    status(`Loudness: ${f(r.integrated)} LUFS integrated · true peak ${f(r.truePeak)} dBTP`);
+  } catch (e) { out.textContent = 'Analysis failed: ' + e.message; }
+  btn.disabled = false;
+}
+
 function renderMaster() {
   const m = $('#master'), M = P.master; m.innerHTML = '';
-  const set = (k) => v => { M[k] = v; if (rt) applyMaster(rt); };
+  const set = k => v => { M[k] = v; masterChanged(); };
+  const sl = (label, k, step, fmt) => { const [lo, hi] = MASTER_RANGES[k], s = slider(label, lo, hi, step, M[k], fmt, set(k));
+    s.title = 'Double-click: back to the preset value'; s.querySelector('input').ondblclick = e => { const v = (M.presetParams || MASTER_DEFAULTS)[k] ?? MASTER_DEFAULTS[k]; e.target.value = v; e.target.dispatchEvent(new Event('input')); };
+    return s; };
+  const dB = v => (v > 0 ? '+' : '') + (+v).toFixed(1) + ' dB', Hz = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + ' kHz' : Math.round(v) + ' Hz', ms = v => (v * 1000).toFixed(v < 0.01 ? 1 : 0) + ' ms';
+  // preset selector: built-in + "My presets"; the current one stays selected while it is edited (label gets "(custom)")
+  const cur = findMasterPreset(M.preset), selVal = cur ? (cur.builtin ? 'b:' : 'u:') + cur.name : '';
+  const sel = el('select', { id: 'mpSel', title: 'Choose a mastering preset', onchange: e => { const v = e.target.value; if (v) chooseMasterPreset(v.slice(2)); } },
+    el('option', { value: '' }, M.preset && !cur ? `${M.preset} (deleted)` : 'Custom'),
+    el('optgroup', { label: 'Built-in' }, Object.keys(MASTER_PRESETS).map(k => el('option', { value: 'b:' + k }, k))),
+    userMasterPresets.length ? el('optgroup', { label: 'My presets' }, userMasterPresets.map(p => el('option', { value: 'u:' + p.name }, p.name))) : null);
+  sel.value = selVal;
+  const imp = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' }, onchange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importMasterPresetFile(f); } });
+  const exportCurrent = () => { const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams), n = !M.preset ? 'Custom' : mod ? M.preset + ' custom' : M.preset;
+    exportMasterPresets([{ name: n, params: M }], n); status(`Exported mastering settings “${n}”`); };
   m.append(
-    el('div', { className: 'mstbox' }, el('h4', {}, 'Preset'),
-      el('select', { onchange: e => { Object.assign(M, MASTER_PRESETS[e.target.value]); if (rt) applyMaster(rt); renderMaster(); } }, el('option', {}, '— choose —'), Object.keys(MASTER_PRESETS).map(k => el('option', {}, k))),
-      el('p', { className: 'hint' }, 'Chain: EQ → Compressor → Make-up → Limiter → Output. Export renders through this chain.'),
+    el('div', { className: 'mstbox mpbox' }, el('h4', {}, 'Preset'),
+      el('div', { id: 'mpLabel', className: 'mpname' }),
+      sel,
+      el('div', { className: 'mpbtns' },
+        el('button', { id: 'mpRevert', title: 'Discard edits: back to the preset values', onclick: () => { if (M.presetParams) { applyMasterPreset(M, M.preset, M.presetParams); if (rt) applyMaster(rt); renderMaster(); undoCaptureSoon(); } } }, '↺ Revert'),
+        el('button', { id: 'mpUpdate', title: 'Overwrite your saved preset with the current values', onclick: async () => {
+          try { const r = await api('/api/master-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: M.preset, params: masterFull(M), overwrite: true }) });
+            const s = await r.json(); await loadUserMasterPresets(); applyMasterPreset(M, s.name, s.params); renderMaster(); undoCaptureSoon(); status(`Updated preset “${s.name}”`); } catch (e) { status('Update failed: ' + e.message); } } }, '⟳ Update'),
+        el('button', { title: 'Save the current values as a new preset', onclick: openSaveMasterPreset }, '💾 Save as…'),
+        cur && !cur.builtin ? el('button', { title: 'Delete this saved preset', onclick: () => confirmDeleteMasterPreset(cur.name) }, '🗑') : null),
+      el('div', { className: 'mpbtns' },
+        el('button', { title: 'Download the current mastering settings as a preset file (.rushmaster.json)', onclick: exportCurrent }, '⬇ Export'),
+        userMasterPresets.length ? el('button', { title: 'Download all your saved presets in one file', onclick: () => exportMasterPresets(userMasterPresets, 'rushdaw-master-presets') }, '⬇ Export all mine') : null,
+        el('button', { title: 'Import a preset file (.rushmaster.json) into your presets', onclick: () => imp.click() }, '⬆ Import'), imp),
+      el('p', { className: 'hint' }, 'Chain: HPF → EQ → Compressor → Saturation → Make-up → Width → Limiter → Output → true-peak clipper. Playback and export use the same chain.'),
       el('div', { className: 'meter', style: { height: '10px', background: '#000' } }, el('div', { id: 'meter-master2', style: { height: '100%', width: 0, background: 'var(--meter)' } })),
       el('div', { id: 'peak-master2' }, '-∞ dB')),
-    el('div', { className: 'mstbox' }, el('h4', {}, 'Master EQ'),
-      slider('Low (120Hz)', -12, 12, 0.5, M.eqLow, v => v + ' dB', set('eqLow')),
-      slider('Mid (1.2k)', -12, 12, 0.5, M.eqMid, v => v + ' dB', set('eqMid')),
-      slider('High (8k)', -12, 12, 0.5, M.eqHigh, v => v + ' dB', set('eqHigh'))),
+    el('div', { className: 'mstbox' }, el('h4', {}, 'Filter & EQ'),
+      sl('Low cut (HPF)', 'hpf', 1, v => v <= 20.5 ? 'off' : Math.round(v) + ' Hz'),
+      sl('Low shelf', 'eqLow', 0.5, dB), sl('· freq', 'eqLowF', 1, Hz),
+      sl('Mid bell', 'eqMid', 0.5, dB), sl('· freq', 'eqMidF', 10, Hz), sl('· Q', 'eqMidQ', 0.05, v => (+v).toFixed(2)),
+      sl('High shelf', 'eqHigh', 0.5, dB), sl('· freq', 'eqHighF', 50, Hz)),
     el('div', { className: 'mstbox' }, el('h4', {}, 'Bus Compressor'),
-      slider('Threshold', -50, 0, 1, M.compThr, v => v + ' dB', set('compThr')),
-      slider('Ratio', 1, 20, 0.5, M.compRatio, v => v + ':1', set('compRatio')),
-      slider('Attack', 0.001, 0.2, 0.001, M.compAtk, v => (v * 1000).toFixed(0) + ' ms', set('compAtk')),
-      slider('Release', 0.02, 1, 0.01, M.compRel, v => (v * 1000).toFixed(0) + ' ms', set('compRel')),
-      slider('Make-up', 0, 18, 0.5, M.makeup, v => '+' + v + ' dB', set('makeup'))),
+      sl('Threshold', 'compThr', 0.5, v => (+v).toFixed(1) + ' dB'), sl('Ratio', 'compRatio', 0.1, v => (+v).toFixed(1) + ':1'),
+      sl('Knee', 'compKnee', 1, v => v + ' dB'), sl('Attack', 'compAtk', 0.001, ms), sl('Release', 'compRel', 0.01, ms),
+      sl('Make-up', 'makeup', 0.5, v => '+' + (+v).toFixed(1) + ' dB')),
+    el('div', { className: 'mstbox' }, el('h4', {}, 'Colour & Stereo'),
+      sl('Saturation', 'sat', 0.01, v => v <= 0 ? 'off' : Math.round(v * 100) + '%'),
+      sl('Stereo width', 'width', 0.01, v => +v === 0 ? 'mono' : Math.round(v * 100) + '%')),
     el('div', { className: 'mstbox' }, el('h4', {}, 'Limiter / Output'),
-      slider('Ceiling', -12, 0, 0.1, M.ceiling, v => v.toFixed(1) + ' dB', set('ceiling')),
-      slider('Output', 0, 1.5, 0.01, M.vol, fmtDb, set('vol'))),
+      sl('Ceiling', 'ceiling', 0.1, v => (+v).toFixed(1) + ' dB'), sl('Release', 'limRel', 0.005, ms),
+      sl('Output', 'vol', 0.01, fmtDb)),
+    el('div', { className: 'mstbox' }, el('h4', {}, 'Loudness (BS.1770)'),
+      sl('Input trim', 'trim', 0.1, v => (v > 0 ? '+' : '') + (+v).toFixed(1) + ' dB'),
+      el('div', { className: 'mpbtns' },
+        el('button', { id: 'mpAnalyze', onclick: runMasterAnalysis }, 'Analyze loudness'),
+        el('select', { id: 'mpTarget', title: 'Loudness target', onchange: e => { masterTarget = e.target.value; } }, [['-14', '−14 LUFS · Spotify / YouTube'], ['-16', '−16 LUFS · Apple Music'], ['-11', '−11 LUFS · loud'], ['-9', '−9 LUFS · very loud'], ['-23', '−23 LUFS · EBU R128 broadcast']].map(([v, t]) => el('option', { value: v, selected: v === masterTarget }, t))),
+        el('button', { id: 'mpMatch', title: 'Adjust the input trim until the export render hits the target loudness', onclick: () => matchMasterLoudness(+$('#mpTarget').value) }, 'Match')),
+      el('div', { id: 'mpAnalysis', className: 'lmeter' }, el('p', { className: 'hint' }, 'Renders the song like Export and measures integrated / short-term loudness (LUFS), loudness range and true peak.'))),
     el('div', { className: 'mstbox' }, el('h4', {}, 'Space FX (send buses)'),
-      slider('Reverb size', 0.3, 6, 0.1, M.reverbSize, v => v.toFixed(1) + ' s', set('reverbSize')),
-      slider('Delay (beats)', 0.25, 2, 0.25, M.delayDiv, v => v + '', set('delayDiv')),
-      slider('Feedback', 0, 0.9, 0.01, M.delayFb, v => Math.round(v * 100) + '%', set('delayFb'))));
+      slider('Reverb size', 0.3, 6, 0.1, M.reverbSize, v => (+v).toFixed(1) + ' s', v => { M.reverbSize = v; masterChanged(); }),
+      slider('Delay (beats)', 0.25, 2, 0.25, M.delayDiv, v => v + '', v => { M.delayDiv = v; masterChanged(); }),
+      slider('Feedback', 0, 0.9, 0.01, M.delayFb, v => Math.round(v * 100) + '%', v => { M.delayFb = v; masterChanged(); }),
+      el('p', { className: 'hint' }, 'Not part of a mastering preset.')));
+  masterChanged();
 }
 
 /* ------------------------------------------------------------------ meters */
@@ -2063,8 +2319,10 @@ async function renderMix(opts = {}) {
   } finally { if (saved) P.tracks.forEach((t, i) => { [t.mute, t.solo] = saved[i]; }); }
   let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
   const target = dbToGain(Math.min(-0.3, P.master.ceiling));
-  // Normalize: bring the peak to the ceiling. Without normalize: still never exceed the ceiling
-  // (the Web Audio limiter is not a true brickwall, so this guard prevents clipped exports).
+  // Normalize: bring the TRUE peak (4x oversampled) to the ceiling. Without normalize: the true peak never exceeds the
+  // ceiling (the Web Audio limiter is not a brickwall and inter-sample peaks can pass the clipper by ~0.1 dB) ->
+  // the exported WAV stays <= ceiling dBTP.
+  if (pk > 0) pk = Math.max(pk, truePeakOf(out));
   if (pk > 0 && ($('#normalize').checked || pk > target)) {
     const k = target / pk; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= k; }
   }
@@ -2271,7 +2529,7 @@ async function loadProjectData(j) {
     const bin = Uint8Array.from(atob(a.wav), ch => ch.charCodeAt(0));
     buffers.set(id, await ctx.decodeAudioData(bin.buffer)); bufNames.set(id, a.name);
   }
-  Object.assign(P, j.project); P.master = { ...DEFAULT_MASTER, ...j.project.master };
+  Object.assign(P, j.project); P.master = migrateMaster(j.project.master);
   P.tracks.forEach(t => { t.fx = t.fx || []; migrateDrumTrack(t); migrateStringTrack(t); normalizeAmp(t); });
   ensureRegions();  // older projects: every region gets its own copy of the track pattern
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
@@ -2574,6 +2832,7 @@ function newVocalTrack(startBeat = 0) {
 function init() {
   loadDrumSamples();  // recorded acoustic drum kit (~2 MB)
   loadAllSamples();  // real guitar/bass recordings (~1 MB) decoded in the background right away
+  loadUserMasterPresets();  // saved mastering presets (SQLite)
   $('#btnPlay').onclick = togglePlay;
   $('#btnRewind').onclick = () => seek(0);
   $('#btnRecord').onclick = startRecording;

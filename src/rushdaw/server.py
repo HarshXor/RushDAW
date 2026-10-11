@@ -8,9 +8,10 @@ import re
 import threading
 import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import __version__
+from . import model as M
 from .export import available_formats, convert
 from .mcp import RushDAWMCP
 from .storage import Storage, StorageError, build_package, safe_file_name
@@ -101,6 +102,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_file(build_package(self._body()), f"{name}.rushdaw.zip", "application/zip")
             if u.path == "/api/projects/import" and method == "POST":
                 return self._json(st.import_project(self._body(), q.get("name")), 201)
+            if u.path == "/api/master-presets":  # built-in + user mastering presets (user ones live in SQLite)
+                if method == "GET":
+                    return self._json({"builtin": M.builtin_master_presets(), "user": st.list_master_presets(),
+                                       "keys": M.MASTER_KEYS, "ranges": M.MASTER_PARAMS})
+                if method == "POST":
+                    b = self._json_body()
+                    name = M.clean_preset_name(b.get("name"))
+                    return self._json(st.save_master_preset(name, M.clean_master_params(b.get("params") or {}), bool(b.get("overwrite", True))), 201)
+            if u.path == "/api/master-presets/import" and method == "POST":
+                return self._json(M.import_master_presets(st, self._body()), 201)
+            if u.path.startswith("/api/master-presets/") and method == "DELETE":
+                return self._json(st.delete_master_preset(unquote(u.path[len("/api/master-presets/"):])))
             m = _PROJ.match(u.path)
             if m:
                 pid, sub = m.group(1), m.group(2)

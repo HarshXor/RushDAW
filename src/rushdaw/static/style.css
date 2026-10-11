@@ -329,3 +329,16 @@ button,select,input{touch-action:manipulation}
 @media (max-width:640px){ .home-filters .hf{font-size:12px} .home-filters #projSearch{flex-basis:100%} }
 .home-new label{max-width:100%;min-width:0}
 #npTpl{max-width:min(420px,calc(100vw - 120px));text-overflow:ellipsis}
+/* mastering preset box + loudness readout */
+.mpbox{min-width:250px}
+.mpname{font-size:15px;font-weight:600;color:var(--acc2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mpname em{font-style:normal;color:var(--acc)}
+.mpbtns{display:flex;flex-wrap:wrap;gap:6px}
+.mpbtns button:disabled{opacity:.35;cursor:default}
+.mform{display:flex;flex-direction:column;gap:8px;min-width:min(380px,80vw)}
+.mform label{display:flex;flex-direction:column;gap:4px}
+.merr{color:#ff6b6b;min-height:1em;margin:0}
+.lmeter{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.lrow{display:flex;justify-content:space-between;gap:10px}
+.lrow b{font-variant-numeric:tabular-nums}
+.lrow.warn b{color:#ff6b6b}

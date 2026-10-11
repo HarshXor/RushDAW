@@ -161,7 +161,7 @@ class RushDAWMCP:
             return {"drum_parts": [{"id": p, "name": n} for p, n in M.DRUMS], "drum_presets": list(M.DRUM_PRESETS),
                     "synth_presets": list(M.SYNTH_PRESETS), "synth_params": {k: v if isinstance(v, list) else {"min": v[0], "max": v[1]} for k, v in M.SYNTH_PARAMS.items()},
                     "effects": {k: {p: ({"default": s[0], "choices": s[1]} if isinstance(s[1], list) else {"default": s[0], "min": s[1], "max": s[2]}) for p, s in v.items()} for k, v in M.FX_TYPES.items()},
-                    "master_params": {k: {"min": v[0], "max": v[1]} for k, v in M.MASTER_PARAMS.items()}, "master_presets": list(M.MASTER_PRESETS),
+                    "master_params": {k: {"min": v[0], "max": v[1]} for k, v in M.MASTER_PARAMS.items()}, "master_presets": list(M.MASTER_PRESETS), "user_master_presets": [p["name"] for p in self.st.list_master_presets()],
                     "track_types": list(M.TRACK_TYPES), "templates": ["empty", "metal", "band", "dbeat"],
                     "drum_tuning": {k: {"min": v[0], "max": v[1], "default": M.KIT_DEFAULT[k]} for k, v in M.KIT_RANGES.items()},
                     "note_range": {"min": M.LOW_NOTE, "max": M.HIGH_NOTE, "min_name": M.note_name(M.LOW_NOTE), "max_name": M.note_name(M.HIGH_NOTE)}}
@@ -299,23 +299,139 @@ class RushDAWMCP:
             except StorageError as e:
                 raise ToolError(str(e))
 
-        @tool("set_master", "Edit master bus / mastering: apply a master preset and/or set parameters (vol, eqLow, eqMid, eqHigh, compThr, compRatio, compAtk, compRel, makeup, ceiling, reverbSize, delayDiv, delayFb).",
-              _S(project_id=PID, preset=("string", "Master preset name (see get_reference)."),
-                 params=("object", "Parameter values, e.g. {\"makeup\": 4, \"ceiling\": -1}.")))
+        def _find_preset(name):
+            """Built-in first (case-insensitive), then the user's saved presets -> (canonical name, full params, builtin)."""
+            for n, p in M.MASTER_PRESETS.items():
+                if n.lower() == str(name).lower():
+                    return n, M.master_preset_full(p), True
+            try:
+                up = self.st.get_master_preset(name)
+            except StorageError:
+                names = list(M.MASTER_PRESETS) + [x["name"] for x in self.st.list_master_presets()]
+                raise M.ModelError(f"unknown master preset '{name}'. Presets: " + ", ".join(names))
+            return up["name"], M.master_preset_full(up["params"]), False
+
+        def _master_out(m):
+            return {"preset_label": M.master_label(m), "preset": m.get("preset"),
+                    "modified": bool(m.get("preset")) and M.master_label(m).endswith("(custom)"),
+                    "master": {k: m[k] for k in M.MASTER_PARAMS}}
+
+        @tool("set_master", "Edit the master bus / mastering chain (HPF -> 3-band EQ with freq/Q -> bus compressor with knee -> "
+              "saturation -> stereo width -> make-up -> limiter (ceiling, release) -> output). Apply a preset (built-in or a saved "
+              "user preset) and/or set parameters. The project remembers the chosen preset: editing parameters afterwards shows "
+              "'<preset> (custom)'; with no preset the name is 'Custom'. Use preset='Custom' to detach from the preset.",
+              _S(project_id=PID, preset=("string", "Preset name (see list_master_presets), or 'Custom' to keep the values but drop the preset name."),
+                 params=("object", "Parameter values, e.g. {\"makeup\": 4, \"ceiling\": -1, \"sat\": 0.3, \"width\": 1.2}. "
+                                   "Keys: " + ", ".join(M.MASTER_PARAMS) + ".")))
         def set_master(a):
             def run(doc):
-                m = {**M.MASTER_DEFAULT, **(doc["project"].get("master") or {})}
-                if a.get("preset"):
-                    if a["preset"] not in M.MASTER_PRESETS:
-                        raise M.ModelError("unknown master preset. Presets: " + ", ".join(M.MASTER_PRESETS))
-                    m.update(M.MASTER_PRESETS[a["preset"]])
+                m = M.migrate_master(doc["project"].get("master"))
+                pr = a.get("preset")
+                if pr and str(pr).strip().lower() == "custom":
+                    m["preset"], m["presetParams"] = None, None
+                elif pr:
+                    name, full, _ = _find_preset(pr)
+                    M.apply_master_preset(m, name, full)
                 for k, v in (a.get("params") or {}).items():
                     if k not in M.MASTER_PARAMS:
                         raise M.ModelError(f"unknown master parameter '{k}'. Parameters: " + ", ".join(M.MASTER_PARAMS))
                     m[k] = M.num(v, k, *M.MASTER_PARAMS[k])
                 doc["project"]["master"] = m
-                return {"master": m}
+                return _master_out(m)
             return self._edit(a["project_id"], "master " + (a.get("preset") or "params"), run)
+
+        @tool("list_master_presets", "List mastering presets: built-in ones and the user's saved presets (stored in SQLite), with all parameter values. "
+              "Optionally also returns the current mastering state of a project.",
+              _S(project_id=("string", "Optional project id: also return its current preset label and master values.")), True)
+        def list_master_presets(a):
+            out = {"builtin": M.builtin_master_presets(), "user": self.st.list_master_presets(),
+                   "keys": M.MASTER_KEYS, "ranges": {k: {"min": v[0], "max": v[1]} for k, v in M.MASTER_PARAMS.items()}}
+            if a.get("project_id"):
+                doc, _, _ = self._load(a["project_id"])
+                out["project"] = _master_out(M.migrate_master(doc["project"].get("master")))
+            return out
+
+        @tool("save_master_preset", "Save a user mastering preset (SQLite, shared by all projects). Take the values from a project's current "
+              "master (project_id) and/or give params. After saving from a project, that project uses the new preset name.",
+              _S(name=("string", "Preset name (not a built-in name).", True), project_id=("string", "Take values from this project's master."),
+                 params=("object", "Mastering values (override the project's values)."), overwrite=("boolean", "Replace an existing user preset with this name (default false).")))
+        def save_master_preset(a):
+            name = M.clean_preset_name(a["name"])
+            vals = {}
+            if a.get("project_id"):
+                doc, _, _ = self._load(a["project_id"])
+                vals = {k: v for k, v in M.migrate_master(doc["project"].get("master")).items() if k in M.MASTER_KEYS}
+            vals.update(M.clean_master_params(a.get("params") or {}, partial=True))
+            full = M.clean_master_params(vals)
+            try:
+                saved = self.st.save_master_preset(name, full, bool(a.get("overwrite", False)))
+            except StorageError as e:
+                raise ToolError(str(e))
+            out = {"saved": saved}
+            if a.get("project_id"):
+                def run(doc):
+                    m = M.migrate_master(doc["project"].get("master"))
+                    M.apply_master_preset(m, saved["name"], full)
+                    doc["project"]["master"] = m
+                    return _master_out(m)
+                out["project"] = self._edit(a["project_id"], "master preset saved: " + saved["name"], run)
+            return out
+
+        @tool("delete_master_preset", "Delete a saved user mastering preset (built-in presets cannot be deleted). Projects keep their values.",
+              _S(name=("string", "User preset name.", True)))
+        def delete_master_preset(a):
+            if any(str(a["name"]).lower() == n.lower() for n in M.MASTER_PRESETS):
+                raise M.ModelError("built-in presets cannot be deleted")
+            try:
+                return self.st.delete_master_preset(a["name"])
+            except StorageError as e:
+                raise ToolError(str(e))
+
+        @tool("export_master_preset", "Export mastering presets as a RushDAW preset file (JSON, .rushmaster.json) - the same format as the "
+              "Export button in the Mastering tab. Give preset names and/or a project_id (exports its current settings). Optionally write it to a server path.",
+              _S(names=("array", "Preset names (built-in or user).", False, {"items": {"type": "string"}}),
+                 project_id=("string", "Export this project's current mastering settings."),
+                 path=("string", "Optional absolute file path on the server to write the file to.")))
+        def export_master_preset(a):
+            items = []
+            for n in a.get("names") or []:
+                name, full, _ = _find_preset(n)
+                items.append({"name": name, "params": full})
+            if a.get("project_id"):
+                doc, _, _ = self._load(a["project_id"])
+                m = M.migrate_master(doc["project"].get("master"))
+                items.append({"name": M.master_label(m).replace(" (custom)", " custom") if m.get("preset") else "Custom",
+                              "params": {k: m[k] for k in M.MASTER_KEYS}})
+            if not items:
+                raise M.ModelError("give names and/or project_id")
+            data = M.master_preset_file(items)
+            out = {"file": data}
+            if a.get("path"):
+                if not os.path.isabs(a["path"]):
+                    raise M.ModelError("path must be absolute")
+                with open(a["path"], "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                out["written"] = a["path"]
+            return out
+
+        @tool("import_master_presets", "Import mastering presets from a RushDAW preset file (export format, a single {name, params} or a list) "
+              "into the user's saved presets. Never overwrites: clashing names get ' (2)' / ' (imported)'.",
+              _S(data=(None, "The preset file content (JSON object or JSON text).", False, {"type": ["object", "array", "string"]}),
+                 path=("string", "Absolute path of a preset file on the server.")))
+        def import_master_presets(a):
+            if bool(a.get("path")) == (a.get("data") is not None):
+                raise M.ModelError("give either data or path")
+            if a.get("path"):
+                if not os.path.isabs(a["path"]) or not os.path.isfile(a["path"]):
+                    raise M.ModelError("path must be an existing absolute file path")
+                with open(a["path"], "rb") as f:
+                    raw = f.read()
+            else:
+                raw = a["data"]
+            try:
+                return M.import_master_presets(self.st, raw)
+            except StorageError as e:
+                raise ToolError(str(e))
 
         # ---------------- tracks / layers
         @tool("add_track", "Add a track (layer): audio, drum, synth, guitar (natural clean guitar), bass (natural finger bass) or vocal (MIDI voice: choir/solo hooo, haaa – long notes sustain). MIDI tracks get a pattern region by default.",

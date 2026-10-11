@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_revisions_project ON revisions(project_id, number);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS master_presets (
+    name        TEXT PRIMARY KEY COLLATE NOCASE,
+    params      TEXT NOT NULL,              -- JSON: full mastering parameter set (small)
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL
+);
 """
 SCHEMA_VERSION = "1"
 _ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -120,6 +126,44 @@ class Storage:
         if not isinstance(obj, dict) or obj.get("app") != "rushdaw" or not isinstance(obj.get("project"), dict):
             raise StorageError("not a RushDAW project file")
         return obj
+
+    # ------------------------------------------------------------ user master presets
+    # Small JSON blobs (19 numbers) -> they live in SQLite; validation is done by the caller (model.clean_*).
+    def list_master_presets(self):
+        with self._connect() as db:
+            rows = db.execute("SELECT name, params, created_at, updated_at FROM master_presets ORDER BY name COLLATE NOCASE").fetchall()
+        return [{"name": r["name"], "params": json.loads(r["params"]), "created_at": r["created_at"], "updated_at": r["updated_at"]} for r in rows]
+
+    def get_master_preset(self, name):
+        with self._connect() as db:
+            r = db.execute("SELECT name, params, created_at, updated_at FROM master_presets WHERE name = ?", (name,)).fetchone()
+        if r is None:
+            raise StorageError(f"master preset '{name}' not found", 404)
+        return {"name": r["name"], "params": json.loads(r["params"]), "created_at": r["created_at"], "updated_at": r["updated_at"]}
+
+    def master_preset_exists(self, name):
+        with self._connect() as db:
+            return db.execute("SELECT 1 FROM master_presets WHERE name = ?", (name,)).fetchone() is not None
+
+    def save_master_preset(self, name, params, overwrite=True):
+        now = time.time()
+        with self._lock, self._connect() as db:
+            old = db.execute("SELECT created_at FROM master_presets WHERE name = ?", (name,)).fetchone()
+            if old is not None and not overwrite:
+                raise StorageError(f"master preset '{name}' already exists", 409)
+            blob = json.dumps(params, sort_keys=True)
+            if old is None:  # plain INSERT/UPDATE (no UPSERT -> works with old SQLite builds too)
+                db.execute("INSERT INTO master_presets(name, params, created_at, updated_at) VALUES(?, ?, ?, ?)", (name, blob, now, now))
+            else:
+                db.execute("UPDATE master_presets SET name = ?, params = ?, updated_at = ? WHERE name = ?", (name, blob, now, name))
+        return self.get_master_preset(name)
+
+    def delete_master_preset(self, name):
+        with self._lock, self._connect() as db:
+            n = db.execute("DELETE FROM master_presets WHERE name = ?", (name,)).rowcount
+        if not n:
+            raise StorageError(f"master preset '{name}' not found", 404)
+        return {"deleted": name}
 
     # ------------------------------------------------------------ projects
     def list_projects(self, deleted=False):

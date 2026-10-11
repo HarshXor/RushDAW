@@ -93,19 +93,168 @@ SYNTH_PARAMS = {  # name: (min, max) or list of choices
     'brightness': (0.05, 1), 'sustain': (0, 1), 'pick': (0.02, 0.5), 'body': (0, 1),
     'decay': (0.03, 10), 'susLevel': (0, 1),  # sample engine: Decay seconds, Sustain level while a note is held
 }
-MASTER_DEFAULT = {'vol': 1, 'eqLow': 0, 'eqMid': 0, 'eqHigh': 0, 'compThr': -18, 'compRatio': 2.5, 'compAtk': 0.01,
-                  'compRel': 0.25, 'makeup': 3, 'ceiling': -1, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
-MASTER_PARAMS = {'vol': (0, 1.5), 'eqLow': (-12, 12), 'eqMid': (-12, 12), 'eqHigh': (-12, 12), 'compThr': (-50, 0),
-                 'compRatio': (1, 20), 'compAtk': (0.001, 0.2), 'compRel': (0.02, 1), 'makeup': (0, 18), 'ceiling': (-12, 0),
-                 'reverbSize': (0.3, 6), 'delayDiv': (0.25, 2), 'delayFb': (0, 0.9)}
+# ---- mastering ----------------------------------------------------------------------------------
+# MASTER_KEYS = the mastering chain (what a master preset stores). NOT part of a preset: 'trim' (input gain
+# into the chain - depends on how hot the mix is; set by 'match loudness') and reverbSize/delayDiv/delayFb (send buses). Neutral defaults reproduce the pre-0.1.18 chain exactly.
+MASTER_KEYS = ['vol', 'hpf', 'eqLow', 'eqLowF', 'eqMid', 'eqMidF', 'eqMidQ', 'eqHigh', 'eqHighF', 'compThr', 'compRatio',
+               'compKnee', 'compAtk', 'compRel', 'makeup', 'sat', 'width', 'limRel', 'ceiling']
+MASTER_DEFAULT = {'vol': 1, 'hpf': 20, 'eqLow': 0, 'eqLowF': 120, 'eqMid': 0, 'eqMidF': 1200, 'eqMidQ': 0.8, 'eqHigh': 0,
+                  'eqHighF': 8000, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 30, 'compAtk': 0.01, 'compRel': 0.25,
+                  'makeup': 3, 'sat': 0, 'width': 1, 'limRel': 0.08, 'ceiling': -1,
+                  'trim': 0, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
+MASTER_PARAMS = {'vol': (0, 1.5), 'hpf': (20, 300), 'eqLow': (-12, 12), 'eqLowF': (30, 400), 'eqMid': (-12, 12),
+                 'eqMidF': (200, 8000), 'eqMidQ': (0.3, 4), 'eqHigh': (-12, 12), 'eqHighF': (2000, 16000),
+                 'compThr': (-50, 0), 'compRatio': (1, 20), 'compKnee': (0, 40), 'compAtk': (0.001, 0.2), 'compRel': (0.02, 1),
+                 'makeup': (0, 18), 'sat': (0, 1), 'width': (0, 2), 'limRel': (0.01, 1), 'ceiling': (-12, 0),
+                 'trim': (-24, 12), 'reverbSize': (0.3, 6), 'delayDiv': (0.25, 2), 'delayFb': (0, 0.9)}
+# Built-in presets: only the values that differ from MASTER_DEFAULT (full preset = defaults + these).
 MASTER_PRESETS = {
+    'Default': {},
     'Flat (off)': {'eqLow': 0, 'eqMid': 0, 'eqHigh': 0, 'compThr': 0, 'compRatio': 1, 'makeup': 0, 'ceiling': -0.3},
-    'Balanced': {'eqLow': 1, 'eqMid': 0, 'eqHigh': 1.5, 'compThr': -18, 'compRatio': 2.5, 'makeup': 3, 'ceiling': -1},
-    'Loud Pop': {'eqLow': 2, 'eqMid': -1, 'eqHigh': 3, 'compThr': -24, 'compRatio': 4, 'makeup': 7, 'ceiling': -0.5},
-    'Warm': {'eqLow': 3, 'eqMid': 0.5, 'eqHigh': -2, 'compThr': -20, 'compRatio': 3, 'makeup': 4, 'ceiling': -1},
-    'Bass Boost': {'eqLow': 5, 'eqMid': -1, 'eqHigh': 0.5, 'compThr': -20, 'compRatio': 3, 'makeup': 4, 'ceiling': -1},
-    'Bright': {'eqLow': -1, 'eqMid': 1, 'eqHigh': 4, 'compThr': -18, 'compRatio': 2.5, 'makeup': 3, 'ceiling': -1},
+    'Balanced': {'hpf': 25, 'eqLow': 1, 'eqMid': 0, 'eqHigh': 1.5, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 10, 'makeup': 3, 'sat': 0.1, 'width': 1.05, 'ceiling': -1},
+    'Loud Pop': {'hpf': 30, 'eqLow': 2, 'eqMid': -1, 'eqHigh': 3, 'compThr': -24, 'compRatio': 4, 'compKnee': 6, 'compAtk': 0.008, 'compRel': 0.15, 'makeup': 7, 'sat': 0.2, 'width': 1.15, 'limRel': 0.05, 'ceiling': -0.5},
+    'Warm': {'hpf': 25, 'eqLow': 3, 'eqMid': 0.5, 'eqHigh': -2, 'compThr': -20, 'compRatio': 3, 'compKnee': 12, 'compAtk': 0.02, 'compRel': 0.3, 'makeup': 4, 'sat': 0.3, 'ceiling': -1},
+    'Bass Boost': {'hpf': 25, 'eqLow': 5, 'eqLowF': 90, 'eqMid': -1, 'eqHigh': 0.5, 'compThr': -20, 'compRatio': 3, 'compKnee': 10, 'makeup': 4, 'sat': 0.1, 'ceiling': -1},
+    'Bright': {'hpf': 30, 'eqLow': -1, 'eqMid': 1, 'eqHigh': 4, 'eqHighF': 7000, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 10, 'makeup': 3, 'width': 1.1, 'ceiling': -1},
+    'Punk / Crust': {'hpf': 35, 'eqLow': 2, 'eqLowF': 90, 'eqMid': -2, 'eqMidF': 450, 'eqMidQ': 1, 'eqHigh': 2.5, 'eqHighF': 6000, 'compThr': -20, 'compRatio': 4, 'compKnee': 6, 'compAtk': 0.02, 'compRel': 0.15, 'makeup': 5, 'sat': 0.35, 'width': 1.1, 'limRel': 0.05, 'ceiling': -1},
+    'Metal': {'hpf': 35, 'eqLow': 2.5, 'eqLowF': 80, 'eqMid': -2.5, 'eqMidF': 500, 'eqMidQ': 0.9, 'eqHigh': 2, 'eqHighF': 5000, 'compThr': -22, 'compRatio': 4, 'compKnee': 6, 'compAtk': 0.015, 'compRel': 0.12, 'makeup': 6, 'sat': 0.25, 'width': 1.2, 'limRel': 0.04, 'ceiling': -0.8},
+    'Acoustic / Natural': {'hpf': 25, 'eqLow': 0.5, 'eqHigh': 1, 'compThr': -16, 'compRatio': 2, 'compKnee': 12, 'compAtk': 0.03, 'compRel': 0.3, 'makeup': 2, 'sat': 0.05, 'width': 1.05, 'ceiling': -1},
+    'Vocal / Podcast': {'hpf': 80, 'eqLow': -1, 'eqMid': 2, 'eqMidF': 3000, 'eqMidQ': 1, 'eqHigh': 1, 'compThr': -24, 'compRatio': 3.5, 'compKnee': 10, 'compAtk': 0.005, 'compRel': 0.2, 'makeup': 6, 'width': 0.8, 'ceiling': -1},
+    'Lo-Fi Tape': {'hpf': 60, 'eqLow': 1, 'eqHigh': -6, 'eqHighF': 6000, 'compThr': -20, 'compRatio': 3, 'compKnee': 12, 'makeup': 3, 'sat': 0.6, 'width': 0.9, 'ceiling': -1},
 }
+MASTER_PRESET_NAME_MAX = 60
+
+
+def master_preset_full(params):
+    """Full mastering parameter set (MASTER_KEYS) = defaults + given values."""
+    return {k: (params or {}).get(k, MASTER_DEFAULT[k]) for k in MASTER_KEYS}
+
+
+def clean_master_params(params, partial=False):
+    """Validate mastering params (MASTER_KEYS only). Returns a full set unless partial=True."""
+    if not isinstance(params, dict):
+        raise ModelError("preset params must be an object")
+    out = {}
+    for k, v in params.items():
+        if k not in MASTER_KEYS:
+            if k in MASTER_PARAMS:  # send-bus params are not part of a preset -> ignore quietly
+                continue
+            raise ModelError(f"unknown master parameter '{k}'. Parameters: " + ", ".join(MASTER_KEYS))
+        out[k] = num(v, k, *MASTER_PARAMS[k])
+    return out if partial else master_preset_full(out)
+
+
+def clean_preset_name(name):
+    name = " ".join(str(name or "").split())[:MASTER_PRESET_NAME_MAX]
+    if not name:
+        raise ModelError("preset name is required")
+    if name.lower() == "custom" or any(name.lower() == b.lower() for b in MASTER_PRESETS):
+        raise ModelError(f"'{name}' is a built-in preset name - choose another name")
+    return name
+
+
+def master_differs(m, preset_params):
+    return any(abs(float(m.get(k, MASTER_DEFAULT[k])) - float(preset_params.get(k, MASTER_DEFAULT[k]))) > 1e-6 for k in MASTER_KEYS)
+
+
+def master_label(m):
+    """'Balanced' / 'Balanced (custom)' when edited after choosing a preset / 'Custom' when no preset."""
+    if not m.get('preset') or not isinstance(m.get('presetParams'), dict):
+        return 'Custom'
+    return m['preset'] + (' (custom)' if master_differs(m, m['presetParams']) else '')
+
+
+def apply_master_preset(m, name, params):
+    """Load a preset (full mastering set) into master m, keeping the send-bus settings."""
+    full = master_preset_full(params)
+    m.update(full)
+    m['preset'] = name
+    m['presetParams'] = dict(full)
+    return m
+
+
+def default_master():
+    return apply_master_preset(dict(MASTER_DEFAULT), 'Default', MASTER_PRESETS['Default'])
+
+
+MASTER_PRESET_FILE_KIND = 'master-preset'
+
+
+def master_preset_file(presets):
+    """Export file for one or more presets: {app, kind, version, presets: [{name, params}]} (.rushmaster.json)."""
+    return {'app': 'rushdaw', 'kind': MASTER_PRESET_FILE_KIND, 'version': 1,
+            'presets': [{'name': p['name'], 'params': master_preset_full(p['params'])} for p in presets]}
+
+
+def parse_master_preset_file(obj):
+    """Accepts an export file, a single {name, params} object or a list of them -> [(name, full params)]."""
+    if isinstance(obj, (bytes, bytearray)):
+        obj = obj.decode('utf-8')
+    if isinstance(obj, str):
+        try:
+            import json as _json
+            obj = _json.loads(obj)
+        except ValueError as e:
+            raise ModelError(f'invalid preset file (JSON): {e}')
+    if isinstance(obj, dict) and 'presets' in obj:
+        if obj.get('app') not in (None, 'rushdaw') or obj.get('kind') not in (None, MASTER_PRESET_FILE_KIND):
+            raise ModelError('not a RushDAW master preset file')
+        items = obj['presets']
+    elif isinstance(obj, dict):
+        items = [obj]
+    else:
+        items = obj
+    if not isinstance(items, list) or not items:
+        raise ModelError('preset file contains no presets')
+    out = []
+    for it in items:
+        if not isinstance(it, dict) or not isinstance(it.get('params'), dict):
+            raise ModelError('each preset needs a name and params')
+        name = " ".join(str(it.get('name') or '').split())[:MASTER_PRESET_NAME_MAX] or 'Imported preset'
+        out.append((name, clean_master_params(it['params'])))
+    return out
+
+
+def unique_preset_name(name, exists):
+    """Avoid built-in names and existing user presets: 'X' -> 'X (imported)' / 'X (2)' ..."""
+    base = name
+    if base.lower() == 'custom' or any(base.lower() == b.lower() for b in MASTER_PRESETS):
+        base = (base + ' (imported)')[:MASTER_PRESET_NAME_MAX]
+    cand, i = base, 2
+    while exists(cand):
+        suffix = f' ({i})'
+        cand = base[:MASTER_PRESET_NAME_MAX - len(suffix)] + suffix
+        i += 1
+    return cand
+
+
+def import_master_presets(st, obj):
+    """Validate + store presets from a file object; never overwrites (renames instead)."""
+    done = []
+    for name, params in parse_master_preset_file(obj):
+        final = unique_preset_name(name, st.master_preset_exists)
+        st.save_master_preset(final, params, overwrite=False)
+        done.append({'name': final, 'renamed_from': name if final != name else None})
+    return {'imported': done}
+
+
+def builtin_master_presets():
+    return [{'name': n, 'params': master_preset_full(p), 'builtin': True} for n, p in MASTER_PRESETS.items()]
+
+
+def migrate_master(m):
+    """Older projects have no preset info: recognise an exact built-in match, otherwise 'Custom'."""
+    m = {**MASTER_DEFAULT, **(m or {})}
+    if 'preset' not in m:
+        m['preset'], m['presetParams'] = None, None
+        for name, p in MASTER_PRESETS.items():
+            full = master_preset_full(p)
+            if not master_differs(m, full):
+                m['preset'], m['presetParams'] = name, full
+                break
+    return m
+
+
 FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
     'eq': {'low': (0, -15, 15), 'lowF': (120, 30, 600), 'mid': (0, -15, 15), 'midF': (1000, 200, 8000), 'high': (0, -15, 15), 'highF': (6000, 1500, 16000)},
     'comp': {'thr': (-20, -60, 0), 'ratio': (4, 1, 20), 'attack': (0.01, 0.001, 0.3), 'release': (0.2, 0.02, 1), 'makeup': (3, 0, 24)},
@@ -176,7 +325,7 @@ def num(value, name, lo=None, hi=None):
 def new_document(title, bpm=180, sig=4):
     return {'app': 'rushdaw', 'version': 1, 'audio': {},
             'project': {'title': title, 'bpm': bpm, 'sig': sig, 'tracks': [], 'loop': {'start': 0, 'end': 16},
-                        'master': dict(MASTER_DEFAULT)}}
+                        'master': default_master()}}
 
 
 def steps_per_bar(proj):
@@ -581,7 +730,7 @@ def track_summary(proj, t, detail=True):
 def project_summary(doc, detail=True):
     proj = doc['project']
     return {'title': proj.get('title'), 'bpm': proj.get('bpm'), 'time_signature': f"{proj.get('sig', 4)}/4",
-            'steps_per_bar': steps_per_bar(proj), 'master': {**MASTER_DEFAULT, **(proj.get('master') or {})},
+            'steps_per_bar': steps_per_bar(proj), 'master': migrate_master(proj.get('master')), 'master_preset_label': master_label(migrate_master(proj.get('master'))),
             'tracks': [track_summary(proj, t, detail) for t in proj['tracks']],
             'audio_files': {k: v.get('name', '') for k, v in (doc.get('audio') or {}).items()}}
 
