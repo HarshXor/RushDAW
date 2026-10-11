@@ -1261,11 +1261,14 @@ function openFadeModal(t, c) {
   const setFade = (k, s) => { const other = k === 'fi' ? sec('fo') : sec('fi'); s = clamp(+s || 0, 0, Math.max(0, lenS - other)); if (s < 0.02) delete c[k]; else c[k] = +(s / S).toFixed(4); sync(); };
   const sync = () => {
     const a = sec('fi'), b = sec('fo'), g = Math.round((c.gain ?? 1) * 100);
-    fin.rng.max = fin.num.max = Math.max(0, lenS - b); fout.rng.max = fout.num.max = Math.max(0, lenS - a);  // exact: a fade can cover the full region
+    // both sliders always span the FULL region (fixed scale): changing one fade never moves the other knob;
+    // 'no overlap' is enforced by clamping the value in setFade, not by shrinking the other slider
+    fin.rng.max = fout.rng.max = fin.num.max = fout.num.max = lenS;
     fin.rng.value = a; fout.rng.value = b; vol.rng.value = g;
     if (document.activeElement !== fin.num) fin.num.value = +a.toFixed(2); if (document.activeElement !== fout.num) fout.num.value = +b.toFixed(2); if (document.activeElement !== vol.num) vol.num.value = g;
     fin.val.textContent = a.toFixed(2) + ' s'; fout.val.textContent = b.toFixed(2) + ' s'; vol.val.textContent = g + '%';
-    [fin, fout].forEach((r, i) => r.rng.style.setProperty('--p', (100 * (i ? b : a) / Math.max(0.001, lenS)) + '%')); vol.rng.style.setProperty('--p', g / 2 + '%');
+    // fill fraction 0..1 of the slider's own range -> the aqua fill ends exactly under the thumb (CSS compensates the thumb width)
+    [fin, fout].forEach((r, i) => r.rng.style.setProperty('--pf', clamp((i ? b : a) / Math.max(0.001, lenS), 0, 1))); vol.rng.style.setProperty('--pf', clamp(g / 200, 0, 1));
     hIn.style.left = (a / lenS * 100) + '%'; hOut.style.left = (100 - b / lenS * 100) + '%';
     drawClip(cv, t, c);
   };
