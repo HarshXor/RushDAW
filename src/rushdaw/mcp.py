@@ -168,7 +168,8 @@ class RushDAWMCP:
 
         @tool("list_projects", "List / search projects with server-side filters and pagination (same as the Projects page): "
               "text search in names and revision notes, date range on updated or created (YYYY-MM-DD, inclusive), BPM range, "
-              "sort (updated|created|name|bpm|revisions, asc|desc), page / per_page (max 100). trash=true lists deleted projects.",
+              "sort (updated|created|name|bpm|revisions, asc|desc), page / per_page (max 100). trash=true lists deleted projects. "
+              "Each project has 'mix' = {solo, mute, audible}: the layers a Download of the latest saved revision plays.",
               _S(query=("string", "Text to search in project names and revision notes."),
                  date_field=("string", "updated (default) or created.", False, {"enum": ["updated", "created"]}),
                  date_from=("string", "Only projects on/after this date (YYYY-MM-DD)."), date_to=("string", "Only projects on/before this date (YYYY-MM-DD)."),
@@ -185,7 +186,7 @@ class RushDAWMCP:
             return {"total": r["total"], "page": r["page"], "pages": r["pages"], "per_page": r["per_page"],
                     "projects": [{"id": p["id"], "name": p["name"], "bpm": p["bpm"], "time_signature": f"{p['sig']}/4",
                                   "revision": p["head_revision"], "revisions": p["revision_count"], "size": p["size"],
-                                  "created_at": p["created_at"], "updated_at": p["updated_at"]} for p in r["projects"]]}
+                                  "created_at": p["created_at"], "updated_at": p["updated_at"], "mix": p.get("mix")} for p in r["projects"]]}
 
         @tool("export_project", "Export a project as a package (.zip) that can be imported again in one go: project.rushdaw + an audio/ "
               "folder with every recorded / imported audio file. Same as Export in the UI. The zip is written on the server "
@@ -274,14 +275,14 @@ class RushDAWMCP:
                 return {"title": proj["title"], "bpm": proj["bpm"], "time_signature": f"{proj['sig']}/4"}
             return self._edit(a["project_id"], "update project", run)
 
-        @tool("list_revisions", "List a project's revision history (newest first).", _S(project_id=PID), True)
+        @tool("list_revisions", "List a project's revision history (newest first); each revision has 'mix' = {solo, mute, audible} (layers a Download of it plays).", _S(project_id=PID), True)
         def list_revisions(a):
             try:
                 p = self.st.get_project(a["project_id"])
             except StorageError as e:
                 raise ToolError(str(e))
             return {"latest": p["head_revision"], "revisions": [{"revision": r["number"], "message": r["message"], "created_at": r["created_at"],
-                                                                 "tracks": r["track_count"], "size": r["size"]} for r in p["revisions"]]}
+                                                                 "tracks": r["track_count"], "size": r["size"], "mix": r.get("mix")} for r in p["revisions"]]}
 
         @tool("restore_revision", "Make an older revision the latest again (creates a new revision; nothing is lost).",
               _S(project_id=PID, revision=("integer", "Revision number to restore.", True)))

@@ -163,6 +163,10 @@ class McpTest(unittest.TestCase):
         self.assertEqual(aud, {n: i < 2 for i, n in enumerate(names)})  # both soloed play, all others silent
         self.call("update_track", project_id=pid, track=names[1], mute=True)  # mute beats solo
         self.assertFalse(self.call("get_project", project_id=pid)["tracks"][1]["audible"])
+        # what a Download of the saved revision plays is listed for the project and per revision
+        mix = next(p for p in self.call("list_projects", query="Solo rule", per_page=100)["projects"] if p["id"] == pid)["mix"]
+        self.assertEqual(mix, {"solo": names[:2], "mute": [names[1]], "audible": [names[0]]})
+        self.assertEqual(self.call("list_revisions", project_id=pid)["revisions"][0]["mix"]["audible"], [names[0]])
         for n in names[:2]:
             self.call("update_track", project_id=pid, track=n, solo=False, mute=False)
         self.assertTrue(all(t["audible"] for t in self.call("get_project", project_id=pid)["tracks"]))

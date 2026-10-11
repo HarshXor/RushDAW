@@ -82,6 +82,9 @@ class Storage:
         with self._connect() as db:
             db.executescript(SCHEMA)
             db.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)", (SCHEMA_VERSION,))
+            # mute / solo state of each revision (what Download renders), added later -> migrate older databases
+            if "mix" not in {r[1] for r in db.execute("PRAGMA table_info(revisions)")}:
+                db.execute("ALTER TABLE revisions ADD COLUMN mix TEXT")
 
     # ------------------------------------------------------------ helpers
     @contextlib.contextmanager
@@ -116,6 +119,30 @@ class Storage:
     def _clean_name(name, fallback="Untitled"):
         name = (name or "").strip()[:120]
         return name or fallback
+
+    @staticmethod
+    def mix_summary(proj):
+        """Which layers a render of this project plays: muted = silent; if any layer is soloed only soloed ones play."""
+        tracks = [t for t in (proj.get("tracks") or []) if isinstance(t, dict)]
+        any_solo = any(t.get("solo") for t in tracks)
+        name = lambda t: str(t.get("name") or "Track")
+        return {"solo": [name(t) for t in tracks if t.get("solo")], "mute": [name(t) for t in tracks if t.get("mute")],
+                "audible": [name(t) for t in tracks if not t.get("mute") and (not any_solo or t.get("solo"))]}
+
+    def _backfill_mix(self, project_id, number):
+        """Revisions saved before the 'mix' column existed: compute it once from the revision file and store it."""
+        try:
+            with self._connect() as db:
+                row = db.execute("SELECT file_name FROM revisions WHERE project_id = ? AND number = ?", (project_id, number)).fetchone()
+            if not row:
+                return None
+            with open(os.path.join(self._project_dir(project_id), row["file_name"]), "rb") as f:
+                mix = self.mix_summary(self._parse_project(f.read())["project"])
+            with self._lock, self._connect() as db:
+                db.execute("UPDATE revisions SET mix = ? WHERE project_id = ? AND number = ?", (json.dumps(mix), project_id, number))
+            return mix
+        except (OSError, StorageError, ValueError):
+            return None
 
     @staticmethod
     def _parse_project(data):
@@ -184,10 +211,17 @@ class Storage:
             if p is None or (p["deleted_at"] is not None and not include_deleted):
                 raise StorageError("project not found", 404)
             revs = db.execute(
-                "SELECT number, message, file_name, size, sha256, track_count, created_at FROM revisions "
+                "SELECT number, message, file_name, size, sha256, track_count, created_at, mix FROM revisions "
                 "WHERE project_id = ? ORDER BY number DESC", (project_id,)).fetchall()
         out = dict(p)
-        out["revisions"] = [dict(r) for r in revs]
+        out["revisions"] = []
+        for r in revs:
+            d = dict(r)
+            try:
+                d["mix"] = json.loads(d["mix"]) if d.get("mix") else None
+            except ValueError:
+                d["mix"] = None
+            out["revisions"].append(d)
         return out
 
     def create_project(self, name, bpm=120, sig=4):
@@ -241,10 +275,10 @@ class Storage:
             os.replace(tmp, path)
             now = time.time()
             db.execute(
-                "INSERT INTO revisions(project_id, number, message, file_name, size, sha256, track_count, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO revisions(project_id, number, message, file_name, size, sha256, track_count, created_at, mix) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (project_id, number, (message or "").strip()[:200] or f"Revision {number}", file_name, len(raw), digest,
-                 len(proj.get("tracks") or []), now))
+                 len(proj.get("tracks") or []), now, json.dumps(self.mix_summary(proj))))
             db.execute(
                 "UPDATE projects SET head_revision = ?, updated_at = ?, name = ?, bpm = ?, sig = ? WHERE id = ?",
                 (number, now, self._clean_name(proj.get("title"), "Untitled"), float(proj.get("bpm") or 120),
@@ -326,11 +360,22 @@ class Storage:
             total = db.execute("SELECT COUNT(*)" + base, args).fetchone()[0]
             rows = db.execute(
                 """SELECT p.*, (SELECT COUNT(*) FROM revisions r WHERE r.project_id = p.id) AS revision_count,
-                          (SELECT size FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS size"""
+                          (SELECT size FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS size,
+                          (SELECT mix FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS mix"""
                 + base + f" ORDER BY {sort_sql} {direction}, p.updated_at DESC LIMIT ? OFFSET ?",
                 args + [per_page, (page - 1) * per_page]).fetchall()
         pages = max(1, -(-total // per_page))
-        return {"projects": [dict(r) for r in rows], "total": total, "page": page, "per_page": per_page, "pages": pages}
+        projects = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["mix"] = json.loads(d["mix"]) if d.get("mix") else None
+            except ValueError:
+                d["mix"] = None
+            if d["mix"] is None and d.get("head_revision"):
+                d["mix"] = self._backfill_mix(d["id"], d["head_revision"])
+            projects.append(d)
+        return {"projects": projects, "total": total, "page": page, "per_page": per_page, "pages": pages}
 
 
 def _to_epoch(v, end=False):

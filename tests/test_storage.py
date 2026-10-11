@@ -48,6 +48,24 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(r3["number"], 3)
         self.assertEqual(json.loads(self.st.read_revision(p["id"])[0])["project"]["title"], "Demo")
 
+    def test_mix_summary_and_old_db_migration(self):
+        def proj(**flags):
+            tr = [{"id": n, "name": n, "mute": n in flags.get("mute", ()), "solo": n in flags.get("solo", ())} for n in ("Drums", "Bass", "Guitar")]
+            return json.dumps({"app": "rushdaw", "version": 1, "audio": {}, "project": {"title": "Mix", "bpm": 120, "sig": 4, "tracks": tr}}).encode()
+        p = self.st.create_project("Mix")
+        self.st.save_revision(p["id"], proj(solo=("Drums", "Bass"), mute=("Bass",)))
+        mix = self.st.query_projects(q="Mix")["projects"][0]["mix"]
+        self.assertEqual(mix, {"solo": ["Drums", "Bass"], "mute": ["Bass"], "audible": ["Drums"]})
+        self.st.save_revision(p["id"], proj(mute=("Guitar",)))
+        self.assertEqual(self.st.get_project(p["id"])["revisions"][0]["mix"]["audible"], ["Drums", "Bass"])
+        # a database from before the 'mix' column: column added on open, value backfilled from the revision file
+        db = sqlite3.connect(os.path.join(self.tmp.name, "db.sql"))
+        db.execute("UPDATE revisions SET mix = NULL"); db.commit(); db.close()
+        st2 = Storage(self.tmp.name)
+        self.assertEqual(st2.query_projects(q="Mix")["projects"][0]["mix"]["mute"], ["Guitar"])
+        db = sqlite3.connect(os.path.join(self.tmp.name, "db.sql"))
+        self.assertIsNotNone(db.execute("SELECT mix FROM revisions WHERE number = 2").fetchone()[0]); db.close()
+
     def test_db_holds_metadata_only(self):
         p = self.st.create_project("Meta")
         self.st.save_revision(p["id"], project_bytes(), "x")

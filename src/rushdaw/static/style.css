@@ -353,3 +353,5 @@ button,select,input{touch-action:manipulation}
 
 /* left resize edge (resize from the start) */
 .clip .rs.rsl{right:auto;left:0}
+
+.pcard .pmix{color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

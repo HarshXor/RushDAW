@@ -2482,7 +2482,9 @@ async function downloadFromList(p, fmt, btn) {
     const meta = await (await api(`/api/projects/${p.id}`)).json();
     await loadProjectData(await (await api(`/api/projects/${p.id}/file`)).json());
     P.title = meta.name; $('#title').value = meta.name; currentProject = meta; markClean();
+    const sol = P.tracks.filter(t => t.solo).map(t => t.name), mut = P.tracks.filter(t => t.mute).map(t => t.name);
     await renderAndDownload(fmt, meta.name || 'RushDAW');
+    status(`Downloaded rev ${meta.head_revision}${sol.length ? ' · solo: ' + sol.join(', ') : ''}${mut.length ? ' · muted: ' + mut.join(', ') : ''}`);
   } catch (e) { status('Download failed: ' + e.message); alert('Download failed: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = old; }
 }
@@ -2599,7 +2601,7 @@ function confirmLeave(where = 'leave') {
     const finish = (ok, close) => { if (done) return; done = true; leaveDlg = null; close(); resolve(ok); };
     const body = el('div', {},
       el('p', {}, `“${name}” has unsaved changes.`),
-      el('p', { className: 'hint' }, `Save them as a new revision before you ${where}? “Don't save” throws away the changes since the last save (older revisions stay in History).`));
+      el('p', { className: 'hint' }, `Save them as a new revision before you ${where}? “Don't save” throws away the changes since the last save (older revisions stay in History) – including mute / solo: Download on the project list renders the last SAVED revision.`));
     const m = openModal('Unsaved changes', body, [
       { label: 'Cancel', run: close => finish(false, close) },
       { label: "Don't save", run: close => { markClean(); finish(true, close); } },
@@ -2720,6 +2722,14 @@ function homeParams() {
   return pr;
 }
 let homeReq = 0;
+// what Download renders for a saved revision: solo / muted layers (from the revision's mix summary)
+function mixLine(mix) {
+  if (!mix || (!mix.solo.length && !mix.mute.length)) return null;
+  const parts = [];
+  if (mix.solo.length) parts.push('Solo: ' + mix.solo.join(', '));
+  if (mix.mute.length) parts.push('Muted: ' + mix.mute.join(', '));
+  return el('div', { className: 'pmeta pmix', title: 'Download plays: ' + (mix.audible.join(', ') || 'nothing (all silent)') }, parts.join(' · '));
+}
 async function renderHome() {
   const list = $('#projList'), pager = $('#projPager'), my = ++homeReq;
   list.innerHTML = '<p class="hint">Loading…</p>';
@@ -2741,12 +2751,13 @@ async function renderHome() {
         nameEl,
         el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
         el('div', { className: 'pmeta', title: `Created ${new Date(p.created_at * 1000).toLocaleString()}` }, 'Updated ' + fmtAgo(p.updated_at)),
+        mixLine(p.mix),
         el('div', { className: 'pbtns' }, showTrash
           ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
           : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
             el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
             ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
-              const b = el('button', { title: 'Render the latest saved revision and download the song audio (muted tracks stay muted)', onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
+              const b = el('button', { title: `Render the latest saved revision (rev ${p.head_revision}) and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
               return [sel, b]; })(),
             el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
             el('button', { onclick: () => {
