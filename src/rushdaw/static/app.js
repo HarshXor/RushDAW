@@ -367,11 +367,14 @@ function makeFxUnit(c, type) {
   switch (type) {
     case 'eq': N.l = bq('lowshelf'); N.m = bq('peaking'); N.m.Q.value = 1; N.h = bq('highshelf'); u.in.connect(N.l); N.l.connect(N.m); N.m.connect(N.h); N.h.connect(u.out); break;
     case 'comp': N.c = c.createDynamicsCompressor(); N.g = c.createGain(); u.in.connect(N.c); N.c.connect(N.g); N.g.connect(u.out); break;
-    case 'dist': wetDry(); N.ws = c.createWaveShaper(); N.ws.oversample = '4x'; N.lp = bq('lowpass'); N.lvl = c.createGain(); u.in.connect(N.ws); N.ws.connect(N.lp); N.lp.connect(N.lvl); N.lvl.connect(N.wet); break;
+    case 'dist': wetDry(); N.ws = c.createWaveShaper(); N.ws.oversample = '4x'; N.lp = bq('lowpass'); N.lvl = c.createGain();
+      hm2Nodes(c, N, bq); u.in.connect(N.tight); N.tight.connect(N.ws); N.ws.connect(N.boost); N.boost.connect(N.ws2); N.ws2.connect(N.lo);
+      N.lo.connect(N.hi); N.hi.connect(N.lp); N.lp.connect(N.lvl); N.lvl.connect(N.wet); break;
     case 'filter': N.f = bq('lowpass'); u.in.connect(N.f); N.f.connect(u.out); break;
     case 'amp': N.pre = c.createGain(); N.ws = c.createWaveShaper(); N.ws.oversample = '4x'; N.hp = bq('highpass'); N.hp.frequency.value = 90;
-      N.cab = bq('lowpass'); N.cab.Q.value = 0.7; N.lvl = c.createGain();
-      u.in.connect(N.pre); N.pre.connect(N.ws); N.ws.connect(N.hp); N.hp.connect(N.cab); N.cab.connect(N.lvl); N.lvl.connect(u.out); break;
+      N.cab = bq('lowpass'); N.cab.Q.value = 0.7; N.lvl = c.createGain(); hm2Nodes(c, N, bq);
+      u.in.connect(N.pre); N.pre.connect(N.tight); N.tight.connect(N.ws); N.ws.connect(N.boost); N.boost.connect(N.ws2); N.ws2.connect(N.hp);
+      N.hp.connect(N.lo); N.lo.connect(N.hi); N.hi.connect(N.cab); N.cab.connect(N.lvl); N.lvl.connect(u.out); break;
     case 'chorus': wetDry(); N.d = c.createDelay(0.1); N.d.delayTime.value = 0.018; N.lfo = c.createOscillator(); N.dep = c.createGain();
       N.lfo.connect(N.dep); N.dep.connect(N.d.delayTime); u.in.connect(N.d); N.d.connect(N.wet); N.lfo.start(); u.oscs.push(N.lfo); break;
     case 'tremolo': N.amp = c.createGain(); N.lfo = c.createOscillator(); N.dep = c.createGain();
@@ -387,9 +390,10 @@ function setFxUnit(u, fx, c, L) {
   switch (u.type) {
     case 'eq': s(N.l.frequency, p.lowF); s(N.l.gain, p.low); s(N.m.frequency, p.midF); s(N.m.gain, p.mid); s(N.h.frequency, p.highF); s(N.h.gain, p.high); break;
     case 'comp': s(N.c.threshold, p.thr); s(N.c.ratio, p.ratio); s(N.c.attack, p.attack); s(N.c.release, p.release); s(N.g.gain, dbToGain(p.makeup)); break;
-    case 'dist': N.ws.curve = distCurve(1 + Math.round(p.drive * 60)); s(N.lp.frequency, p.tone); s(N.lvl.gain, p.level); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix); break;
-    case 'amp': if (u.drv !== p.drive) { u.drv = p.drive; N.ws.curve = distCurve(1 + Math.round(p.drive * 40)); }
-      s(N.pre.gain, dbToGain(p.gain)); s(N.cab.frequency, p.tone); s(N.lvl.gain, p.level); break;
+    case 'dist': { if (u.drv !== p.drive) { u.drv = p.drive; N.ws.curve = distCurve(1 + Math.round(p.drive * 60)); }
+      const comp = setHm2(N, p.drive, c, L); s(N.lp.frequency, p.tone); s(N.lvl.gain, p.level * comp); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix); break; }
+    case 'amp': { if (u.drv !== p.drive) { u.drv = p.drive; N.ws.curve = distCurve(1 + Math.round(p.drive * 40)); }
+      const comp = setHm2(N, p.drive, c, L); s(N.pre.gain, dbToGain(p.gain)); s(N.cab.frequency, p.tone); s(N.lvl.gain, p.level * comp); break; }
     case 'filter': N.f.type = p.mode; s(N.f.frequency, p.freq); s(N.f.Q, p.q); break;
     case 'chorus': s(N.lfo.frequency, p.rate); s(N.dep.gain, p.depth); s(N.wet.gain, p.mix); s(N.dry.gain, 1 - p.mix * 0.5); break;
     case 'tremolo': s(N.lfo.frequency, p.rate); s(N.amp.gain, 1 - p.depth / 2); s(N.dep.gain, p.depth / 2); break;
@@ -642,6 +646,29 @@ function stringBuffer(c, freq, seconds, s, variant = 0) {
     stringCache.set(key, entry);
   }
   return entry;
+}
+/* HM-2 style heavy stage (Boss Heavy Metal HM-2, "Swedish chainsaw"), shared by Distortion and Guitar Amp.
+   The amount follows Drive: below ~0.35 it is fully bypassed (light crunch / drum-bus saturation unchanged), at
+   high Drive it adds: a tight low cut before clipping, a 2nd (asymmetric, harder) clipping stage after an extra
+   gain boost, and the classic chainsaw EQ with both "knobs maxed" – big bumps around 100 Hz and 1.3 kHz. */
+function hm2Nodes(c, N, bq) {
+  N.tight = bq('highpass'); N.tight.Q.value = 0.6; N.boost = c.createGain(); N.ws2 = c.createWaveShaper(); N.ws2.oversample = '4x';
+  N.lo = bq('peaking'); N.lo.frequency.value = 100; N.lo.Q.value = 0.8; N.hi = bq('peaking'); N.hi.frequency.value = 1300; N.hi.Q.value = 1.3;
+}
+const hm2Amount = drive => clamp((drive - 0.35) / 0.65, 0, 1);
+function setHm2(N, drive, c, L) {
+  const h = hm2Amount(drive), s = (param, v) => setP(param, v, c, L), k = Math.round(h * 20) / 20;
+  if (N.hmK !== k) { N.hmK = k; N.ws2.curve = k > 0 ? hm2Curve(k) : null; }  // null curve = clean pass-through
+  s(N.tight.frequency, 20 + 100 * h); s(N.boost.gain, dbToGain(18 * h)); s(N.lo.gain, 12 * h); s(N.hi.gain, 11 * h);
+  return dbToGain(HM2_COMP_DB * h);  // output compensation so the heavy stage keeps the old loudness
+}
+const HM2_COMP_DB = -6.2;
+const hm2Cache = new Map();
+function hm2Curve(h) {  // asymmetric hard clipper (harder on the negative half -> fizzy, aggressive HM-2 grind)
+  if (hm2Cache.has(h)) return hm2Cache.get(h);
+  const n = 4096, cv = new Float32Array(n), kp = 2 + 6 * h, kn = 3 + 9 * h;
+  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = x >= 0 ? Math.tanh(kp * x) / Math.tanh(kp) : 0.92 * Math.tanh(kn * x) / Math.tanh(kn); }
+  hm2Cache.set(h, cv); return cv;
 }
 const distCache = new Map();
 function distCurve(k) {
