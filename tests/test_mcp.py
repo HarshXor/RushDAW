@@ -406,6 +406,23 @@ class McpTest(unittest.TestCase):
         self.assertEqual(stored["app"], "rushdaw")
         self.assertTrue(all("clips" in t and "fx" in t for t in stored["project"]["tracks"]))
 
+    def test_merge_regions(self):
+        """UI multi-select > Merge has an MCP twin: merge_regions keeps every pad at its exact position."""
+        pid = self.call("create_project", name="Merge", template="metal")["project_id"]
+        d = self.call("get_project", project_id=pid)["tracks"][0]["id"]
+        r1 = self.call("add_region", project_id=pid, track=d, start_beat=64, length_beats=4, empty=True)["clip_id"]
+        r2 = self.call("add_region", project_id=pid, track=d, start_beat=72, length_beats=4, empty=True)["clip_id"]
+        self.call("set_drum_pattern", project_id=pid, track=d, clip_id=r1, patterns={"kick": "x..............."})
+        self.call("set_drum_pattern", project_id=pid, track=d, clip_id=r2, patterns={"snare": "....x..........."})
+        m = self.call("merge_regions", project_id=pid, clip_ids=[r2, r1])
+        self.assertEqual((m["start_beat"], m["length_beats"]), (64, 12))
+        regs = {c["id"]: c for c in self.call("get_project", project_id=pid)["tracks"][0]["clips"]}
+        self.assertNotIn(r1, regs); self.assertNotIn(r2, regs)
+        pads = regs[m["clip_id"]]["pads"]
+        self.assertEqual(pads["kick"], "x" + "." * 47)                # 3 bars: kick only at step 1
+        self.assertEqual(pads["snare"], "." * 36 + "x" + "." * 11)    # snare stays in bar 3, gap bar empty
+        self.assertIn("2 or more", self.call("merge_regions", ok=False, project_id=pid, clip_ids=[m["clip_id"]])["error"])
+
     def test_errors(self):
         pid = self.call("create_project", name="Err", template="empty")["project_id"]
         self.assertIn("not found", self.call("update_track", ok=False, project_id=pid, track="Nope", pan=0)["error"])
@@ -515,6 +532,18 @@ class NaturalDrumTest(unittest.TestCase):
 class ModelSyncTest(unittest.TestCase):
     """The Python model must mirror static/app.js so MCP edits load correctly in the UI."""
 
+    def test_merge_regions_model(self):
+        """Merged drum region: pads keep their exact steps, the gap stays empty (nothing repeats)."""
+        from rushdaw import model as M
+        proj2 = {"sig": 4, "tracks": [{"id": "t1", "type": "drum", "clips": [
+            {"id": "a", "kind": "midi", "start": 0, "len": 4, "pattern": {"bars": 1, "grid": [[1] + [0] * 15] + [[0] * 16] * 9}},
+            {"id": "b", "kind": "midi", "start": 8, "len": 4, "pattern": {"bars": 1, "grid": [[0] * 16, [0] * 4 + [0.6] + [0] * 11] + [[0] * 16] * 8}}]}]}
+        _, nc = M.merge_regions(proj2, ["a", "b"])
+        g = nc["pattern"]["grid"]
+        self.assertEqual(len(g[0]), 48)
+        self.assertEqual((g[0][0], g[1][32 + 4]), (1, 0.6))           # kick stays at step 1, snare at bar 3 step 5
+        self.assertEqual(sum(1 for row in g for v in row if v), 2)      # gap stays empty, nothing repeats
+
     def test_every_ui_clip_setting_has_an_mcp_param(self):
         """Rule: every clip / region setting the UI can change must also be settable through MCP.
         Any NEW clip field assigned in app.js (c.<field> = / clip.<field> = / nc.<field> =) makes this test fail
@@ -525,6 +554,7 @@ class ModelSyncTest(unittest.TestCase):
             "fi": ("update_clip", "fade_in_sec"), "fo": ("update_clip", "fade_out_sec"), "gain": ("update_clip", "volume_percent"),
             "start": ("update_clip", "start_beat"), "len": ("update_clip", "length_beats"), "dur": ("update_clip", "duration_sec"),
             "notes": ("set_notes", "notes"), "bars": ("set_pattern_length", "bars"),
+            "pattern": ("set_drum_pattern", "patterns"),   # merged region pads (merge_regions builds it)
         }
         internal = {"id", "offset",                      # generated / derived (split keeps the audio offset)
                     "curve", "oversample", "linear"}      # Web Audio node properties of other objects named 'c'

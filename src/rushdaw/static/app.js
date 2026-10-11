@@ -1208,7 +1208,7 @@ function renderArrange() {
     const panIn = el('input', { type: 'range', className: 'pan', 'data-pan': t.id, min: -100, max: 100, step: 1, value: Math.round(t.pan * 100), title: 'Pan: drag left/right · double-click = center',
       oninput: e => setPan(t, +e.target.value / 100, panOut), ondblclick: e => { e.target.value = 0; setPan(t, 0, panOut); }, onclick: stop, onpointerdown: stop });
     const quick = (txt, v) => el('button', { className: 'pq', title: v === 0 ? 'Center' : (v < 0 ? 'Hard left' : 'Hard right'), onclick: e => { stop(e); panIn.value = v * 100; setPan(t, v, panOut); } }, txt);
-    const head = el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { if (trackDragJustEnded) return; lastFocus = 'track'; selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); selectTrack(t.id); } },
+    const head = el('div', { className: 'thead' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { '--c': t.color }, onclick: () => { if (trackDragJustEnded) return; lastFocus = 'track'; clearClipSel(); selectTrack(t.id); } },
       el('div', { className: 'row' },
         el('span', { className: 'grip', title: 'Drag to move this track up / down', onpointerdown: e => startTrackDrag(e, t, head) }, '⠿'),
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
@@ -1223,7 +1223,7 @@ function renderArrange() {
     head.dataset.track = t.id; hdr.append(head);
     const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundSize: barPx + 'px 100%' } });
     lane.dataset.track = t.id;
-    lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); selClipId = null; document.querySelectorAll('.clip.sel').forEach(c => c.classList.remove('sel')); } });
+    lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); clearClipSel(); } });
     lane.addEventListener('dblclick', e => {
       if (e.target !== lane || t.type === 'audio') return;
       const beat = Math.floor(xToBeat(e, lane) / P.sig) * P.sig;
@@ -1256,7 +1256,7 @@ function snapBeat(b, grid = 1) { return $('#snap').checked ? Math.round(b / grid
 function clipEl(t, c) {
   const w = Math.max(4, clipLenBeats(c) * pxB());
   const name = c.kind === 'audio' ? (bufNames.get(c.buf) || 'Audio') : (t.type === 'drum' ? 'Drum pattern' : 'MIDI');
-  const d = el('div', { className: 'clip' + (c.id === selClipId ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
+  const d = el('div', { className: 'clip' + (isClipSel(c.id) ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
   const cv = el('canvas'); cv.height = 60; sizeClipCanvas(cv, w); d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
   // fade handles (top corners): drag inward to set the fade-in / fade-out length, drag back to the edge = off
   ['fi', 'fo'].forEach(key => {
@@ -1266,7 +1266,7 @@ function clipEl(t, c) {
     h.addEventListener('dblclick', e => { e.stopPropagation(); delete c[key]; place(); drawClip(cv, t, c); status((key === 'fi' ? 'Fade in' : 'Fade out') + ': off'); });
     d.append(h); requestAnimationFrame(place);
   });
-  requestAnimationFrame(() => drawClip(cv, t, c));
+  requestAnimationFrame(() => drawClip(cv, t, c)); d.dataset.clip = c.id;
   d.addEventListener('pointerdown', e => clipMouseDown(e, t, c, d));
   d.addEventListener('dblclick', () => { if (c.kind === 'midi') { selectTrack(t.id); showTab('editor'); } });
   d.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); clipMenu(e, t, c); });
@@ -1409,12 +1409,32 @@ function openRegionExport(t, c) {
     } },
   ]);
 }
+/* Multiple selection of clips / regions: Shift / Ctrl / Cmd + click adds or removes a clip, Ctrl/Cmd+A selects
+   every clip of the selected track. selClipId stays the "primary" clip (the editor shows it); selClipSet holds
+   the others. Dragging any selected clip moves the whole selection; copy / cut / paste / Delete / merge work on it. */
+const selClipSet = new Set();
+const isClipSel = id => id === selClipId || selClipSet.has(id);
+function selectedClips() {  // [[track, clip], ...] sorted by start
+  const ids = new Set(selClipSet); if (selClipId) ids.add(selClipId);
+  return [...ids].map(id => findClip(id)).filter(x => x && x[1]).sort((a, b) => a[1].start - b[1].start);
+}
+function refreshClipSelClasses() { document.querySelectorAll('#lanes .clip').forEach(x => x.classList.toggle('sel', isClipSel(x.dataset.clip))); }
+function clearClipSel() { selClipSet.clear(); selClipId = null; refreshClipSelClasses(); }
+function selStatus() { const n = selectedClips().length; if (n > 1) status(`${n} clips selected · drag to move all · Ctrl/Cmd+C/X/V copy/cut/paste · Delete · right-click → Merge`); }
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
+  if ((e.shiftKey || e.ctrlKey || e.metaKey) && !e.target.classList.contains('rs')) {  // toggle in the multi-selection
+    if (isClipSel(c.id)) { selClipSet.delete(c.id); if (selClipId === c.id) { selClipId = [...selClipSet].pop() || null; if (selClipId) selClipSet.delete(selClipId); } }
+    else { if (selClipId) selClipSet.add(selClipId); selClipId = c.id; selectTrack(t.id, false); }
+    lastFocus = 'clip'; refreshClipSelClasses(); selStatus(); return;
+  }
   const prevSel = selClipId;
+  const group = isClipSel(c.id) && selectedClips().length > 1 && !e.target.classList.contains('rs');
+  if (!group) selClipSet.clear(); else if (selClipId && selClipId !== c.id) { selClipSet.add(selClipId); selClipSet.delete(c.id); }
   selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
-  document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); d.classList.add('sel');
+  refreshClipSelClasses();
   if (c.kind === 'midi' && prevSel !== c.id) renderEditor();  // the editor follows the clicked region
+  if (group) return groupDrag(e, c);
   const resize = e.target.classList.contains('rs'), x0 = e.clientX, y0 = e.clientY, s0 = c.start, l0 = clipLenBeats(c);
   let target = t, moved = false;
   const mm = ev => {
@@ -1441,6 +1461,85 @@ function clipMouseDown(e, t, c, d) {
     if (moved) render();
   };
   window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
+}
+// drag a multi-selection: every selected clip moves by the same amount (keeps their spacing and tracks);
+// a click without moving collapses the selection to the clicked clip
+function groupDrag(e, c) {
+  const items = selectedClips(), x0 = e.clientX, s0 = new Map(items.map(([, k]) => [k.id, k.start]));
+  const minStart = Math.min(...s0.values()); let moved = false;
+  const grid = $('#snap').checked ? (items.some(([, k]) => k.kind === 'midi') ? 1 : 0.25) : 0;
+  const mm = ev => {
+    let db = (ev.clientX - x0) / pxB(); if (Math.abs(ev.clientX - x0) > 3) moved = true;
+    if (grid) db = Math.round(db / grid) * grid;
+    db = Math.max(db, -minStart);  // nothing goes before bar 1
+    items.forEach(([, k]) => { k.start = s0.get(k.id) + db; const el2 = document.querySelector(`#lanes .clip[data-clip="${k.id}"]`); if (el2) el2.style.left = k.start * pxB() + 'px'; });
+  };
+  const mu = () => {
+    window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu);
+    if (moved) { render(); status(`Moved ${items.length} clips`); }
+    else { selClipSet.clear(); selClipId = c.id; refreshClipSelClasses(); }
+  };
+  window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
+}
+/* Merge the selected clips of ONE track into a single clip.
+   MIDI regions: one region from the first start to the last end; every pad / note stays exactly where it was
+   (gaps become empty steps, overlapping pads keep the louder velocity). Audio clips: mixed into one new audio
+   clip (each clip's gain and fades are baked in). */
+function mergeCheck() {
+  const items = selectedClips();
+  if (items.length < 2) return 'Select 2 or more clips (Shift/Ctrl/Cmd+click) to merge';
+  if (new Set(items.map(([t]) => t.id)).size > 1) return 'Merge works on clips of the same track';
+  if (new Set(items.map(([, c]) => c.kind)).size > 1) return 'Cannot merge audio clips with pattern regions';
+  return null;
+}
+function mergeSelected() {
+  const err = mergeCheck(); if (err) { status(err); return; }
+  ensureRegions();
+  const items = selectedClips(), t = items[0][0], clips = items.map(([, c]) => c);
+  const start = Math.min(...clips.map(c => c.start)), end = Math.max(...clips.map(c => c.start + clipLenBeats(c)));
+  const first = clips.find(c => c.start === start), last = clips.reduce((a, c) => (c.start + clipLenBeats(c) >= a.start + clipLenBeats(a) ? c : a));
+  let nc;
+  if (clips[0].kind === 'midi') {
+    nc = { id: nid('c'), kind: 'midi', start, len: Math.round((end - start) * 4) / 4, linear: true };
+    const n = regionSteps(nc);
+    if (t.type === 'drum') {
+      const grid = DRUMS.map(() => Array(n).fill(0));
+      clips.forEach(c => { const off = Math.round((c.start - start) * 4); (c.pattern.grid || []).forEach((row, r) => row.forEach((v, k) => { if (v && grid[r] && off + k < n) grid[r][off + k] = Math.max(grid[r][off + k], v); })); });
+      nc.pattern = { bars: nc.len / P.sig, grid, ids: DRUM_IDS.slice() };
+    } else {
+      const notes = [];
+      clips.forEach(c => { const off = Math.round((c.start - start) * 4); (c.notes || []).forEach(x => { if (x.s + off < n) notes.push({ ...x, s: x.s + off, l: Math.min(x.l, n - x.s - off) }); }); });
+      nc.notes = notes; nc.bars = nc.len / P.sig;
+    }
+  } else {
+    const sr = buffers.get(clips[0].buf)?.sampleRate || ctx.sampleRate, S = spb();
+    const ch = Math.max(...clips.map(c => buffers.get(c.buf)?.numberOfChannels || 1));
+    const out = new AudioBuffer({ numberOfChannels: ch, length: Math.max(1, Math.ceil((end - start) * S * sr)), sampleRate: sr });
+    clips.forEach(c => {
+      const b = buffers.get(c.buf); if (!b) return;
+      const ratio = b.sampleRate / sr, at = Math.round((c.start - start) * S * sr), len = Math.round(c.dur * sr), off = c.offset * b.sampleRate;
+      const { fi, fo } = clipFades(c), fiN = fi * S * sr, foN = fo * S * sr, g = c.gain ?? 1;
+      for (let k = 0; k < ch; k++) {
+        const src = b.getChannelData(Math.min(k, b.numberOfChannels - 1)), dst = out.getChannelData(k);
+        for (let i = 0; i < len && at + i < dst.length; i++) {
+          const j = Math.floor(off + i * ratio); if (j >= src.length) break;
+          let a = g; if (fiN && i < fiN) a *= i / fiN; if (foN && i > len - foN) a *= (len - i) / foN;
+          dst[at + i] += src[j] * a;
+        }
+      }
+    });
+    const id = nid('b'); buffers.set(id, out); bufNames.set(id, 'Merged ' + (bufNames.get(clips[0].buf) || 'audio'));
+    nc = { id: nid('c'), kind: 'audio', buf: id, start, offset: 0, dur: out.duration, gain: 1 };
+  }
+  if (clips[0].kind === 'midi') { if (first.fi) nc.fi = first.fi; if (last.fo) nc.fo = last.fo; }  // audio: fades already baked in
+  t.clips = t.clips.filter(c => !clips.includes(c)); t.clips.push(nc);
+  selClipSet.clear(); selClipId = nc.id; lastFocus = 'clip';
+  render(); status(`Merged ${clips.length} ${clips[0].kind === 'midi' ? 'regions' : 'audio clips'} into one (${+((end - start) / P.sig).toFixed(2)} bar)`);
+}
+function deleteSelectedClips() {
+  const items = selectedClips(); if (!items.length) return;
+  items.forEach(([t, c]) => { t.clips = t.clips.filter(x => x !== c); });
+  selClipSet.clear(); selClipId = null; render(); status(`Deleted ${items.length} clip${items.length > 1 ? 's' : ''}`);
 }
 function selectTrack(id, rerender = true) {
   if (selTrackId === id) return;
@@ -1525,7 +1624,7 @@ function showCtxMenu(x, y, title, items) {
 document.addEventListener('pointerdown', e => { if (!e.target.closest || !e.target.closest('#ctxmenu')) closeCtxMenu(); }, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
 window.addEventListener('blur', closeCtxMenu);
-const clipFits = (t, cb) => cb && cb.kind === 'clip' && cb.data.trackType === t.type;
+const clipFits = (t, cb) => cb && ((cb.kind === 'clip' && cb.data.trackType === t.type) || (cb.kind === 'clips' && cb.data.some(x => x.trackType === t.type)));
 function pasteAt(t, beat) { selTrackId = t.id; T.pos = beat; pasteClipboard(); }
 function pickAudioFile(t, beat) {
   const inp = el('input', { type: 'file', accept: 'audio/*,video/*', multiple: true, style: { display: 'none' } });
@@ -1555,11 +1654,22 @@ function laneMenu(e, t, lane) {
     { label: '📋 Paste here', disabled: !clipFits(t, clipboard), run: () => pasteAt(t, beat) },
   ]);
 }
+// right-click on a multi-selection
+function multiClipMenu(e) {
+  const items = selectedClips(), mErr = mergeCheck();
+  showCtxMenu(e.clientX, e.clientY, `${items.length} clips selected`, [
+    { label: `⊕ Merge into one ${items[0][1].kind === 'midi' ? 'region' : 'audio clip'}` + (mErr ? `  (${mErr.toLowerCase()})` : ''), disabled: !!mErr, run: mergeSelected },
+    { label: '⧉ Copy (Ctrl/Cmd+C)', run: () => { lastFocus = 'clip'; copySelection(false); } },
+    { label: '✂ Cut (Ctrl/Cmd+X)', run: () => { lastFocus = 'clip'; copySelection(true); } },
+    { label: '◻ Select only this clip', run: () => { const id = e.target.closest('.clip')?.dataset.clip; selClipSet.clear(); if (id) selClipId = id; refreshClipSelClasses(); } },
+    '-', { label: `🗑 Delete ${items.length} clips`, run: deleteSelectedClips },
+  ]);
+}
 // right-click on a clip / region
 function clipMenu(e, t, c) {
-  selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
-  document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel'));
-  if (e.currentTarget && e.currentTarget.classList) e.currentTarget.classList.add('sel');
+  if (isClipSel(c.id) && selectedClips().length > 1) return multiClipMenu(e);  // right-click inside a multi-selection
+  selClipSet.clear(); selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
+  refreshClipSelClasses();
   if (c.kind === 'midi') renderEditor();
   const inside = currentBeat() > c.start && currentBeat() < c.start + clipLenBeats(c);
   const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
@@ -2028,6 +2138,7 @@ function undoApply(from, to, label) {
     $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title || '';
     if (!getTrack(selTrackId)) selTrackId = P.tracks[0]?.id || null;
     if (selClipId && !findClip(selClipId)[1]) selClipId = null;
+    for (const id of [...selClipSet]) if (!findClip(id)[1]) selClipSet.delete(id);
     syncGraph(); render(); updateDirty();
   } finally { undoLast = JSON.stringify(P); undoBusy = false; updateUndoButtons(); }
   status(`${label} (${undoStack.length} undo · ${redoStack.length} redo left)`);
@@ -2069,7 +2180,7 @@ function resetState() {
   if (rt) { rt.tracks.forEach(n => { n.pan.disconnect(); n.fxUnits.forEach(disposeFxUnit); }); rt.tracks.clear(); }
   buffers.clear(); bufNames.clear(); peaksCache.clear();
   P.tracks = []; P.master = JSON.parse(JSON.stringify(DEFAULT_MASTER)); P.loop = { start: 0, end: 16 }; P.sig = 4;
-  selTrackId = null; selClipId = null; T.pos = 0;
+  selTrackId = null; selClipId = null; selClipSet.clear(); T.pos = 0;
 }
 // D-Beat / Crust Punk: d-beat drums, pick bass + distorted power-chord guitar doubling a dark riff in E
 const CRUST_RIFF = [[40, 0, 2], [40, 2, 1], [40, 3, 1], [43, 4, 2], [41, 6, 2], [40, 8, 2], [40, 10, 1], [40, 11, 1], [46, 12, 2], [45, 14, 2]];
@@ -2233,6 +2344,13 @@ function copySelection(cut = false) {
     if (cut) { h.pattern.grid[selPart.row].fill(0); render(); }
     status(`${cut ? 'Cut' : 'Copied'} drum part “${d.name}” (pattern + tuning)`); return;
   }
+  const multi = selectedClips();
+  if (lastFocus === 'clip' && multi.length > 1) {  // several clips: keep their spacing (and tracks)
+    const base = multi[0][1].start;
+    clipboard = { kind: 'clips', data: multi.map(([t, c]) => ({ clip: deepCopy(c), trackType: t.type, trackId: t.id, dOff: c.start - base })), buffers: buffersFor(multi.map(([, c]) => c)) };
+    if (cut) { multi.forEach(([t, c]) => { t.clips = t.clips.filter(x => x !== c); }); selClipSet.clear(); selClipId = null; render(); }
+    status(`${cut ? 'Cut' : 'Copied'} ${multi.length} clips`); return;
+  }
   const [ct, c] = findClip(selClipId);
   if (lastFocus === 'clip' && c) {
     clipboard = { kind: 'clip', data: { clip: deepCopy(c), trackType: ct.type, trackId: ct.id }, buffers: buffersFor([c]) };
@@ -2260,6 +2378,18 @@ function pasteClipboard() {
     h.pattern.grid[row] = Array.from({ length: n }, (_, i) => src[i] || 0);  // copied as-is, the rest stays empty (no repeating)
     t.kit = t.kit || {}; t.kit[DRUMS[row].id] = { ...cb.data.kit };
     render(); status(`Pasted “${cb.data.name}” into ${DRUMS[row].name} on ${t.name}`); return;
+  }
+  if (cb.kind === 'clips') {
+    // all from one track -> onto the selected track if it is the same type; from several tracks -> back to their own tracks
+    const at = snapBeat(T.pos, 0.25), oneTrack = new Set(cb.data.map(x => x.trackId)).size === 1, sel = getTrack(selTrackId);
+    const made = [];
+    cb.data.forEach(x => {
+      let t = oneTrack && sel && sel.type === x.trackType ? sel : getTrack(x.trackId);
+      if (!t || t.type !== x.trackType) t = P.tracks.find(y => y.type === x.trackType) || newTrack(x.trackType);
+      const nc = { ...deepCopy(x.clip), id: nid('c'), start: at + x.dOff }; t.clips.push(nc); made.push(nc.id);
+    });
+    selClipId = made[0]; selClipSet.clear(); made.slice(1).forEach(id => selClipSet.add(id)); lastFocus = 'clip';
+    render(); status(`Pasted ${made.length} clips at bar ${Math.floor(at / P.sig) + 1}`); return;
   }
   if (cb.kind === 'clip') {
     const want = cb.data.trackType;
@@ -2470,7 +2600,9 @@ function init() {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home' || e.key === 'Enter') seek(0);
     else if (e.key === 'r' || e.key === 'R') startRecording();
-    else if (e.key === 'Delete' || e.key === 'Backspace') { const [t, c] = findClip(selClipId); if (c && lastFocus === 'clip') { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); } }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { if (lastFocus === 'clip') deleteSelectedClips(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); const t = getTrack(selTrackId); if (t && t.clips.length) { const s = [...t.clips].sort((a, b) => a.start - b.start); selClipId = s[0].id; selClipSet.clear(); s.slice(1).forEach(c => selClipSet.add(c.id)); lastFocus = 'clip'; refreshClipSelClasses(); selStatus(); } }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'j' || e.key === 'J')) { e.preventDefault(); mergeSelected(); }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateClip(); }
     else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); copySelection(false); }
     else if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) { e.preventDefault(); copySelection(true); }

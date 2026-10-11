@@ -594,6 +594,16 @@ class RushDAWMCP:
                 return {"clip": {"id": c["id"], "track": t["name"], "start_beat": c["start"]}}
             return self._edit(a["project_id"], "update clip", run)
 
+        @tool("merge_regions", "Merge 2+ pattern (MIDI) regions of ONE track into a single region (same as selecting them in the UI "
+              "and right-click > Merge): it spans the first start to the last end, every pad / note keeps its exact position, gaps stay "
+              "empty, overlapping pads keep the louder velocity. Audio clips can only be merged in the editor UI.",
+              _S(project_id=PID, clip_ids=("array", "Region ids (from get_project) to merge, all on the same track.", True, {"items": {"type": "string"}, "minItems": 2})))
+        def merge_regions(a):
+            def run(doc):
+                t, nc = M.merge_regions(doc["project"], a.get("clip_ids"))
+                return {"clip_id": nc["id"], "track": t["name"], "start_beat": nc["start"], "length_beats": nc["len"]}
+            return self._edit(a["project_id"], "merge regions", run)
+
         @tool("delete_clip", "Delete a clip or pattern region.", _S(project_id=PID, clip_id=("string", "Clip id.", True)))
         def delete_clip(a):
             def run(doc):

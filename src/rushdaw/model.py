@@ -207,6 +207,56 @@ def fit_region(proj, t, c):
         c['bars'] = c['len'] / proj.get('sig', 4)
 
 
+def merge_regions(proj, clip_ids):
+    """Merge MIDI regions of ONE track into a single region (= mergeSelected in app.js): it spans the first start
+    to the last end, every pad / note keeps its exact position, gaps are empty, overlapping pads keep the louder velocity.
+    The first region's fade in and the last region's fade out are kept. Returns (track, new_region)."""
+    ids = list(dict.fromkeys(clip_ids or []))
+    if len(ids) < 2:
+        raise ModelError("give 2 or more clip ids to merge")
+    found = [find_clip(proj, i) for i in ids]
+    t = found[0][0]
+    if any(x[0] is not t for x in found):
+        raise ModelError("merge works on regions of the same track")
+    clips = sorted((c for _, c in found), key=lambda c: c["start"])
+    if any(c.get("kind") != "midi" for c in clips):
+        raise ModelError("only pattern (MIDI) regions can be merged here; merge audio clips in the editor UI")
+    start = min(c["start"] for c in clips)
+    end = max(c["start"] + c["len"] for c in clips)
+    nc = {"id": nid("c"), "kind": "midi", "start": start, "len": round((end - start) * 4) / 4}
+    n = region_steps(nc)
+    sig = proj.get("sig", 4)
+    if t["type"] == "drum":
+        grid = [[0] * n for _ in DRUMS]
+        for c in clips:
+            off = int(round((c["start"] - start) * 4))
+            for r, row in enumerate((c.get("pattern") or {}).get("grid", [])):
+                if r >= len(grid):
+                    continue
+                for k, v in enumerate(row):
+                    if v and off + k < n:
+                        grid[r][off + k] = max(grid[r][off + k], v)
+        nc["pattern"] = {"bars": nc["len"] / sig, "grid": grid, "ids": list(DRUM_IDS)}
+    else:
+        notes = []
+        for c in clips:
+            off = int(round((c["start"] - start) * 4))
+            for x in c.get("notes", []):
+                if x["s"] + off < n:
+                    notes.append(dict(x, s=x["s"] + off, l=min(x["l"], n - x["s"] - off)))
+        nc["notes"] = notes
+        nc["bars"] = nc["len"] / sig
+    first = clips[0]
+    last = max(clips, key=lambda c: c["start"] + c["len"])
+    if first.get("fi"):
+        nc["fi"] = first["fi"]
+    if last.get("fo"):
+        nc["fo"] = last["fo"]
+    nc["linear"] = True
+    t["clips"] = [c for c in t["clips"] if c not in clips] + [nc]
+    return t, nc
+
+
 def linearize(proj, t, c, src_steps):
     """Unroll a looping pattern (old projects / the track template) into literal steps over the region (= linearize in app.js)."""
     n, m = region_steps(c), max(1, int(src_steps))
