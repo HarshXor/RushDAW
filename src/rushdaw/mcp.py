@@ -11,8 +11,13 @@ Every editing tool loads the latest revision of a project, applies the change
 and stores the result as a NEW revision (message ``MCP: ...``), so all MCP
 edits appear in the project's history and can be restored/undone.
 """
+import base64
+import binascii
+import io
 import json
+import os
 import threading
+import zipfile
 
 from . import __version__
 from . import model as M
@@ -161,11 +166,66 @@ class RushDAWMCP:
                     "drum_tuning": {k: {"min": v[0], "max": v[1], "default": M.KIT_DEFAULT[k]} for k, v in M.KIT_RANGES.items()},
                     "note_range": {"min": M.LOW_NOTE, "max": M.HIGH_NOTE, "min_name": M.note_name(M.LOW_NOTE), "max_name": M.note_name(M.HIGH_NOTE)}}
 
-        @tool("list_projects", "List all projects (id, name, bpm, latest revision, last update).", _S(), True)
+        @tool("list_projects", "List / search projects with server-side filters and pagination (same as the Projects page): "
+              "text search in names and revision notes, date range on updated or created (YYYY-MM-DD, inclusive), BPM range, "
+              "sort (updated|created|name|bpm|revisions, asc|desc), page / per_page (max 100). trash=true lists deleted projects.",
+              _S(query=("string", "Text to search in project names and revision notes."),
+                 date_field=("string", "updated (default) or created.", False, {"enum": ["updated", "created"]}),
+                 date_from=("string", "Only projects on/after this date (YYYY-MM-DD)."), date_to=("string", "Only projects on/before this date (YYYY-MM-DD)."),
+                 bpm_min=("number", "Minimum BPM."), bpm_max=("number", "Maximum BPM."),
+                 sort=("string", "Sort key.", False, {"enum": ["updated", "created", "name", "bpm", "revisions"]}),
+                 order=("string", "asc or desc (default desc).", False, {"enum": ["asc", "desc"]}),
+                 page=("integer", "1-based page (default 1)."), per_page=("integer", "Results per page (default 24, max 100)."),
+                 trash=("boolean", "List the Trash (deleted projects) instead.")), True)
         def list_projects(a):
-            return {"projects": [{"id": p["id"], "name": p["name"], "bpm": p["bpm"], "time_signature": f"{p['sig']}/4",
-                                  "revision": p["head_revision"], "revisions": p["revision_count"], "updated_at": p["updated_at"]}
-                                 for p in self.st.list_projects()]}
+            r = self.st.query_projects(q=a.get("query", ""), deleted=bool(a.get("trash")), date_field=a.get("date_field", "updated"),
+                                       date_from=a.get("date_from"), date_to=a.get("date_to"), bpm_min=a.get("bpm_min"),
+                                       bpm_max=a.get("bpm_max"), sort=a.get("sort", "updated"), order=a.get("order", "desc"),
+                                       page=a.get("page", 1), per_page=a.get("per_page", 24))
+            return {"total": r["total"], "page": r["page"], "pages": r["pages"], "per_page": r["per_page"],
+                    "projects": [{"id": p["id"], "name": p["name"], "bpm": p["bpm"], "time_signature": f"{p['sig']}/4",
+                                  "revision": p["head_revision"], "revisions": p["revision_count"], "size": p["size"],
+                                  "created_at": p["created_at"], "updated_at": p["updated_at"]} for p in r["projects"]]}
+
+        @tool("export_project", "Export a project as a package (.zip) that can be imported again in one go: project.rushdaw + an audio/ "
+              "folder with every recorded / imported audio file. Same as Export in the UI. The zip is written on the server "
+              "(default <rushdaw home>/exports/) and can also be downloaded from download_url.",
+              _S(project_id=PID, revision=("integer", "Revision number (default: latest)."),
+                 output_path=("string", "Optional absolute path of the .zip to write (default: <home>/exports/<name>-revN.rushdaw.zip).")), True)
+        def export_project(a):
+            data, fname = self.st.export_package(a["project_id"], a.get("revision"))
+            out = a.get("output_path") or os.path.join(self.st.home, "exports", fname)
+            if not os.path.isabs(out):
+                raise M.ModelError("output_path must be an absolute path")
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            with open(out + ".tmp", "wb") as f:
+                f.write(data)
+            os.replace(out + ".tmp", out)
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                audio_files = [n for n in z.namelist() if n.startswith("audio/")]
+            rev = a.get("revision")
+            return {"path": out, "size": len(data), "file_name": fname, "audio_files": audio_files,
+                    "download_url": f"/api/projects/{a['project_id']}/export" + (f"?rev={int(rev)}" if rev else "")}
+
+        @tool("import_project", "Import a project package (.zip from Export, with its audio/ files) or a .rushdaw file as a NEW project. "
+              "Give a server-local absolute path, or the file content as base64.",
+              _S(path=("string", "Absolute path of a .zip / .rushdaw file on the server."), data_base64=("string", "File content, base64."),
+                 name=("string", "Name for the new project (default: the project's title).")))
+        def import_project(a):
+            if bool(a.get("path")) == bool(a.get("data_base64")):
+                raise M.ModelError("give either path or data_base64")
+            if a.get("path"):
+                if not os.path.isabs(a["path"]) or not os.path.isfile(a["path"]):
+                    raise M.ModelError("path must be an existing absolute file path")
+                with open(a["path"], "rb") as f:
+                    raw = f.read()
+            else:
+                try:
+                    raw = base64.b64decode(a["data_base64"], validate=True)
+                except (ValueError, binascii.Error):
+                    raise M.ModelError("data_base64 is not valid base64")
+            p = self.st.import_project(raw, a.get("name"))
+            return {"project_id": p["id"], "name": p["name"], "revision": p["head_revision"]}
 
         @tool("get_project", "Get a project's full content: tracks/layers with mixer settings, effects, clips, drum pads (as x/. strings), drum tuning, synth notes, master.",
               _S(project_id=PID, revision=("integer", "Revision number (default: latest)."),

@@ -28,9 +28,10 @@
     <label class="fld zoom">Zoom <input id="zoom" type="range" min="10" max="300" value="60"></label>
   </div>
   <div class="group export">
-    <select id="exportFmt" title="Export format"><option value="wav">WAV</option></select>
+    <select id="exportFmt" title="Download format (rendered audio)"><option value="wav">WAV</option></select>
     <label class="toggle" title="Off = export sounds exactly like playback in the studio. On = raise the level to the master ceiling."><input id="normalize" type="checkbox"> Normalize</label>
-    <button id="btnExport" class="primary" title="Export the song"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg><span class="tx">Export</span></button>
+    <button id="btnExport" class="primary" title="Render the song and download the audio (format on the left)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg><span class="tx">Download</span></button>
+    <button id="btnExportPkg" title="Export the project as one .zip (project.rushdaw + audio/ folder with every audio file) – import it again in one go"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg><span class="tx">Export</span></button>
   </div>
   <div class="group add">
     <button id="addAudio"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="tx">Audio</span></button>
@@ -105,16 +106,28 @@
         <label>BPM <input id="npBpm" type="number" min="40" max="240" value="180"></label>
         <label>Template <select id="npTpl"><option value="demo">Metal demo (drums, bass, guitar)</option><option value="band">Band (drums, bass, guitar, vocal)</option><option value="dbeat">D-Beat / Crust Punk (d-beat drums, pick bass, distorted guitar)</option><option value="empty">Empty</option></select></label>
         <button id="npCreate" class="primary">+ Create</button>
-        <button id="npImport" title="Import a .rushdaw file as a new project">Import .rushdaw…</button>
-        <input id="npImportFile" type="file" accept=".rushdaw,.json" hidden>
+        <button id="npImport" title="Import an exported project package (.zip with its audio files) or a .rushdaw file as a new project">Import (.zip / .rushdaw)…</button>
+        <input id="npImportFile" type="file" accept=".zip,.rushdaw,.json,application/zip" hidden>
       </div>
     </div>
     <div class="home-bar">
       <h3 id="homeTitle">Projects</h3>
-      <input id="projSearch" placeholder="Search…">
+      <span id="homeCount" class="pmeta"></span>
       <button id="btnTrash">🗑 Trash</button>
     </div>
+    <div class="home-filters" id="homeFilters">
+      <input id="projSearch" type="search" placeholder="Search name or revision note…" title="Searched on the server (project names and revision notes)">
+      <label class="hf">Date <select id="fDateField" title="Which date the range filters"><option value="updated">Updated</option><option value="created">Created</option></select></label>
+      <label class="hf">From <input id="fFrom" type="date"></label>
+      <label class="hf">To <input id="fTo" type="date"></label>
+      <label class="hf">BPM <input id="fBpmMin" type="number" min="40" max="240" placeholder="min"> – <input id="fBpmMax" type="number" min="40" max="240" placeholder="max"></label>
+      <label class="hf">Sort <select id="fSort"><option value="updated">Last updated</option><option value="created">Created</option><option value="name">Name</option><option value="bpm">BPM</option><option value="revisions">Revisions</option></select></label>
+      <select id="fOrder" title="Order"><option value="desc">↓ Desc</option><option value="asc">↑ Asc</option></select>
+      <label class="hf">Per page <select id="fPerPage"><option>12</option><option selected>24</option><option>48</option><option>96</option></select></label>
+      <button id="fReset" title="Clear search and filters">Reset</button>
+    </div>
     <div id="projList"></div>
+    <div class="pager" id="projPager"></div>
   </div>
 </section>
 

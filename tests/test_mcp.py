@@ -423,6 +423,28 @@ class McpTest(unittest.TestCase):
         self.assertEqual(pads["snare"], "." * 36 + "x" + "." * 11)    # snare stays in bar 3, gap bar empty
         self.assertIn("2 or more", self.call("merge_regions", ok=False, project_id=pid, clip_ids=[m["clip_id"]])["error"])
 
+    def test_list_export_import(self):
+        """MCP mirrors the Projects page: server-side search/pagination, Export (.zip with audio/), Import."""
+        import base64, io, os, tempfile, zipfile
+        pid = self.call("create_project", name="Mcp Pkg Song", template="metal")["project_id"]
+        res = self.call("list_projects", query="pkg song", per_page=1)
+        self.assertEqual((res["total"], res["projects"][0]["id"]), (1, pid))
+        self.assertIn("pages", self.call("list_projects", sort="name", order="asc", page=1, per_page=2))
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "x.rushdaw.zip")
+            ex = self.call("export_project", project_id=pid, output_path=out)
+            self.assertTrue(os.path.isfile(out))
+            self.assertEqual(ex["download_url"], f"/api/projects/{pid}/export")
+            with zipfile.ZipFile(out) as z:
+                self.assertIn("project.rushdaw", z.namelist())
+            imp = self.call("import_project", path=out, name="Mcp Re-import")
+            self.assertEqual(imp["name"], "Mcp Re-import")
+            with open(out, "rb") as f:
+                imp2 = self.call("import_project", data_base64=base64.b64encode(f.read()).decode())
+            self.assertNotEqual(imp2["project_id"], imp["project_id"])
+        self.assertIn("either", self.call("import_project", ok=False)["error"])
+        self.assertIn("absolute", self.call("export_project", ok=False, project_id=pid, output_path="rel.zip")["error"])
+
     def test_errors(self):
         pid = self.call("create_project", name="Err", template="empty")["project_id"]
         self.assertIn("not found", self.call("update_track", ok=False, project_id=pid, track="Nope", pan=0)["error"])

@@ -311,4 +311,21 @@ button,select,input{touch-action:manipulation}
 #topbar .group.export{margin-left:auto}
 #topbar .group.export.rowstart{margin-left:0}
 /* narrower than one long first row: Export goes to the end of the last row (right-aligned) instead of sitting alone */
-@media (max-width:1719px){ #topbar .group.export{order:1} }
+@media (max-width:1839px){ #topbar .group.export{order:1} }
+/* ---- project list: server-side filters + pagination ---- */
+.home-bar h3{flex:0 0 auto}
+.home-bar #homeCount{flex:1}
+.home-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.home-filters>*{height:30px;margin:0}
+.home-filters .hf{display:inline-flex;align-items:center;gap:6px;color:var(--mut);white-space:nowrap}
+.home-filters input,.home-filters select{height:30px;padding:0 8px}
+.home-filters #projSearch{flex:1 1 220px;min-width:180px}
+.home-filters input[type=number]{width:64px}
+.home-filters input[type=date]{color-scheme:dark}
+.pager{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin:14px 0 4px}
+.pager button{min-width:34px;height:30px}
+.pager button:disabled{opacity:.35;cursor:default}
+.pager .pmeta{margin-left:8px}
+@media (max-width:640px){ .home-filters .hf{font-size:12px} .home-filters #projSearch{flex-basis:100%} }
+.home-new label{max-width:100%;min-width:0}
+#npTpl{max-width:min(420px,calc(100vw - 120px));text-overflow:ellipsis}

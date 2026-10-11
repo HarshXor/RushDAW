@@ -10,8 +10,11 @@ The SQLite database keeps *metadata only* (project name, tempo, timestamps,
 revision numbers, messages, file name, size, checksum).  The heavy project
 content (tracks, notes, FX, embedded audio) lives in the ``.rushdaw`` files.
 """
+import base64
 import contextlib
+import datetime
 import hashlib
+import io
 import json
 import os
 import re
@@ -19,6 +22,7 @@ import sqlite3
 import threading
 import time
 import uuid
+import zipfile
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -223,8 +227,171 @@ class Storage:
         return self.save_revision(project_id, data, f"Restored from revision {rev['number']}")
 
     def import_project(self, data, name=None):
+        """Import a .rushdaw file (JSON, audio embedded) or an exported project package (.zip with
+        project.rushdaw + audio/ files) as a new project."""
+        if is_package(data):
+            data = unpack_package(data)
         obj = self._parse_project(data)
-        p = self.create_project(name or obj["project"].get("title") or "Imported", obj["project"].get("bpm") or 120,
+        if name and name.strip():  # the chosen name wins (the saved revision's title becomes the project name)
+            obj["project"]["title"] = self._clean_name(name)
+            data = json.dumps(obj).encode("utf-8")
+        p = self.create_project(obj["project"].get("title") or "Imported", obj["project"].get("bpm") or 120,
                                 obj["project"].get("sig") or 4)
         self.save_revision(p["id"], data, "Imported")
         return self.get_project(p["id"])
+
+    # ------------------------------------------------------------ export package
+    def export_package(self, project_id, number=None):
+        """Project package (.zip) of a saved revision: project.rushdaw + audio/ files. Returns (bytes, file name)."""
+        data, rev, p = self.read_revision(project_id, number)
+        return build_package(data), f"{safe_file_name(p['name'])}-rev{rev['number']}.rushdaw.zip"
+
+    # ------------------------------------------------------------ listing (search / filter / pagination)
+    SORTS = {"updated": "p.updated_at", "created": "p.created_at", "name": "p.name COLLATE NOCASE", "bpm": "p.bpm",
+             "revisions": "revision_count"}
+
+    def query_projects(self, q="", deleted=False, date_field="updated", date_from=None, date_to=None,
+                       bpm_min=None, bpm_max=None, sort="updated", order="desc", page=1, per_page=24):
+        """Server-side project listing: text search (name + revision notes), date range on created/updated,
+        BPM range, sorting and pagination. Dates are 'YYYY-MM-DD' (local time, both ends inclusive) or epoch seconds."""
+        where, args = ["p.deleted_at IS NOT NULL" if deleted else "p.deleted_at IS NULL"], []
+        q = (q or "").strip()
+        if q:
+            like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            where.append("(p.name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM revisions r WHERE r.project_id = p.id "
+                         "AND r.message LIKE ? ESCAPE '\\'))")
+            args += [like, like]
+        col = {"updated": "p.updated_at", "created": "p.created_at"}.get(date_field)
+        if col is None:
+            raise StorageError("date_field must be 'updated' or 'created'")
+        if date_from not in (None, ""):
+            where.append(f"{col} >= ?"); args.append(_to_epoch(date_from, end=False))
+        if date_to not in (None, ""):
+            where.append(f"{col} <= ?"); args.append(_to_epoch(date_to, end=True))
+        if bpm_min not in (None, ""):
+            where.append("p.bpm >= ?"); args.append(float(bpm_min))
+        if bpm_max not in (None, ""):
+            where.append("p.bpm <= ?"); args.append(float(bpm_max))
+        sort_sql = self.SORTS.get(sort)
+        if sort_sql is None:
+            raise StorageError("sort must be one of: " + ", ".join(self.SORTS))
+        direction = "ASC" if str(order).lower() == "asc" else "DESC"
+        page, per_page = max(1, int(page or 1)), min(100, max(1, int(per_page or 24)))
+        base = " FROM projects p WHERE " + " AND ".join(where)
+        with self._connect() as db:
+            total = db.execute("SELECT COUNT(*)" + base, args).fetchone()[0]
+            rows = db.execute(
+                """SELECT p.*, (SELECT COUNT(*) FROM revisions r WHERE r.project_id = p.id) AS revision_count,
+                          (SELECT size FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS size"""
+                + base + f" ORDER BY {sort_sql} {direction}, p.updated_at DESC LIMIT ? OFFSET ?",
+                args + [per_page, (page - 1) * per_page]).fetchall()
+        pages = max(1, -(-total // per_page))
+        return {"projects": [dict(r) for r in rows], "total": total, "page": page, "per_page": per_page, "pages": pages}
+
+
+def _to_epoch(v, end=False):
+    if isinstance(v, (int, float)) or re.fullmatch(r"\d+(\.\d+)?", str(v)):
+        return float(v)
+    try:
+        d = datetime.datetime.strptime(str(v)[:10], "%Y-%m-%d")
+    except ValueError:
+        raise StorageError(f"invalid date '{v}' (use YYYY-MM-DD)")
+    if end:
+        d += datetime.timedelta(days=1)
+        return time.mktime(d.timetuple()) - 0.001
+    return time.mktime(d.timetuple())
+
+
+# ---------------------------------------------------------------- project packages (.zip)
+# Export = one zip that can be imported again in one go:
+#     <name>.rushdaw.zip
+#       project.rushdaw        the project (JSON); audio entries point to files instead of embedding them
+#       audio/<id>-<name>.wav  every recorded / imported audio file used by the project
+#       README.txt             what this is
+PACKAGE_PROJECT = "project.rushdaw"
+MAX_PACKAGE_UNCOMPRESSED = 2 * 1024 * 1024 * 1024  # zip-bomb guard
+
+
+def safe_file_name(name, fallback="project"):
+    n = re.sub(r"[^\w\- .()]+", "_", str(name or "")).strip(" ._")[:80]
+    return n or fallback
+
+
+def _audio_ext(raw):
+    if raw[:4] == b"RIFF":
+        return ".wav"
+    if raw[:3] == b"ID3" or raw[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return ".mp3"
+    if raw[:4] == b"OggS":
+        return ".ogg"
+    if raw[:4] == b"fLaC":
+        return ".flac"
+    return ".bin"
+
+
+def is_package(data):
+    return isinstance(data, (bytes, bytearray)) and data[:4] == b"PK\x03\x04"
+
+
+def build_package(data):
+    """.rushdaw bytes (audio embedded as base64) -> zip bytes (project.rushdaw + audio/ files)."""
+    obj = Storage._parse_project(data)
+    audio_out, files, used = {}, [], set()
+    for aid, a in (obj.get("audio") or {}).items():
+        if not isinstance(a, dict) or "wav" not in a:
+            continue
+        raw = base64.b64decode(a["wav"])
+        base = safe_file_name(f"{aid}-{a.get('name') or 'audio'}".rsplit(".", 1)[0], aid)
+        fname = f"audio/{base}{_audio_ext(raw)}"
+        while fname in used:
+            fname = fname.replace("audio/", "audio/_", 1)
+        used.add(fname)
+        files.append((fname, raw))
+        audio_out[aid] = {"name": a.get("name") or "", "file": fname}
+    obj["audio"] = audio_out
+    obj["package"] = {"format": 1, "exported_at": time.time()}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(PACKAGE_PROJECT, json.dumps(obj))
+        for fname, raw in files:
+            z.writestr(zipfile.ZipInfo(fname, time.localtime()[:6]), raw, compress_type=zipfile.ZIP_STORED)  # audio: already dense
+        z.writestr("README.txt", "RushDAW project package.\nImport this .zip in RushDAW (Projects > Import) - the project and\n"
+                                 f"all its audio files ({len(files)}) come back in one go.\nproject.rushdaw = the project, "
+                                 "audio/ = recorded and imported audio used by it.\n")
+    return buf.getvalue()
+
+
+def unpack_package(data):
+    """Project package zip -> .rushdaw bytes with the audio embedded again (the internal storage format)."""
+    try:
+        z = zipfile.ZipFile(io.BytesIO(bytes(data)))
+    except zipfile.BadZipFile as e:
+        raise StorageError(f"invalid project package: {e}")
+    with z:
+        if sum(i.file_size for i in z.infolist()) > MAX_PACKAGE_UNCOMPRESSED:
+            raise StorageError("project package is too large")
+        names = z.namelist()
+        proj_name = PACKAGE_PROJECT if PACKAGE_PROJECT in names else next(
+            (n for n in names if n.lower().endswith(".rushdaw") and "/" not in n.strip("/")), None) or next(
+            (n for n in names if n.lower().endswith(".rushdaw")), None)
+        if proj_name is None:
+            raise StorageError("no project.rushdaw found in the package")
+        obj = Storage._parse_project(z.read(proj_name))
+        root = proj_name.rsplit("/", 1)[0] + "/" if "/" in proj_name else ""
+        audio = {}
+        for aid, a in (obj.get("audio") or {}).items():
+            if not isinstance(a, dict):
+                continue
+            if "wav" in a:  # already embedded
+                audio[aid] = a
+                continue
+            f = str(a.get("file") or "")
+            cand = [root + f, f] + [n for n in names if n.endswith("/" + f.rsplit("/", 1)[-1])]
+            hit = next((c for c in cand if c in names), None)
+            if hit is None:
+                raise StorageError(f"audio file '{f}' is missing from the package")
+            audio[aid] = {"name": a.get("name") or "", "wav": base64.b64encode(z.read(hit)).decode("ascii")}
+        obj["audio"] = audio
+        obj.pop("package", None)
+    return json.dumps(obj).encode("utf-8")
+

@@ -2089,7 +2089,7 @@ async function exportSong() {
   const fmt = $('#exportFmt').value, title = $('#title').value || 'RushDAW';
   const btn = $('#btnExport'); btn.disabled = true;
   try { await renderAndDownload(fmt, title); }
-  catch (e) { status('Export failed: ' + e.message); }
+  catch (e) { status('Download failed: ' + e.message); }
   finally { btn.disabled = false; }
 }
 // Project list: render + download the latest saved revision without opening the editor.
@@ -2105,6 +2105,21 @@ async function downloadFromList(p, fmt, btn) {
   finally { btn.disabled = false; btn.textContent = old; }
 }
 const exportFormats = () => [...$('#exportFmt').options].map(o => [o.value, o.textContent]);
+/* Export = project package (.zip): project.rushdaw + audio/ folder with every recorded / imported audio file.
+   Import it again (Projects > Import) and everything comes back in one go. Download = rendered song audio. */
+async function exportProjectPackage() {
+  const btn = $('#btnExportPkg'); btn.disabled = true;
+  const title = ($('#title').value || 'RushDAW').trim();
+  try {
+    status('Exporting project package…');
+    const body = await serializeProject();  // the current state, saved or not
+    const r = await api('/api/package?name=' + encodeURIComponent(title), { method: 'POST', body });
+    const blob = await r.blob();
+    download(blob, title.replace(/[^\w\- .()]+/g, '_') + '.rushdaw.zip');
+    status(`Exported ${title}.rushdaw.zip (${fmtSize(blob.size)}) – project.rushdaw + audio/ files; import it on the Projects page`);
+  } catch (e) { status('Export failed: ' + e.message); }
+  finally { btn.disabled = false; }
+}
 
 /* ------------------------------------------- projects: save / load / history */
 // Projects live on the local server: metadata in ~/.rushdaw/db.sql (SQLite),
@@ -2271,30 +2286,46 @@ async function showHome() {
 const projectUrl = id => location.pathname + '#/project/' + id;
 const hashProjectId = () => (location.hash.match(/^#\/project\/([0-9a-f]{32})\/?$/) || location.hash.match(/^#p=([0-9a-f]{32})$/) || [])[1] || null;
 function hideHome() { $('#home').classList.remove('show'); }
+// Project list: search, filters, sorting and pagination all run on the server (SQLite), only one page is loaded.
+const homeQ = { page: 1 };
+function homeParams() {
+  const v = id => $(id).value.trim(), pr = new URLSearchParams();
+  const add = (k, val) => { if (val !== '' && val != null) pr.set(k, val); };
+  add('q', v('#projSearch')); add('date_field', v('#fDateField')); add('from', v('#fFrom')); add('to', v('#fTo'));
+  add('bpm_min', v('#fBpmMin')); add('bpm_max', v('#fBpmMax')); add('sort', v('#fSort')); add('order', v('#fOrder'));
+  add('per_page', v('#fPerPage')); add('page', homeQ.page); if (showTrash) pr.set('deleted', '1');
+  return pr;
+}
+let homeReq = 0;
 async function renderHome() {
-  const list = $('#projList'); list.innerHTML = '<p class="hint">Loading…</p>';
+  const list = $('#projList'), pager = $('#projPager'), my = ++homeReq;
+  list.innerHTML = '<p class="hint">Loading…</p>';
   $('#homeTitle').textContent = showTrash ? 'Trash (deleted projects – files are kept)' : 'Projects';
   $('#btnTrash').textContent = showTrash ? '← Back to projects' : '🗑 Trash';
   try {
-    const data = await (await api('/api/projects' + (showTrash ? '?deleted=1' : ''))).json();
+    const data = await (await api('/api/projects?' + homeParams())).json();
+    if (my !== homeReq) return;  // a newer search is already running
+    if (data.page > data.pages && data.total) { homeQ.page = data.pages; return renderHome(); }
     $('#homePath').textContent = `Data: ${data.home}/db.sql  ·  files: ${data.home}/file/`;
-    const q = $('#projSearch').value.trim().toLowerCase();
-    const items = data.projects.filter(p => !q || p.name.toLowerCase().includes(q));
+    const filtered = !!(homeParams().get('q') || homeParams().get('from') || homeParams().get('to') || homeParams().get('bpm_min') || homeParams().get('bpm_max'));
+    $('#homeCount').textContent = `${data.total} project${data.total === 1 ? '' : 's'}${filtered ? ' found' : ''}`;
+    const items = data.projects;
     list.innerHTML = '';
-    if (!items.length) list.append(el('p', { className: 'hint' }, showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
+    if (!items.length) list.append(el('p', { className: 'hint' }, filtered ? 'No project matches the search / filters.' : showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
     items.forEach(p => {
       const nameEl = el('div', { className: 'pname', title: 'Open' }, p.name);
       const card = el('div', { className: 'pcard' },
         nameEl,
         el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
-        el('div', { className: 'pmeta' }, 'Updated ' + fmtAgo(p.updated_at)),
+        el('div', { className: 'pmeta', title: `Created ${new Date(p.created_at * 1000).toLocaleString()}` }, 'Updated ' + fmtAgo(p.updated_at)),
         el('div', { className: 'pbtns' }, showTrash
           ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
           : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
             el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
-            ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
-              const b = el('button', { title: 'Render the latest saved revision and download it (muted tracks stay muted)', onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
+            ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
+              const b = el('button', { title: 'Render the latest saved revision and download the song audio (muted tracks stay muted)', onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
               return [sel, b]; })(),
+            el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
             el('button', { onclick: () => {
               const inp = el('input', { value: p.name, className: 'pname-edit' });
               const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
@@ -2305,7 +2336,18 @@ async function renderHome() {
       if (!showTrash) nameEl.onclick = () => openProject(p.id);
       list.append(card);
     });
-  } catch (e) { list.innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); }
+    // pagination
+    pager.innerHTML = '';
+    if (data.pages > 1) {
+      const go = n => () => { homeQ.page = n; renderHome(); $('#home').scrollTo({ top: 0, behavior: 'smooth' }); };
+      const btn = (txt, n, dis, title) => el('button', { disabled: dis, title, onclick: go(n) }, txt);
+      const nums = []; const from = Math.max(1, data.page - 2), to = Math.min(data.pages, data.page + 2);
+      for (let n = from; n <= to; n++) nums.push(el('button', { className: n === data.page ? 'primary' : '', onclick: go(n) }, String(n)));
+      pager.append(btn('«', 1, data.page === 1, 'First page'), btn('‹ Prev', data.page - 1, data.page === 1, 'Previous page'), ...nums,
+        btn('Next ›', data.page + 1, data.page === data.pages, 'Next page'), btn('»', data.pages, data.page === data.pages, 'Last page'),
+        el('span', { className: 'pmeta' }, `Page ${data.page} of ${data.pages} · ${(data.page - 1) * data.per_page + 1}–${Math.min(data.total, data.page * data.per_page)} of ${data.total}`));
+    }
+  } catch (e) { if (my === homeReq) { list.innerHTML = ''; pager.innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); } }
 }
 
 /* revision history dialog */
@@ -2325,13 +2367,13 @@ async function openHistory(id = currentProject?.id, fromHome = false) {
           if (!fromHome) await autoSave();
           await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); $('#historyDlg').classList.remove('show'); openProject(id);
         } }, '↺ Restore') : null,
-        el('a', { className: 'btnlink', href: `/api/projects/${id}/file?rev=${r.number}&download=1`, title: 'Download this revision as a .rushdaw file' }, '⬇')))));
+        el('a', { className: 'btnlink', href: `/api/projects/${id}/export?rev=${r.number}`, title: 'Export this revision as .zip (project.rushdaw + audio/ files)' }, '📦')))));
   } catch (e) { box.innerHTML = ''; box.append(el('p', { className: 'hint' }, 'Error: ' + e.message)); }
 }
 async function importProjectFile(file) {
   try {
     status('Importing ' + file.name + '…');
-    const meta = await (await api('/api/projects/import?name=' + encodeURIComponent(file.name.replace(/\.(rushdaw|json)$/i, '')), { method: 'POST', body: await file.arrayBuffer() })).json();
+    const meta = await (await api('/api/projects/import?name=' + encodeURIComponent(file.name.replace(/(-rev\d+)?(\.rushdaw)?\.(zip|rushdaw|json)$/i, '')), { method: 'POST', body: await file.arrayBuffer() })).json();
     renderHome(); openProject(meta.id);
   } catch (e) { status('Import failed: ' + e.message); alert('Import failed: ' + e.message); }
 }
@@ -2542,8 +2584,13 @@ function init() {
   $('#npName').onkeydown = e => { if (e.key === 'Enter') createProject(); };
   $('#npImport').onclick = () => $('#npImportFile').click();
   $('#npImportFile').onchange = e => { if (e.target.files[0]) importProjectFile(e.target.files[0]); e.target.value = ''; };
-  $('#projSearch').oninput = renderHome;
-  $('#btnTrash').onclick = () => { showTrash = !showTrash; renderHome(); };
+  // project list filters: everything is queried on the server; typing is debounced
+  let searchT = null;
+  $('#projSearch').oninput = () => { clearTimeout(searchT); searchT = setTimeout(() => { homeQ.page = 1; renderHome(); }, 300); };
+  ['#fDateField', '#fFrom', '#fTo', '#fSort', '#fOrder', '#fPerPage'].forEach(id => { $(id).onchange = () => { homeQ.page = 1; renderHome(); }; });
+  ['#fBpmMin', '#fBpmMax'].forEach(id => { $(id).oninput = () => { clearTimeout(searchT); searchT = setTimeout(() => { homeQ.page = 1; renderHome(); }, 400); }; });
+  $('#fReset').onclick = () => { ['#projSearch', '#fFrom', '#fTo', '#fBpmMin', '#fBpmMax'].forEach(id => { $(id).value = ''; }); $('#fDateField').value = 'updated'; $('#fSort').value = 'updated'; $('#fOrder').value = 'desc'; homeQ.page = 1; renderHome(); };
+  $('#btnTrash').onclick = () => { showTrash = !showTrash; homeQ.page = 1; renderHome(); };
   setInterval(updateDirty, 1000);
   // pick up edits made from outside the browser (MCP tools create new revisions)
   let externalWarned = 0;
@@ -2567,6 +2614,7 @@ function init() {
   }, 3000);
   window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
   $('#btnExport').onclick = exportSong;
+  $('#btnExportPkg').onclick = exportProjectPackage;
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
 
   // ruler: click to seek, shift+drag to set loop region

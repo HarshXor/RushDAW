@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from . import __version__
 from .export import available_formats, convert
 from .mcp import RushDAWMCP
-from .storage import Storage, StorageError
+from .storage import Storage, StorageError, build_package, safe_file_name
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MAX_UPLOAD = 1024 * 1024 * 1024  # 1 GB (rendered WAV or project with embedded audio)
@@ -25,7 +25,7 @@ SSE_PATH = "/sse"
 MESSAGES_PATH = "/messages"
 SSE_KEEPALIVE = 15.0  # seconds between keep-alive comments
 
-_PROJ = re.compile(r"^/api/projects/([0-9a-f]{32})(?:/(file|revisions|restore|rename|undelete))?$")
+_PROJ = re.compile(r"^/api/projects/([0-9a-f]{32})(?:/(file|revisions|restore|rename|undelete|export))?$")
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -57,6 +57,15 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_file(self, data, fname, ctype):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(fname)}")
+        self.end_headers()
+        self.wfile.write(data)
+        return None
+
     def _body(self):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -78,11 +87,18 @@ class Handler(SimpleHTTPRequestHandler):
         st = self.storage
         try:
             if u.path == "/api/projects":
-                if method == "GET":
-                    return self._json({"home": st.home, "projects": st.list_projects(deleted=q.get("deleted") == "1")})
+                if method == "GET":  # server-side search / filters / sorting / pagination
+                    res = st.query_projects(q=q.get("q", ""), deleted=q.get("deleted") == "1", date_field=q.get("date_field", "updated"),
+                                            date_from=q.get("from"), date_to=q.get("to"), bpm_min=q.get("bpm_min"),
+                                            bpm_max=q.get("bpm_max"), sort=q.get("sort", "updated"), order=q.get("order", "desc"),
+                                            page=q.get("page", 1), per_page=q.get("per_page", 24))
+                    return self._json({"home": st.home, **res})
                 if method == "POST":
                     b = self._json_body()
                     return self._json(st.create_project(b.get("name"), b.get("bpm", 120), b.get("sig", 4)), 201)
+            if u.path == "/api/package" and method == "POST":  # editor state (saved or not) -> project package zip
+                name = safe_file_name(q.get("name") or "project")
+                return self._send_file(build_package(self._body()), f"{name}.rushdaw.zip", "application/zip")
             if u.path == "/api/projects/import" and method == "POST":
                 return self._json(st.import_project(self._body(), q.get("name")), 201)
             m = _PROJ.match(u.path)
@@ -100,6 +116,9 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(st.save_revision(pid, self._body(), q.get("message", "")), 201)
                 if sub == "restore" and method == "POST":
                     return self._json(st.restore_revision(pid, int(q.get("rev", "0"))), 201)
+                if sub == "export" and method == "GET":  # project package of a saved revision
+                    data, fname = st.export_package(pid, int(q["rev"]) if q.get("rev") else None)
+                    return self._send_file(data, fname, "application/zip")
                 if sub == "file" and method == "GET":
                     rev = int(q["rev"]) if q.get("rev") else None
                     data, r, p = st.read_revision(pid, rev)
