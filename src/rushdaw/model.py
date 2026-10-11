@@ -362,6 +362,22 @@ def fit_region(proj, t, c):
         c['bars'] = c['len'] / proj.get('sig', 4)
 
 
+def mono_notes(notes):
+    """One pitch = one voice (same rule as the piano roll / monoLen in app.js): a later note on the same pitch and
+    step replaces the earlier one, and a note is cut where the next note of the same pitch starts."""
+    by = {}
+    for x in notes:  # later duplicates win
+        by[(x['p'], x['s'])] = x
+    out = sorted(by.values(), key=lambda x: (x['s'], x['p']))
+    nxt = {}
+    for x in reversed(out):
+        n = nxt.get(x['p'])
+        if n is not None and n - x['s'] < x['l']:
+            x['l'] = n - x['s']
+        nxt[x['p']] = x['s']
+    return out
+
+
 def shift_region_data(t, c, k):
     """Move a region's START by k steps (k > 0: cut k steps from the front, k < 0: add -k empty steps in front);
     every pad / note keeps its absolute position in the song. A note crossing the new start is shortened."""
@@ -436,7 +452,7 @@ def merge_regions(proj, clip_ids):
             for x in c.get("notes", []):
                 if x["s"] + off < n:
                     notes.append(dict(x, s=x["s"] + off, l=min(x["l"], n - x["s"] - off)))
-        nc["notes"] = notes
+        nc["notes"] = mono_notes(notes)
         nc["bars"] = nc["len"] / sig
     first = clips[0]
     last = max(clips, key=lambda c: c["start"] + c["len"])

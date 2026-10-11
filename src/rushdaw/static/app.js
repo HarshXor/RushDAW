@@ -738,13 +738,28 @@ const SAMPLE_SETS = {
   electric_bass_finger: { name: 'Electric Bass (finger)', lo: 28, hi: 67 },
   electric_bass_pick: { name: 'Electric Bass (pick)', lo: 28, hi: 67 },
   electric_guitar_muted: { name: 'Electric Guitar (palm muted)', lo: 40, hi: 88 },
-  choir_aahs: { name: 'Choir Aahs', lo: 48, hi: 84 },
-  voice_oohs: { name: 'Voice Oohs', lo: 48, hi: 84 },
+  choir_aahs: { name: 'Choir Aahs', lo: 48, hi: 84, sustained: true },
+  voice_oohs: { name: 'Voice Oohs', lo: 48, hi: 84, sustained: true },
   acoustic_grand_piano: { name: 'Acoustic Grand Piano', lo: 36, hi: 84 },
   electric_piano_1: { name: 'Electric Piano', lo: 36, hi: 84 },
-  string_ensemble_1: { name: 'String Ensemble', lo: 36, hi: 84 },
+  string_ensemble_1: { name: 'String Ensemble', lo: 36, hi: 84, sustained: true },
 };
 const SAMPLE_STEP = 3;
+/* sustained: true = held ensemble voices (choir, voice, strings). The recordings of such a set are detuned
+   differently (choir_aahs: -40 .. +11 cents) -> (a) every recording is measured at load time and re-tuned to its
+   note, (b) NO round-robin: a repeated note always uses the same recording, so one note stays ONE voice instead of
+   switching between two differently tuned / coloured recordings. */
+function measureCents(buf, off, freq) {
+  const x = buf.getChannelData(0), sr = buf.sampleRate, a = Math.round((off + 0.3) * sr), fr = Math.round(sr * 0.5);
+  if (a + fr + sr / freq * 1.1 >= x.length) return 0;
+  const R = l => { let s = 0, e0 = 0, e1 = 0; for (let i = 0; i < fr; i += 2) { s += x[a + i] * x[a + i + l]; e0 += x[a + i] * x[a + i]; e1 += x[a + i + l] * x[a + i + l]; } return s / Math.sqrt(e0 * e1 + 1e-12); };
+  const lo = Math.floor(sr / (freq * 1.07)), hi = Math.ceil(sr / (freq / 1.07)); let best = -1, bl = lo;
+  for (let l = lo; l <= hi; l++) { const r = R(l); if (r > best) { best = r; bl = l; } }
+  if (best < 0.5) return 0;  // not periodic enough to trust
+  const y0 = R(bl - 1), y1 = R(bl), y2 = R(bl + 1), d = (y0 - y2) / (2 * (y0 - 2 * y1 + y2));
+  const c = 1200 * Math.log2((sr / (bl + (isFinite(d) ? d : 0))) / freq);
+  return Math.abs(c) <= 60 ? c : 0;
+}
 const sampleBank = new Map();   // set id -> Map(midi -> { buf, off })  (AudioBuffers are shared by all contexts)
 const sampleLoads = new Map();  // set id -> Promise
 let sampleDecoder = null;
@@ -760,7 +775,9 @@ function loadSampleSet(id) {
         const y = buf.getChannelData(0); let pk = 0; for (const v of y) pk = Math.max(pk, Math.abs(v));
         let i = 0; while (i < y.length && Math.abs(y[i]) < pk * 0.02) i++;
         const off = Math.max(0, i - 24) / buf.sampleRate;
-        bank.set(m, { ...prepSustain(buf, midiFreq(m), off), off, peak: pk });
+        const cents = set.sustained ? measureCents(buf, off, midiFreq(m)) : 0;  // recording's own detune
+        // the sustain loop must be pitch-synchronous to the REAL pitch of the recording, else the seam beats
+        bank.set(m, { ...prepSustain(buf, midiFreq(m) * Math.pow(2, cents / 1200), off), off, peak: pk, tune: -cents });
       }).catch(e => console.warn('sample', id, m, e)));
   }
   const p = Promise.all(jobs).then(() => { sampleBank.set(id, bank); });
@@ -808,11 +825,11 @@ const rrLast = new Map();
 function nearestSample(id, m, rr = false) {
   const set = SAMPLE_SETS[id], bank = sampleBank.get(id); if (!set || !bank) return null;
   let k = clamp(set.lo + Math.round((m - set.lo) / SAMPLE_STEP) * SAMPLE_STEP, set.lo, set.hi);
-  if (rr) {
+  if (rr && !set.sustained) {
     const alt = clamp(m > k ? k + SAMPLE_STEP : k - SAMPLE_STEP, set.lo, set.hi), key = id + ':' + m;
     if (alt !== k && Math.abs(m - alt) <= 2 && bank.has(alt)) { if (rrLast.get(key) === k) k = alt; rrLast.set(key, k); }
   }
-  const e = bank.get(k); return e ? { ...e, rate: Math.pow(2, (m - k) / 12) } : null;
+  const e = bank.get(k); return e ? { ...e, rate: Math.pow(2, (m - k) / 12 + (e.tune || 0) / 1200) } : null;
 }
 // Decay (s) and Sustain (0..1) of the sample engine; older tracks without them use their preset's values
 const envOf = s => ({ decay: Math.max(0.03, s.decay ?? SYNTH_PRESETS[s.preset]?.decay ?? 1.5), sus: clamp(s.susLevel ?? SYNTH_PRESETS[s.preset]?.susLevel ?? 0.3, 0, 1) });
@@ -1010,7 +1027,7 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
             if (d.id === 'ohh') tn.openHat = v;
             keep(v);
           });
-          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, dest, t.synth, n.p, Math.max(g.c.currentTime, when + feelOffset(t, i)), n.l * S / 4, n.v ?? 1)); });
+          else h.notes.forEach((n, ni) => { if (n.s === i && !h.notes.some((o, oi) => oi < ni && o.p === n.p && o.s === n.s)) keep(playSynth(g.c, dest, t.synth, n.p, Math.max(g.c.currentTime, when + feelOffset(t, i)), monoLen(h.notes, n) * S / 4, n.v ?? 1)); });
         }
       }
     }
@@ -2816,6 +2833,9 @@ function duplicateClip() {
 /* Resize from the FRONT (left edge). MIDI regions move their start in whole 16th steps: shrinking cuts the first
    steps, growing adds EMPTY steps in front - every pad / note stays at its song position (same as model.trim_region_start).
    Audio clips move start + file offset together (cannot reveal audio before the start of the recording). */
+// one pitch = one voice: a note ends where the next note of the SAME pitch starts (like the piano roll enforces),
+// so overlapping / duplicated notes (old data, merges, MCP) never sound as two voices on one pitch
+function monoLen(notes, n) { let l = n.l; for (const o of notes) if (o !== n && o.p === n.p && o.s > n.s && o.s - n.s < l) l = o.s - n.s; return l; }
 function shiftRegionData(t, c, k) {
   if (t.type === 'drum') c.pattern.grid = c.pattern.grid.map(r => k >= 0 ? r.slice(k) : Array(-k).fill(0).concat(r));
   else c.notes = c.notes.map(x => { const s = x.s - k, e = x.s + x.l - k; return e <= 0 ? null : { ...x, s: Math.max(0, s), l: e - Math.max(0, s) }; }).filter(Boolean);

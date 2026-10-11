@@ -494,7 +494,7 @@ class MigrationTest(unittest.TestCase):
         with open(APP_JS, encoding="utf-8") as f:
             js = f.read()
         for sid in M.SAMPLE_SETS:
-            m = re.search(sid + r": \{ name: '[^']+', lo: (\d+), hi: (\d+) \}", js)
+            m = re.search(sid + r": \{ name: '[^']+', lo: (\d+), hi: (\d+)(?:, sustained: true)? \}", js)
             self.assertIsNotNone(m, sid)
             for note in range(int(m.group(1)), int(m.group(2)) + 1, 3):
                 path = os.path.join(base, sid, f"{note}.mp3")

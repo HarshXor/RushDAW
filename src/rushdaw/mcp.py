@@ -647,6 +647,7 @@ class RushDAWMCP:
 
         # ---------------- synth / guitar
         @tool("set_notes", "Write notes of a synth/guitar/bass region. Each note: {note: 'E2' or MIDI number, step: 1-based 16th step, length: steps (default 1), velocity: 1-127 (default 127)}. "
+              "Notes on the SAME pitch never overlap: a note is cut where the next note of that pitch starts (duplicates: the last one wins). "
               "A long length = ONE sustained note over many steps (e.g. length 16 = a whole bar in 4/4); it rings with the track's decay/sustain and fades with its release. Range C2 (36) - C6 (84).",
               _S(project_id=PID, track=TRACK, notes=("array", "Notes to write.", True, {"items": {"type": "object", "properties": {"note": {"type": ["string", "integer"]}, "step": {"type": "integer"}, "length": {"type": "integer"}, "velocity": {"type": "integer"}}, "required": ["note", "step"]}}),
                  replace=("boolean", "Replace all existing notes (default true); false = add/overwrite."), clip_id=("string", "Optional: edit only this region (clip id from get_project); every region has its own pattern. Omit = whole track (template + all regions).")))
@@ -666,7 +667,7 @@ class RushDAWMCP:
                         nt["v"] = round(M.num(x["velocity"], "velocity", 1, 127) / 127, 3)
                     new.append(nt)
                 keep = [] if a.get("replace", True) else [o for o in t["notes"] if not any(o["p"] == q["p"] and o["s"] == q["s"] for q in new)]
-                t["notes"] = keep + new
+                t["notes"] = M.mono_notes(keep + new)  # one pitch = one voice (no overlapping/duplicate notes on a pitch)
             return self._pattern_edit(a, "notes", fn, "synth")
 
         @tool("set_synth", "Change the sound of a synth/guitar/bass track: preset (Clean Guitar, Acoustic Guitar, Finger Bass, Pick Bass, Crunch/Distortion/Power Chord/Palm Mute Guitar, Choir Aah/Ooh/Ohh, Solo Hoo/Haa (voice), Keys, Synth Bass, Lead...) and/or params (decay = seconds the pluck takes to fall to the sustain level, susLevel = 0..1 level a held note keeps – long notes keep ringing, release = fade after the note; engine sample|voice|string|osc — 'sample' = real recorded guitar/bass, 'voice' = sung vowel (vowel a|e|i|o|u, voices 1-6, breath, vibrato), sample electric_guitar_clean|acoustic_guitar_steel|electric_bass_finger|electric_bass_pick, brightness, sustain, body, pick, wave, attack, release, cutoff, detune, gain, drive, pluck, chord).",

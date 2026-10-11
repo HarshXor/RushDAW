@@ -53,6 +53,13 @@ class TrimStartModelTest(unittest.TestCase):
         self.assertEqual((c["start"], c["offset"], c["dur"]), (6, 0.0, 5.0))
 
 
+class MonoNotesTest(unittest.TestCase):
+    def test_one_pitch_one_voice(self):
+        out = M.mono_notes([{"p": 57, "s": 0, "l": 16}, {"p": 57, "s": 4, "l": 4}, {"p": 60, "s": 0, "l": 16},
+                            {"p": 57, "s": 4, "l": 8, "v": 0.5}])
+        self.assertEqual(out, [{"p": 57, "s": 0, "l": 4}, {"p": 60, "s": 0, "l": 16}, {"p": 57, "s": 4, "l": 8, "v": 0.5}])
+
+
 class TrimStartMcpTest(T.McpTest):
     def rpc(self, method, params=None):
         TrimStartMcpTest.n += 1
@@ -69,6 +76,18 @@ class TrimStartMcpTest(T.McpTest):
         self.assertEqual((r["start_beat"], r["length_beats"]), (clip["start_beat"] + 2, clip["length_beats"] - 2))
         r = self.call("update_clip", project_id=pid, clip_id=clip["id"], trim_start_beats=-2)["clip"]
         self.assertEqual((r["start_beat"], r["length_beats"]), (clip["start_beat"], clip["length_beats"]))
+
+
+    def test_set_notes_never_doubles_a_pitch(self):
+        pid = self.call("create_project", name="Mono", template="empty")["project_id"]
+        self.call("add_track", project_id=pid, type="vocal", name="Voice")
+        r = self.call("set_notes", project_id=pid, track="Voice", notes=[
+            {"note": "A3", "step": 1, "length": 16}, {"note": "A3", "step": 1, "length": 8}, {"note": "A3", "step": 9, "length": 8}])
+        got = [(n["pitch"], n["step"], n["length"]) for n in r["track"]["notes"]]
+        self.assertEqual(got, [(57, 1, 8), (57, 9, 8)])  # duplicate at step 1: last wins; never two voices on A3
+        proj = self.call("get_project", project_id=pid)
+        clip = next(t for t in proj["tracks"] if t["name"] == "Voice")["clips"][0]
+        self.assertEqual([(n["step"], n["length"]) for n in clip["notes"]], [(1, 8), (9, 8)])
 
 
 for _n in [n for n in dir(T.McpTest) if n.startswith("test_")]:
