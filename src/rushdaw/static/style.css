@@ -36,7 +36,17 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .lane{height:var(--trackH);border-bottom:1px solid var(--line);position:relative}
 .lane.sel{background-color:rgba(0,229,255,.05)}
 .clip{position:absolute;top:4px;height:calc(var(--trackH) - 8px);border-radius:6px;background:color-mix(in srgb,var(--c) 28%,#050505);border:1px solid var(--c);overflow:hidden;cursor:grab;user-select:none}
-.clip.sel{outline:2px solid #fff}
+.clip.sel{outline:2px solid #fff;outline-offset:-2px}
+/* selection / hover: a translucent block over the whole clip, not just the border */
+.clip::after{content:'';position:absolute;inset:0;pointer-events:none;background:transparent;transition:background .12s}
+.clip:hover::after{background:rgba(255,255,255,.08)}
+.clip.sel::after{background:color-mix(in srgb,var(--acc) 26%,transparent)}
+.clip.sel:hover::after{background:color-mix(in srgb,var(--acc) 32%,transparent)}
+/* fade handles: drag to set fade-in / fade-out length */
+.clip .fh{box-sizing:border-box;position:absolute;top:1px;width:11px;height:11px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid var(--c);box-shadow:0 0 3px #000;cursor:ew-resize;z-index:2;opacity:.0;transition:opacity .12s}
+.clip:hover .fh,.clip.sel .fh{opacity:1}
+.clip .fh.fi{margin-left:0}.clip .fh.fo{margin-left:-11px}
+@media (pointer:coarse){.clip .fh.fo{margin-left:-16px}}
 .clip .lbl{position:absolute;left:5px;top:2px;font-size:11px;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #000}
 .clip canvas{position:absolute;left:0;top:0;height:100%;pointer-events:none}
 #editor .grid{position:relative}
@@ -136,6 +146,7 @@ button,select,input{touch-action:manipulation}
 }
 @media (pointer:coarse){
   .clip .rs{width:16px}
+  .clip .fh{width:16px;height:16px;opacity:1}
   input[type=range]{height:22px}
 }
 

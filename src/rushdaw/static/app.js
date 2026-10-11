@@ -4,7 +4,8 @@ const $ = s => document.querySelector(s);
 const el = (tag, props = {}, ...kids) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
-    if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    // CSS custom properties ('--c' = track colour) need setProperty: Object.assign silently ignores them
+    if (k === 'style' && typeof v === 'object') Object.entries(v).forEach(([sk, sv]) => sk.startsWith('--') ? e.style.setProperty(sk, sv) : (e.style[sk] = sv));
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (k in e && k !== 'list') e[k] = v; else e.setAttribute(k, v);
   }
@@ -1159,6 +1160,14 @@ function clipEl(t, c) {
   const name = c.kind === 'audio' ? (bufNames.get(c.buf) || 'Audio') : (t.type === 'drum' ? 'Drum pattern' : 'MIDI');
   const d = el('div', { className: 'clip' + (c.id === selClipId ? ' sel' : ''), style: { left: c.start * pxB() + 'px', width: w + 'px', '--c': t.color } });
   const cv = el('canvas'); cv.height = 60; sizeClipCanvas(cv, w); d.append(cv, el('div', { className: 'lbl' }, name), el('div', { className: 'rs', title: 'Resize' }));
+  // fade handles (top corners): drag inward to set the fade-in / fade-out length, drag back to the edge = off
+  ['fi', 'fo'].forEach(key => {
+    const h = el('div', { className: 'fh ' + key, title: (key === 'fi' ? 'Fade in' : 'Fade out') + ' – drag to set the length (double-click = off)' });
+    const place = () => { const { fi, fo } = clipFades(c), W = clipLenBeats(c) * pxB(); h.style.left = (key === 'fi' ? fi * pxB() : W - fo * pxB()) + 'px'; };
+    h.addEventListener('pointerdown', e => fadeDrag(e, t, c, d, key, place));
+    h.addEventListener('dblclick', e => { e.stopPropagation(); delete c[key]; place(); drawClip(cv, t, c); status((key === 'fi' ? 'Fade in' : 'Fade out') + ': off'); });
+    d.append(h); requestAnimationFrame(place);
+  });
   requestAnimationFrame(() => drawClip(cv, t, c));
   d.addEventListener('pointerdown', e => clipMouseDown(e, t, c, d));
   d.addEventListener('dblclick', () => { if (c.kind === 'midi') { selectTrack(t.id); showTab('editor'); } });
@@ -1201,6 +1210,24 @@ function drawFades(g, c, W, H) {
   if (fo) { const x = W - fo * ppb; g.beginPath(); g.moveTo(W, 0); g.lineTo(x, 0); g.lineTo(W, H); g.closePath(); g.fill(); g.beginPath(); g.moveTo(x, 0); g.lineTo(W, H); g.stroke(); }
   g.restore();
 }
+const fmtFade = v => !v ? 'off' : `${+v.toFixed(2)} beat${v === 1 ? '' : 's'}` + (v >= P.sig ? ` (${+(v / P.sig).toFixed(2)} bar)` : '') + ` · ${(v * spb()).toFixed(2)} s`;
+function fadeDrag(e, t, c, d, key, place) {
+  e.stopPropagation(); e.preventDefault(); if (e.button !== 0) return;
+  selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
+  document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); d.classList.add('sel');
+  const cv = d.querySelector('canvas'), x0 = d.getBoundingClientRect().left, len = clipLenBeats(c);
+  const mm = ev => {
+    const b = (ev.clientX - x0) / pxB();                                   // beat inside the clip
+    let v = key === 'fi' ? b : len - b;
+    v = $('#snap').checked ? Math.round(v * 4) / 4 : v;                     // snap to 1/16 note
+    const other = +c[key === 'fi' ? 'fo' : 'fi'] || 0;
+    v = clamp(v, 0, len - other);                                           // never overlap the other fade
+    if (v < 0.05) delete c[key]; else c[key] = +v.toFixed(3);
+    place(); drawClip(cv, t, c); status((key === 'fi' ? 'Fade in: ' : 'Fade out: ') + fmtFade(+c[key] || 0));
+  };
+  const mu = () => { window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu); };
+  window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
+}
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
   const prevSel = selClipId;
@@ -1217,6 +1244,7 @@ function clipMouseDown(e, t, c, d) {
       else { c.len = Math.max(0.25, nl); d.style.width = c.len * pxB() + 'px'; }
       // redraw at the new size instead of stretching: filled pads stay where they are
       const cv = d.querySelector('canvas'); if (cv) { sizeClipCanvas(cv, Math.max(4, clipLenBeats(c) * pxB())); drawClip(cv, t, c); }
+      const fo = d.querySelector('.fh.fo'); if (fo) fo.style.left = (clipLenBeats(c) - clipFades(c).fo) * pxB() + 'px';
     } else {
       c.start = Math.max(0, snapBeat(s0 + db, $('#snap').checked ? (c.kind === 'midi' ? 1 : 0.25) : 1)); d.style.left = c.start * pxB() + 'px';
       const laneEl = document.elementsFromPoint(ev.clientX, ev.clientY).find(x => x.classList && x.classList.contains('lane'));
@@ -1354,12 +1382,18 @@ function clipMenu(e, t, c) {
   if (c.kind === 'midi') renderEditor();
   const inside = currentBeat() > c.start && currentBeat() < c.start + clipLenBeats(c);
   const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
-  const fadeLbl = v => !v ? 'off' : v % P.sig === 0 ? `${v / P.sig} bar${v / P.sig > 1 ? 's' : ''}` : `${v} beat${v > 1 ? 's' : ''}`;
+  const fadeLbl = v => !v ? 'off' : v % P.sig === 0 ? `${v / P.sig} bar${v / P.sig > 1 ? 's' : ''}` : `${+(+v).toFixed(2)} beat${v > 1 ? 's' : ''}`;
   const fadeMenu = (key, title) => () => {
     const len = clipLenBeats(c), cur = +c[key] || 0;
     const opts = [0, 0.5, 1, 2, P.sig, P.sig * 2, P.sig * 4].filter((v, i, a) => a.indexOf(v) === i && v <= len);
-    showCtxMenu(e.clientX, e.clientY, title, opts.map(v => ({ label: (Math.abs(cur - v) < 1e-6 ? '✓ ' : '\u2003') + (v ? fadeLbl(v) : 'Off'),
-      run: () => { if (v) c[key] = v; else delete c[key]; render(); status(`${title}: ${v ? fadeLbl(v) : 'off'}`); } })));
+    const items = opts.map(v => ({ label: (Math.abs(cur - v) < 1e-6 ? '✓ ' : '\u2003') + (v ? fadeLbl(v) : 'Off'),
+      run: () => { if (v) c[key] = v; else delete c[key]; render(); status(`${title}: ${fmtFade(v)}`); } }));
+    const custom = cur && !opts.some(v => Math.abs(cur - v) < 1e-6);
+    items.push('-', { label: (custom ? '✓ ' : '\u2003') + `Custom length… (beats)${custom ? ' – now ' + fadeLbl(cur) : ''}`, run: () => {
+      const other = +c[key === 'fi' ? 'fo' : 'fi'] || 0, v = parseFloat(prompt(`${title} length in beats (0 = off, max ${+(len - other).toFixed(2)}).\nTip: you can also drag the small handle at the top corner of the clip.`, cur || 1));
+      if (!Number.isFinite(v)) return; const x = clamp(v, 0, len - other); if (x < 0.05) delete c[key]; else c[key] = +x.toFixed(3); render(); status(`${title}: ${fmtFade(+c[key] || 0)}`);
+    } });
+    showCtxMenu(e.clientX, e.clientY, title + ' · drag the corner handle for any length', items);
   };
   const fades = [
     { label: `◢ Fade in… (${fadeLbl(+c.fi || 0)})`, run: fadeMenu('fi', 'Fade in') },
