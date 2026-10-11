@@ -402,6 +402,45 @@ def resize_grid(proj, t):
     t['pattern']['grid'] = [(r + [0] * n)[:n] for r in t['pattern']['grid']]
 
 
+def clip_len_beats(proj, c):
+    """Length of a clip in beats (MIDI region: len; audio clip: duration at the project tempo). Mirrors clipLenBeats() in app.js."""
+    return c['len'] if c.get('kind') == 'midi' else (c.get('dur') or 0) * (proj.get('bpm') or 120) / 60
+
+
+def set_clip_fades(proj, c, fade_in_sec=None, fade_out_sec=None, fade_in_beats=None, fade_out_beats=None):
+    """Fade in / fade out of ONE clip or region, like the UI's fade dialog: values in seconds (or beats), stored in beats
+    (c['fi'] / c['fo']) so they follow the region when the tempo changes; 0 = off; fade in + fade out <= region length."""
+    spb = 60 / (proj.get('bpm') or 120)
+    length = clip_len_beats(proj, c)
+    items = [('fi', fade_in_sec, fade_in_beats), ('fo', fade_out_sec, fade_out_beats)]
+    items.sort(key=lambda it: 0 if (it[1] if it[1] is not None else it[2]) in (0, 0.0) else 1)  # turn fades off first, then grow
+    for key, sec, beats in items:
+        if sec is None and beats is None:
+            continue
+        v = num(sec, 'fade_%s_sec' % ('in' if key == 'fi' else 'out'), 0, 100000) / spb if sec is not None \
+            else num(beats, 'fade_%s_beats' % ('in' if key == 'fi' else 'out'), 0, 100000)
+        other = c.get('fo' if key == 'fi' else 'fi') or 0
+        v = min(v, max(0.0, length - other))  # a fade can cover the whole region, but never overlap the other fade
+        if v < 1e-6:
+            c.pop(key, None)
+        else:
+            c[key] = round(v, 4)
+
+
+def clip_fade_info(proj, c):
+    """Fade / volume fields of a clip for get_project (seconds and beats)."""
+    spb = 60 / (proj.get('bpm') or 120)
+    out = {}
+    if c.get('fi'):
+        out.update(fade_in_beats=c['fi'], fade_in_sec=round(c['fi'] * spb, 3))
+    if c.get('fo'):
+        out.update(fade_out_beats=c['fo'], fade_out_sec=round(c['fo'] * spb, 3))
+    if c.get('gain') is not None and c.get('gain') != 1:
+        out['volume_percent'] = round(c['gain'] * 100, 1)
+    out['length_sec'] = round(clip_len_beats(proj, c) * spb, 3)
+    return out
+
+
 def new_track(proj, kind, name=None):
     if kind not in TRACK_TYPES:
         raise ModelError(f"type must be one of {', '.join(TRACK_TYPES)}")
@@ -473,7 +512,7 @@ def track_summary(proj, t, detail=True):
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],
            'clips': [{'id': c['id'], 'kind': c['kind'], 'start_beat': c['start'],
                       **({'length_beats': c['len']} if c['kind'] == 'midi' else {'duration_sec': c.get('dur'), 'offset_sec': c.get('offset')}),
-                      **({'fade_in_beats': c['fi']} if c.get('fi') else {}), **({'fade_out_beats': c['fo']} if c.get('fo') else {}),
+                      **clip_fade_info(proj, c),
                       **(_region_detail(t, c) if detail else {})}
                      for c in t['clips']]}
     # top-level pads / notes = the track template (used by whole-track MCP edits and as the start of new regions);

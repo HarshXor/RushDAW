@@ -348,6 +348,26 @@ class McpTest(unittest.TestCase):
         self.call("update_clip", project_id=pid, clip_id=region, fade_out_beats=0)  # 0 = fade off
         c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
         self.assertNotIn("fade_out_beats", c)
+        # seconds + region volume, like the UI fade dialog (project tempo here = the test project's bpm)
+        bpm = self.call("get_project", project_id=pid, detail=False)["bpm"]
+        self.call("update_clip", project_id=pid, clip_id=region, fade_in_sec=1.5, fade_out_sec=0.5, volume_percent=80)
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertAlmostEqual(c["fade_in_sec"], 1.5, places=2)
+        self.assertAlmostEqual(c["fade_out_sec"], 0.5, places=2)
+        self.assertAlmostEqual(c["fade_in_beats"], 1.5 * bpm / 60, places=3)
+        self.assertEqual(c["volume_percent"], 80)
+        # a fade can cover the whole region, but never overlap the other fade
+        self.call("update_clip", project_id=pid, clip_id=region, fade_out_sec=0, fade_in_sec=9999)
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertAlmostEqual(c["fade_in_sec"], c["length_sec"], places=2)
+        self.assertNotIn("fade_out_sec", c)
+        self.call("update_clip", project_id=pid, clip_id=region, fade_out_sec=2)  # no room left -> stays off
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertNotIn("fade_out_sec", c)
+        self.call("update_clip", project_id=pid, clip_id=region, fade_in_sec=0, volume_percent=100)
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertNotIn("fade_in_sec", c)
+        self.assertNotIn("volume_percent", c)
 
         doc = self.call("get_project", project_id=pid)
         tracks = {t["name"]: t for t in doc["tracks"]}
@@ -494,6 +514,29 @@ class NaturalDrumTest(unittest.TestCase):
 
 class ModelSyncTest(unittest.TestCase):
     """The Python model must mirror static/app.js so MCP edits load correctly in the UI."""
+
+    def test_every_ui_clip_setting_has_an_mcp_param(self):
+        """Rule: every clip / region setting the UI can change must also be settable through MCP.
+        Any NEW clip field assigned in app.js (c.<field> = / clip.<field> = / nc.<field> =) makes this test fail
+        until it is mapped to an MCP tool parameter here (and implemented in mcp.py), or listed as internal."""
+        with open(APP_JS, encoding="utf-8") as f:
+            js = f.read()
+        ui_to_mcp = {  # clip field -> (tool, parameter)
+            "fi": ("update_clip", "fade_in_sec"), "fo": ("update_clip", "fade_out_sec"), "gain": ("update_clip", "volume_percent"),
+            "start": ("update_clip", "start_beat"), "len": ("update_clip", "length_beats"), "dur": ("update_clip", "duration_sec"),
+            "notes": ("set_notes", "notes"), "bars": ("set_pattern_length", "bars"),
+        }
+        internal = {"id", "offset",                      # generated / derived (split keeps the audio offset)
+                    "curve", "oversample", "linear"}      # Web Audio node properties of other objects named 'c'
+        fields = set(re.findall(r"\b(?:c|clip|nc)\.(\w+)\s*=(?!=)", js))
+        unknown = fields - set(ui_to_mcp) - internal
+        self.assertFalse(unknown, f"UI clip fields without an MCP mapping: {sorted(unknown)} – add them to MCP + this test")
+        from rushdaw import mcp as mcp_mod
+        with open(mcp_mod.__file__, encoding="utf-8") as f:
+            src = f.read()
+        for tool, param in ui_to_mcp.values():
+            block = src.split(f'@tool("{tool}"')[1].split("def ")[0]
+            self.assertIn(param + "=", block, f"MCP tool {tool} is missing '{param}'")
 
     def test_constants_match_app_js(self):
         with open(APP_JS, encoding="utf-8") as f:

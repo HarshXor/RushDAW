@@ -552,11 +552,15 @@ class RushDAWMCP:
                 return {"clip_id": c["id"]}
             return self._track_edit(a, "add region", fn)
 
-        @tool("update_clip", "Move/resize a clip or region, move it to another compatible track, change an audio clip's gain, or set fade in / fade out (beats).",
+        @tool("update_clip", "Move/resize a clip or region, move it to another compatible track, set the region volume, or set fade in / fade out "
+              "(same as the UI's right-click 'Fade in / out' dialog: seconds, per region, max = the region's own length, so a fade can cover the whole region).",
               _S(project_id=PID, clip_id=("string", "Clip id (from get_project).", True), start_beat=("number", "New start beat."),
                  length_beats=("number", "New length (MIDI regions)."), duration_sec=("number", "New duration in seconds (audio clips, trims the end)."),
-                 gain=("number", "Audio clip gain 0..2."), fade_in_beats=("number", "Fade-in length in beats (0 = off)."),
-                 fade_out_beats=("number", "Fade-out length in beats (0 = off)."), track=(None, "Move to this track (same type).", False, {"type": ["string", "integer"]})))
+                 gain=("number", "Clip / region volume as linear gain 0..2 (1 = 100%)."), volume_percent=("number", "Clip / region volume 0..200 % (100 = default)."),
+                 fade_in_sec=("number", "Fade-in length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
+                 fade_out_sec=("number", "Fade-out length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
+                 fade_in_beats=("number", "Fade-in length in beats (alternative to fade_in_sec)."),
+                 fade_out_beats=("number", "Fade-out length in beats (alternative to fade_out_sec)."), track=(None, "Move to this track (same type).", False, {"type": ["string", "integer"]})))
         def update_clip(a):
             def run(doc):
                 proj = doc["project"]
@@ -572,15 +576,14 @@ class RushDAWMCP:
                     if c["kind"] != "audio":
                         raise M.ModelError("duration_sec is for audio clips")
                     c["dur"] = M.num(a["duration_sec"], "duration_sec", 0.05, 100000)
-                if "gain" in a:
-                    c["gain"] = M.num(a["gain"], "gain", 0, 2)
-                for arg, key in (("fade_in_beats", "fi"), ("fade_out_beats", "fo")):  # same fields as the UI's right-click fades
-                    if arg in a:
-                        v = M.num(a[arg], arg, 0, 100000)
-                        if v:
-                            c[key] = v
-                        else:
-                            c.pop(key, None)
+                if "gain" in a or "volume_percent" in a:  # region volume (UI fade dialog 'Volume')
+                    g = M.num(a["gain"], "gain", 0, 2) if "gain" in a else M.num(a["volume_percent"], "volume_percent", 0, 200) / 100
+                    if abs(g - 1) < 1e-9:
+                        c.pop("gain", None)
+                    else:
+                        c["gain"] = round(g, 4)
+                M.set_clip_fades(proj, c, fade_in_sec=a.get("fade_in_sec"), fade_out_sec=a.get("fade_out_sec"),
+                                 fade_in_beats=a.get("fade_in_beats"), fade_out_beats=a.get("fade_out_beats"))
                 if a.get("track") is not None:
                     nt = M.find_track(proj, a["track"])
                     if nt["type"] != t["type"]:
