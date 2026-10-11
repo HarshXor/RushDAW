@@ -253,3 +253,58 @@ button,select,input{touch-action:manipulation}
 .rdmodal .unit{color:var(--mut);width:14px}
 .rdmodal .mfield{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mut)}
 .rdmodal .fname{background:#000;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 8px}
+.snapgrid{font-size:10px;color:var(--acc);border:1px solid var(--line);border-radius:3px;padding:0 3px;margin-left:2px}
+
+/* ===================== top bar (precise layout) =====================
+   Every control is exactly --ctl tall, icons are one SVG set (same size / stroke), labels are vertically centred,
+   groups are separated by a 1px rule with equal spacing on both sides. */
+#topbar{--ctl:30px;--gap:6px;display:flex;flex-wrap:wrap;align-items:center;column-gap:0;row-gap:8px;padding:8px 12px}
+#topbar .logo{height:var(--ctl);display:flex;align-items:center;padding-right:14px;line-height:1}
+#topbar .group{display:flex;align-items:center;gap:var(--gap);flex-wrap:nowrap;padding:0 12px;border-left:1px solid var(--line);min-height:var(--ctl)}
+#topbar button,#topbar select,#topbar input:not([type=checkbox]):not([type=range]),#timeDisplay{height:var(--ctl);margin:0;line-height:1;vertical-align:middle}
+#topbar button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;white-space:nowrap;font-size:13px}
+#topbar button.sq{width:var(--ctl);padding:0}
+#topbar button:disabled{opacity:.4;cursor:default;border-color:var(--line)}
+#topbar .ic{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block}
+#topbar .rec .ic{color:#ff3b3b}#topbar .rec.on .ic{color:#fff}
+#topbar #btnPlay.on .ic{color:#000}
+#topbar select,#topbar input:not([type=checkbox]):not([type=range]){padding:0 8px}
+#timeDisplay{display:inline-flex;align-items:center;justify-content:center;padding:0 12px;min-width:172px;font-size:13px;font-variant-numeric:tabular-nums}
+#topbar .fld{display:inline-flex;align-items:center;gap:6px;color:var(--mut);height:var(--ctl);white-space:nowrap}
+#topbar .fld .unit{margin-left:-2px}
+#topbar #bpm{width:64px}
+#topbar #sig{width:52px}
+#topbar .toggle{display:inline-flex;align-items:center;gap:6px;height:var(--ctl);padding:0 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--mut);white-space:nowrap;cursor:pointer;user-select:none}
+#topbar .toggle:hover{border-color:var(--acc)}
+#topbar .toggle:has(input:checked){color:var(--txt);border-color:#1f5f66}
+#topbar .toggle input{margin:0;width:14px;height:14px;accent-color:var(--acc);cursor:pointer}
+#topbar .snapgrid{margin:0;padding:1px 4px;line-height:1.2}
+#topbar .zoom input{width:120px;margin:0;height:var(--ctl)}
+#topbar #title{width:130px}
+#topbar #revMsg{width:180px}
+#topbar #exportFmt{width:auto;min-width:82px}
+#topbar #dirtyDot{flex:none;display:block}
+/* ---- responsive top bar ---- */
+@media (max-width:1400px){ #topbar .group.edit .tx{display:none} #topbar .group.edit button{width:var(--ctl);padding:0} }
+@media (max-width:1180px){
+  #topbar{padding:6px 8px;row-gap:6px}
+  #topbar .group{padding:0 8px}
+  #topbar .group.project #btnSave .tx,#topbar .group.project #btnHistory .tx,#topbar .group.project #btnProjects .tx{display:none}
+  #topbar .group.project button{width:var(--ctl);padding:0}
+  #topbar #revMsg{width:150px}
+}
+@media (max-width:900px){
+  #topbar .group{border-left:none;padding:0 6px 0 0}
+  #topbar .toggle{padding:0 7px;font-size:12px}
+  #timeDisplay{min-width:150px;font-size:12px}
+  #topbar .zoom input{width:90px}
+}
+@media (max-width:640px){
+  #topbar{--ctl:34px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:6px 8px;scrollbar-width:thin}
+  #topbar>*{flex:none}
+  #topbar .group{padding:0 10px 0 0}
+  #topbar .group.add .tx{font-size:12px}
+  #topbar #revMsg{width:120px}
+  #topbar #title{width:110px}
+}
+#topbar .group.rowstart{border-left:none;padding-left:0}

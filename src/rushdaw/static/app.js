@@ -981,7 +981,7 @@ function startTransport(fromBeat, opts = {}) {
   Object.assign(T, { playing: true, segs: [{ t: now, b: fromBeat }], cursor: fromBeat, first: true, sources: [],
     click: opts.record ? $('#metronome').checked : $('#metroPlay').checked, clickBefore: opts.clickBefore ?? -1e9 });
   tick(); T.timer = setInterval(tick, 25);
-  $('#btnPlay').classList.add('on'); $('#btnPlay').textContent = '■';
+  $('#btnPlay').classList.add('on'); $('#btnPlay').innerHTML = ICON_STOP;
 }
 function tick() {
   if (!T.playing) return;
@@ -1015,7 +1015,7 @@ function stopTransport() {
   T.sources.forEach(s => { try { s.stop(); } catch (e) { /* already stopped */ } });
   T.sources = []; T.playing = false; T.pos = Math.max(0, b);
   if (T.recording) finishRecording();
-  $('#btnPlay').classList.remove('on'); $('#btnPlay').textContent = '▶';
+  $('#btnPlay').classList.remove('on'); $('#btnPlay').innerHTML = ICON_PLAY;
 }
 let playPending = false;
 async function togglePlay() {
@@ -1068,6 +1068,8 @@ function toggleMonitor(t) {
   updateMonitor(); render();
 }
 
+const ICON_PLAY = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></svg>';
+const ICON_STOP = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none"/></svg>';
 /* --------------------------------------------------------------- recording */
 let recState = null;
 async function startRecording() {
@@ -1196,6 +1198,12 @@ function renderArrange() {
   const W = timelineBeats() * pxB(), barPx = pxB() * P.sig;
   $('#timeline').style.width = W + 'px';
   const ruler = $('#ruler'); ruler.innerHTML = ''; ruler.style.width = W + 'px';
+  // ruler ticks: tall = bar, medium = beat, short = fine grid (what regions snap to)
+  const gb = gridBeats(), tick = c => `linear-gradient(90deg,${c} 1px,transparent 1px)`;
+  ruler.style.backgroundImage = [tick('#6f7f80'), tick('#4a5556'), tick('#343c3d')].join(',');
+  ruler.style.backgroundSize = `${barPx}px 100%, ${pxB()}px 11px, ${gb * pxB()}px 6px`;
+  ruler.style.backgroundRepeat = 'repeat-x'; ruler.style.backgroundPosition = 'left bottom';
+  const sg = $('#snapGrid'); if (sg) sg.textContent = gridName();
   const every = barPx < 30 ? 4 : barPx < 60 ? 2 : 1;
   for (let bar = 0; bar * P.sig < timelineBeats(); bar += every) ruler.append(el('span', { style: { left: bar * barPx + 'px' } }, String(bar + 1)));
   P.tracks.forEach(t => {
@@ -1221,7 +1229,7 @@ function renderArrange() {
           oninput: e => { t.vol = +e.target.value; volOut.textContent = fmtDb(t.vol) + ' dB'; syncGraph(); renderMixer(); }, onclick: stop, onpointerdown: stop }), volOut),
       el('div', { className: 'row ctl' }, quick('L', -1), panIn, quick('R', 1), panOut));
     head.dataset.track = t.id; hdr.append(head);
-    const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundSize: barPx + 'px 100%' } });
+    const lane = el('div', { className: 'lane' + (sel ? ' sel' : '') + (t.mute ? ' muted' : ''), style: { backgroundImage: 'linear-gradient(90deg,#262626 1px,transparent 1px),linear-gradient(90deg,#151515 1px,transparent 1px),linear-gradient(90deg,#0d0d0d 1px,transparent 1px)', backgroundSize: `${barPx}px 100%, ${pxB()}px 100%, ${gridBeats() * pxB()}px 100%` } });
     lane.dataset.track = t.id;
     lane.addEventListener('pointerdown', e => { if (e.target === lane) { lastFocus = 'track'; selectTrack(t.id); clearClipSel(); } });
     lane.addEventListener('dblclick', e => {
@@ -1231,7 +1239,7 @@ function renderArrange() {
     });
     lane.addEventListener('contextmenu', e => { if (e.target !== lane) return; e.preventDefault(); laneMenu(e, t, lane); });
     lane.addEventListener('dragover', e => e.preventDefault());
-    lane.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files], t, snapBeat(xToBeat(e, lane))); });
+    lane.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files], t, snapGrid(xToBeat(e, lane))); });
     t.clips.forEach(c => lane.append(clipEl(t, c)));
     lanes.append(lane);
   });
@@ -1252,6 +1260,13 @@ function setPan(t, v, outEl) {
 }
 function xToBeat(e, ref) { return Math.max(0, (e.clientX - ref.getBoundingClientRect().left) / pxB()); }
 function snapBeat(b, grid = 1) { return $('#snap').checked ? Math.round(b / grid) * grid : b; }
+/* Fine grid = the small ruler ticks. Its size follows the zoom: the finest of 1/16 note (0.25 beat), 1/8 note
+   (0.5 beat) or 1 beat whose ticks are at least 8 px apart. Moving / resizing regions and clicking the ruler
+   snap to it, so a region moves note by note instead of jumping a whole bar. Snap off = free movement. */
+const GRID_STEPS = [[0.25, '1/16'], [0.5, '1/8'], [1, '1/4']];
+function gridBeats() { const px = pxB(); for (const [g] of GRID_STEPS) if (g * px >= 8) return g; return 1; }
+const gridName = () => (GRID_STEPS.find(([g]) => g === gridBeats()) || [1, '1/4'])[1];
+const snapGrid = b => snapBeat(b, gridBeats());
 
 function clipEl(t, c) {
   const w = Math.max(4, clipLenBeats(c) * pxB());
@@ -1440,14 +1455,14 @@ function clipMouseDown(e, t, c, d) {
   const mm = ev => {
     moved = true; const db = (ev.clientX - x0) / pxB();
     if (resize) {
-      let nl = Math.max(0.25, $('#snap').checked ? Math.round((s0 + l0 + db) * 4) / 4 - s0 : l0 + db);
+      let nl = Math.max(0.25, $('#snap').checked ? snapGrid(s0 + l0 + db) - s0 : l0 + db);
       if (c.kind === 'audio') { const max = buffers.get(c.buf).duration - c.offset; c.dur = clamp(nl * spb(), 0.05, max); d.style.width = c.dur / spb() * pxB() + 'px'; }
       else { c.len = Math.max(0.25, nl); d.style.width = c.len * pxB() + 'px'; }
       // redraw at the new size instead of stretching: filled pads stay where they are
       const cv = d.querySelector('canvas'); if (cv) { sizeClipCanvas(cv, Math.max(4, clipLenBeats(c) * pxB())); drawClip(cv, t, c); }
       const fo = d.querySelector('.fh.fo'); if (fo) fo.style.left = (clipLenBeats(c) - clipFades(c).fo) * pxB() + 'px';
     } else {
-      c.start = Math.max(0, snapBeat(s0 + db, $('#snap').checked ? (c.kind === 'midi' ? 1 : 0.25) : 1)); d.style.left = c.start * pxB() + 'px';
+      c.start = Math.max(0, snapGrid(s0 + db)); d.style.left = c.start * pxB() + 'px';
       const laneEl = document.elementsFromPoint(ev.clientX, ev.clientY).find(x => x.classList && x.classList.contains('lane'));
       const nt = laneEl && getTrack(laneEl.dataset.track);
       if (nt && nt !== target && nt.type === t.type) { target = nt; laneEl.append(d); d.style.setProperty('--c', nt.color); }
@@ -1467,10 +1482,10 @@ function clipMouseDown(e, t, c, d) {
 function groupDrag(e, c) {
   const items = selectedClips(), x0 = e.clientX, s0 = new Map(items.map(([, k]) => [k.id, k.start]));
   const minStart = Math.min(...s0.values()); let moved = false;
-  const grid = $('#snap').checked ? (items.some(([, k]) => k.kind === 'midi') ? 1 : 0.25) : 0;
+  const grid = $('#snap').checked ? gridBeats() : 0;
   const mm = ev => {
     let db = (ev.clientX - x0) / pxB(); if (Math.abs(ev.clientX - x0) > 3) moved = true;
-    if (grid) db = Math.round(db / grid) * grid;
+    if (grid) db = Math.round((minStart + db) / grid) * grid - minStart;  // the first clip lands on a grid line
     db = Math.max(db, -minStart);  // nothing goes before bar 1
     items.forEach(([, k]) => { k.start = s0.get(k.id) + db; const el2 = document.querySelector(`#lanes .clip[data-clip="${k.id}"]`); if (el2) el2.style.left = k.start * pxB() + 'px'; });
   };
@@ -2504,6 +2519,9 @@ function init() {
   $('#btnCopy').onclick = () => copySelection(false);
   $('#btnCut').onclick = () => copySelection(true);
   $('#btnPaste').onclick = () => pasteClipboard();
+  // top bar: a group that wraps to the start of a new row gets no left separator (keeps every row flush left)
+  const markRowStarts = () => { let top = null; $('#topbar').querySelectorAll(':scope > *').forEach(g => { const t = g.offsetTop; g.classList.toggle('rowstart', top !== null && t > top + 4); top = t; }); };
+  new ResizeObserver(markRowStarts).observe($('#topbar')); window.addEventListener('resize', markRowStarts); markRowStarts();
   $('#btnUndo').onclick = () => undo();
   $('#btnRedo').onclick = () => redo();
   // undo checkpoints: one step per finished user action (slider drags merge into one step)
@@ -2548,10 +2566,10 @@ function init() {
 
   // ruler: click to seek, shift+drag to set loop region
   $('#ruler').addEventListener('pointerdown', e => {
-    const r = $('#ruler'); const b0 = snapBeat(xToBeat(e, r));
+    const r = $('#ruler'); const b0 = snapGrid(xToBeat(e, r));
     if (!e.shiftKey) { seek(b0); return; }
     $('#loop').checked = true;
-    const mm = ev => { const b1 = snapBeat(xToBeat(ev, r)); P.loop = { start: Math.min(b0, b1), end: Math.max(b0, b1) }; drawLoop(); };
+    const mm = ev => { const b1 = snapGrid(xToBeat(ev, r)); P.loop = { start: Math.min(b0, b1), end: Math.max(b0, b1) }; drawLoop(); };
     const mu = () => { window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); };
     window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu);
   });
