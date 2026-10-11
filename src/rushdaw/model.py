@@ -473,6 +473,7 @@ def track_summary(proj, t, detail=True):
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],
            'clips': [{'id': c['id'], 'kind': c['kind'], 'start_beat': c['start'],
                       **({'length_beats': c['len']} if c['kind'] == 'midi' else {'duration_sec': c.get('dur'), 'offset_sec': c.get('offset')}),
+                      **({'fade_in_beats': c['fi']} if c.get('fi') else {}), **({'fade_out_beats': c['fo']} if c.get('fo') else {}),
                       **(_region_detail(t, c) if detail else {})}
                      for c in t['clips']]}
     # top-level pads / notes = the track template (used by whole-track MCP edits and as the start of new regions);

@@ -342,6 +342,12 @@ class McpTest(unittest.TestCase):
         self.call("set_master", project_id=pid, preset="Loud Pop", params={"ceiling": -0.8})
         region = self.call("add_region", project_id=pid, track=drums, start_beat=16, length_beats=8)["clip_id"]
         self.call("update_clip", project_id=pid, clip_id=region, start_beat=20)
+        self.call("update_clip", project_id=pid, clip_id=region, fade_in_beats=2, fade_out_beats=4)
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertEqual((c["start_beat"], c["fade_in_beats"], c["fade_out_beats"]), (20, 2, 4))
+        self.call("update_clip", project_id=pid, clip_id=region, fade_out_beats=0)  # 0 = fade off
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertNotIn("fade_out_beats", c)
 
         doc = self.call("get_project", project_id=pid)
         tracks = {t["name"]: t for t in doc["tracks"]}

@@ -552,10 +552,11 @@ class RushDAWMCP:
                 return {"clip_id": c["id"]}
             return self._track_edit(a, "add region", fn)
 
-        @tool("update_clip", "Move/resize a clip or region, move it to another compatible track, or change an audio clip's gain.",
+        @tool("update_clip", "Move/resize a clip or region, move it to another compatible track, change an audio clip's gain, or set fade in / fade out (beats).",
               _S(project_id=PID, clip_id=("string", "Clip id (from get_project).", True), start_beat=("number", "New start beat."),
                  length_beats=("number", "New length (MIDI regions)."), duration_sec=("number", "New duration in seconds (audio clips, trims the end)."),
-                 gain=("number", "Audio clip gain 0..2."), track=(None, "Move to this track (same type).", False, {"type": ["string", "integer"]})))
+                 gain=("number", "Audio clip gain 0..2."), fade_in_beats=("number", "Fade-in length in beats (0 = off)."),
+                 fade_out_beats=("number", "Fade-out length in beats (0 = off)."), track=(None, "Move to this track (same type).", False, {"type": ["string", "integer"]})))
         def update_clip(a):
             def run(doc):
                 proj = doc["project"]
@@ -573,6 +574,13 @@ class RushDAWMCP:
                     c["dur"] = M.num(a["duration_sec"], "duration_sec", 0.05, 100000)
                 if "gain" in a:
                     c["gain"] = M.num(a["gain"], "gain", 0, 2)
+                for arg, key in (("fade_in_beats", "fi"), ("fade_out_beats", "fo")):  # same fields as the UI's right-click fades
+                    if arg in a:
+                        v = M.num(a[arg], arg, 0, 100000)
+                        if v:
+                            c[key] = v
+                        else:
+                            c.pop(key, None)
                 if a.get("track") is not None:
                     nt = M.find_track(proj, a["track"])
                     if nt["type"] != t["type"]:

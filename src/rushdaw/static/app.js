@@ -872,6 +872,21 @@ function playClick(g, t, accent) {
 }
 
 /* schedule all events whose beat lies in [b0,b1) using segment mapping seg {t,b} */
+/* Clip / region fades (beats): c.fi = fade-in length, c.fo = fade-out length. Clamped so they never overlap.
+   The gain follows the clip's own timeline, so it is correct when playback starts in the middle of a fade. */
+function clipFades(c) {
+  const len = clipLenBeats(c); let fi = Math.max(0, +c.fi || 0), fo = Math.max(0, +c.fo || 0);
+  if (fi + fo > len) { const k = len / (fi + fo); fi *= k; fo *= k; }
+  return { fi, fo, len };
+}
+function applyFades(param, c, tOf, base = 1) {
+  const { fi, fo, len } = clipFades(c); if (!fi && !fo) return false;
+  const ts = tOf(c.start), te = tOf(c.start + len), S = spb();
+  param.setValueAtTime(fi ? 0 : base, ts);
+  if (fi) param.linearRampToValueAtTime(base, ts + fi * S);
+  if (fo) { param.setValueAtTime(base, te - fo * S); param.linearRampToValueAtTime(0, te); }
+  return true;
+}
 function scheduleRange(g, b0, b1, seg, o = {}) {
   const S = spb(), tOf = b => seg.t + (b - seg.b) * S;
   const keep = arr => { if (o.sources) o.sources.push(...arr); };
@@ -886,6 +901,7 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         else if (o.first && clip.start < b0 && end > b0) { const into = (b0 - clip.start) * S; off = clip.offset + into; when = tOf(b0); dur = clip.dur - into; }
         if (off !== null && dur > 0) {
           const src = g.c.createBufferSource(), cg = g.c.createGain(); src.buffer = buf; cg.gain.value = clip.gain ?? 1;
+          applyFades(cg.gain, clip, tOf, clip.gain ?? 1);
           src.connect(cg); cg.connect(tn.in); src.start(Math.max(when, g.c.currentTime), off, dur);
           if (o.stopAt) src.stop(o.stopAt);
           keep([src]);
@@ -895,6 +911,9 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         const steps = patSteps(h); if (!steps) continue;
         const from = Math.max(b0, clip.start), to = Math.min(b1, clip.start + clip.len);
         if (to <= from) continue;
+        // region fade: this chunk's notes go through a gain that follows the region's fade curve
+        let dest = tn.in;
+        if (clip.fi > 0 || clip.fo > 0) { const fg = g.c.createGain(); applyFades(fg.gain, clip, tOf); fg.connect(tn.in); dest = fg; }
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           if (k >= steps) break;                                         // linear region: nothing repeats
           const beat = clip.start + k / 4, i = k, when = tOf(beat);
@@ -903,11 +922,11 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
             const when = Math.max(g.c.currentTime, tOf(beat) + feelOffset(t, i, d.id));
             // hi-hat choke: closing the hats (closed / pedal) cuts a ringing open hi-hat
             if ((d.id === 'chh' || d.id === 'phh') && tn.openHat) { tn.openHat.forEach(v => { try { v.stop(when + 0.01); } catch (e) { /* already ended */ } }); tn.openHat = null; }
-            const v = playDrum(g.c, tn.in, d.id, when, pv * (0.93 + Math.random() * 0.07), kitOf(t, d.id), pv, t.drumEngine); /* pad velocity + slight human variation */
+            const v = playDrum(g.c, dest, d.id, when, pv * (0.93 + Math.random() * 0.07), kitOf(t, d.id), pv, t.drumEngine); /* pad velocity + slight human variation */
             if (d.id === 'ohh') tn.openHat = v;
             keep(v);
           });
-          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, tn.in, t.synth, n.p, Math.max(g.c.currentTime, when + feelOffset(t, i)), n.l * S / 4, n.v ?? 1)); });
+          else h.notes.forEach(n => { if (n.s === i) keep(playSynth(g.c, dest, t.synth, n.p, Math.max(g.c.currentTime, when + feelOffset(t, i)), n.l * S / 4, n.v ?? 1)); });
         }
       }
     }
@@ -1171,6 +1190,16 @@ function drawClip(cv, t, c) {
     // bar lines inside the region
     g.fillStyle = 'rgba(255,255,255,.18)'; for (let k = stepsPerBar(); k < cols; k += stepsPerBar()) g.fillRect(k * cw, 0, 1, H);
   }
+  drawFades(g, c, W, H);
+}
+// fade-in / fade-out: shaded triangle + the gain line, like BandLab / most DAWs
+function drawFades(g, c, W, H) {
+  const { fi, fo, len } = clipFades(c); if (!fi && !fo) return;
+  const ppb = W / len;
+  g.save(); g.fillStyle = 'rgba(0,0,0,.45)'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+  if (fi) { const x = fi * ppb; g.beginPath(); g.moveTo(0, 0); g.lineTo(x, 0); g.lineTo(0, H); g.closePath(); g.fill(); g.beginPath(); g.moveTo(0, H); g.lineTo(x, 0); g.stroke(); }
+  if (fo) { const x = W - fo * ppb; g.beginPath(); g.moveTo(W, 0); g.lineTo(x, 0); g.lineTo(W, H); g.closePath(); g.fill(); g.beginPath(); g.moveTo(x, 0); g.lineTo(W, H); g.stroke(); }
+  g.restore();
 }
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
@@ -1325,14 +1354,27 @@ function clipMenu(e, t, c) {
   if (c.kind === 'midi') renderEditor();
   const inside = currentBeat() > c.start && currentBeat() < c.start + clipLenBeats(c);
   const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
-  const items = c.kind === 'midi' ? [
+  const fadeLbl = v => !v ? 'off' : v % P.sig === 0 ? `${v / P.sig} bar${v / P.sig > 1 ? 's' : ''}` : `${v} beat${v > 1 ? 's' : ''}`;
+  const fadeMenu = (key, title) => () => {
+    const len = clipLenBeats(c), cur = +c[key] || 0;
+    const opts = [0, 0.5, 1, 2, P.sig, P.sig * 2, P.sig * 4].filter((v, i, a) => a.indexOf(v) === i && v <= len);
+    showCtxMenu(e.clientX, e.clientY, title, opts.map(v => ({ label: (Math.abs(cur - v) < 1e-6 ? '✓ ' : '\u2003') + (v ? fadeLbl(v) : 'Off'),
+      run: () => { if (v) c[key] = v; else delete c[key]; render(); status(`${title}: ${v ? fadeLbl(v) : 'off'}`); } })));
+  };
+  const fades = [
+    { label: `◢ Fade in… (${fadeLbl(+c.fi || 0)})`, run: fadeMenu('fi', 'Fade in') },
+    { label: `◣ Fade out… (${fadeLbl(+c.fo || 0)})`, run: fadeMenu('fo', 'Fade out') },
+    { label: '✕ Remove fades', disabled: !(c.fi || c.fo), run: () => { delete c.fi; delete c.fo; render(); } },
+    '-',
+  ];
+  const items = c.kind === 'midi' ? [...fades,
     { label: '✎ Edit pads / notes', run: () => { showTab('editor'); renderEditor(); } },
     { label: '➕ Extend by 1 empty bar', run: () => { c.len += P.sig; fitRegion(t, c); render(); } },
     { label: '➖ Shorten by 1 bar', disabled: c.len <= P.sig, run: () => { c.len = Math.max(P.sig, c.len - P.sig); fitRegion(t, c); render(); } },
     { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
     '-', { label: '🗑 Delete region', run: remove },
-  ] : [
+  ] : [...fades,
     { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
     '-', { label: '🗑 Delete clip', run: remove },
@@ -1998,6 +2040,7 @@ function splitClip() {
   const cut = b - c.start, nc = { ...deepCopy(c), id: nid('c'), start: b };  // deep copy: the halves are independent
   if (c.kind === 'audio') { nc.offset = c.offset + cut * spb(); nc.dur = c.dur - cut * spb(); c.dur = cut * spb(); }
   else { const k = Math.round(cut * 4); nc.len = c.len - cut; c.len = cut; if (isPatHolder(t, nc)) { shiftLeft(t, nc, k); fitRegion(t, c); fitRegion(t, nc); } }
+  delete c.fo; delete nc.fi;  // left half keeps the fade-in, right half keeps the fade-out
   t.clips.push(nc); render();
 }
 function duplicateClip() {
