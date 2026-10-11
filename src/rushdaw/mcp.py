@@ -77,6 +77,9 @@ class RushDAWMCP:
         M.migrate_strings(doc.get("project") or {})
         for t in (doc.get("project") or {}).get("tracks", []):
             M.normalize_amp(t)  # amp distortion is a visible per-track effect
+        if r["number"] == meta["head_revision"] and meta.get("live_mix"):
+            # the editor's latest mute / solo (not saved yet) wins on the latest revision - same as Play / Download
+            self.st.apply_live_mix(doc.get("project") or {}, meta["live_mix"])
         return doc, r, meta
 
     def _edit(self, pid, message, fn):

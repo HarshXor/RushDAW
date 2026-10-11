@@ -2486,11 +2486,31 @@ async function exportSong() {
 }
 // Project list: render + download the latest saved revision without opening the editor.
 // (The open project was auto-saved when the list was shown, so "latest" = what the studio had.)
+/* LIVE MIX: mute / solo always follow the LAST change in the editor - saved or not. Every change is sent to the
+   server at once (projects.live_mix, no new revision); opening the project, Download on the project card, Export and
+   MCP all use it. The next Save stores it in the revision and clears it. */
+let liveMixSent = '';
+const mixSig = () => JSON.stringify(P.tracks.map(t => [t.id, !!t.mute, !!t.solo]));
+async function flushLiveMix() {
+  if (!currentProject) return;
+  const sig = mixSig(); if (sig === liveMixSent) return;
+  liveMixSent = sig;
+  try { await api(`/api/projects/${currentProject.id}/mix`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tracks: P.tracks.map(t => ({ id: t.id, name: t.name, mute: !!t.mute, solo: !!t.solo })) }) }); }
+  catch (e) { liveMixSent = ''; }
+}
+// put the server's live mix (latest editor mute / solo) on the loaded head revision
+function applyLiveMix(meta) {
+  const by = new Map((meta.live_mix || []).map(x => [String(x.id), x]));
+  P.tracks.forEach(t => { const x = by.get(String(t.id)); if (x) { t.mute = !!x.mute; t.solo = !!x.solo; } });
+  liveMixSent = mixSig();
+}
 async function downloadFromList(p, fmt, btn) {
   const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Rendering…';
   try {
     const meta = await (await api(`/api/projects/${p.id}`)).json();
     await loadProjectData(await (await api(`/api/projects/${p.id}/file`)).json());
+    applyLiveMix(meta);  // the latest mute / solo from the editor, even if it was never saved
     P.title = meta.name; $('#title').value = meta.name; currentProject = meta; markClean();
     const sol = P.tracks.filter(t => t.solo).map(t => t.name), mut = P.tracks.filter(t => t.mute).map(t => t.name);
     await renderAndDownload(fmt, meta.name || 'RushDAW');
@@ -2591,7 +2611,7 @@ async function saveRevision(message) {
     const body = await serializeProject();
     const r = await (await api(`/api/projects/${currentProject.id}/revisions?message=${encodeURIComponent(message || '')}`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })).json();
     currentProject.head_revision = r.number; currentProject.name = P.title;
-    markClean(); $('#revMsg').value = '';
+    markClean(); $('#revMsg').value = ''; liveMixSent = mixSig();  // the revision now holds the mute / solo (server cleared live mix)
     status(`Saved revision ${r.number} (${(r.size / 1048576).toFixed(2)} MB) → ~/.rushdaw/file/${currentProject.id.slice(0, 8)}…/${r.file_name}`);
     return r;
   } catch (e) { status('Save failed: ' + e.message); return null; }
@@ -2611,7 +2631,7 @@ function confirmLeave(where = 'leave') {
     const finish = (ok, close) => { if (done) return; done = true; leaveDlg = null; close(); resolve(ok); };
     const body = el('div', {},
       el('p', {}, `“${name}” has unsaved changes.`),
-      el('p', { className: 'hint' }, `Save them as a new revision before you ${where}? “Don't save” throws away the changes since the last save (older revisions stay in History) – including mute / solo: Download on the project list renders the last SAVED revision.`));
+      el('p', { className: 'hint' }, `Save them as a new revision before you ${where}? “Don't save” throws away the changes since the last save (older revisions stay in History). Mute / solo are never thrown away: they always follow your last change, also for Download on the project list.`));
     const m = openModal('Unsaved changes', body, [
       { label: 'Cancel', run: close => finish(false, close) },
       { label: "Don't save", run: close => { markClean(); finish(true, close); } },
@@ -2677,14 +2697,16 @@ async function openProject(id, rev = null, { skipConfirm = false } = {}) {
       history.replaceState(null, '', projectUrl(currentProject.id)); return false;
     }
   }
+  await flushLiveMix(); currentProject = null;  // never send the next project's mute / solo to the previous one
   try {
     status('Opening project…');
     const meta = await (await api(`/api/projects/${id}`)).json();
     const r = await api(`/api/projects/${id}/file${rev ? '?rev=' + rev : ''}`);
     await loadProjectData(await r.json());
     P.title = meta.name; $('#title').value = meta.name;   // DB name wins (rename in manager)
-    currentProject = meta; markClean();
     const n = +r.headers.get('X-Revision');
+    if (n === meta.head_revision) applyLiveMix(meta); else liveMixSent = mixSig();  // latest mute / solo, saved or not
+    currentProject = meta; markClean();
     if (rev && n !== meta.head_revision) { savedSnapshot = ''; updateDirty(); }  // older revision loaded = unsaved working copy
     history.replaceState(null, '', projectUrl(id));
     hideHome();
@@ -2707,6 +2729,7 @@ let showTrash = false;
 const fmtAgo = ts => { const s = Date.now() / 1000 - ts; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' h ago'; return new Date(ts * 1000).toLocaleString(); };
 const fmtSize = b => b == null ? '–' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 async function showHome() {
+  await flushLiveMix();  // the last mute / solo is on the server before the list (and its Download) is shown
   if (currentProject && !$('#home').classList.contains('show')) {
     if (!(await confirmLeave('go back to the project list'))) {  // Cancel: stay in the editor (also undo a URL change)
       history.replaceState(null, '', projectUrl(currentProject.id)); return false;
@@ -2733,12 +2756,12 @@ function homeParams() {
 }
 let homeReq = 0;
 // what Download renders for a saved revision: solo / muted layers (from the revision's mix summary)
-function mixLine(mix) {
+function mixLine(mix, live) {
   if (!mix || (!mix.solo.length && !mix.mute.length)) return null;
   const parts = [];
   if (mix.solo.length) parts.push('Solo: ' + mix.solo.join(', '));
   if (mix.mute.length) parts.push('Muted: ' + mix.mute.join(', '));
-  return el('div', { className: 'pmeta pmix', title: 'Download plays: ' + (mix.audible.join(', ') || 'nothing (all silent)') }, parts.join(' · '));
+  return el('div', { className: 'pmeta pmix', title: 'Download plays: ' + (mix.audible.join(', ') || 'nothing (all silent)') + (live ? ' (your latest mute / solo in the editor, not saved in a revision yet)' : '') }, parts.join(' · ') + (live ? ' · latest, unsaved' : ''));
 }
 async function renderHome() {
   const list = $('#projList'), pager = $('#projPager'), my = ++homeReq;
@@ -2761,13 +2784,13 @@ async function renderHome() {
         nameEl,
         el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
         el('div', { className: 'pmeta', title: `Created ${new Date(p.created_at * 1000).toLocaleString()}` }, 'Updated ' + fmtAgo(p.updated_at)),
-        mixLine(p.mix),
+        mixLine(p.mix, p.mix_unsaved),
         el('div', { className: 'pbtns' }, showTrash
           ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
           : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
             el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
             ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
-              const b = el('button', { title: `Render the latest saved revision (rev ${p.head_revision}) and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
+              const b = el('button', { title: `Render the latest revision (rev ${p.head_revision}) with your latest mute / solo and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
               return [sel, b]; })(),
             el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
             el('button', { onclick: () => {
@@ -3079,6 +3102,7 @@ function init() {
   $('#fReset').onclick = () => { ['#projSearch', '#fFrom', '#fTo', '#fBpmMin', '#fBpmMax'].forEach(id => { $(id).value = ''; }); $('#fDateField').value = 'updated'; $('#fSort').value = 'updated'; $('#fOrder').value = 'desc'; homeQ.page = 1; renderHome(); };
   $('#btnTrash').onclick = () => { showTrash = !showTrash; homeQ.page = 1; renderHome(); };
   setInterval(updateDirty, 1000);
+  setInterval(flushLiveMix, 400);  // mute / solo reach the server right away (no Save needed)
   // pick up edits made from outside the browser (MCP tools create new revisions)
   let externalWarned = 0;
   setInterval(async () => {
@@ -3099,7 +3123,11 @@ function init() {
       }
     } catch (e) { /* server busy / offline – try again later */ }
   }, 3000);
-  window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', e => {
+    if (currentProject && mixSig() !== liveMixSent) navigator.sendBeacon(`/api/projects/${currentProject.id}/mix`,
+      new Blob([JSON.stringify({ tracks: P.tracks.map(t => ({ id: t.id, name: t.name, mute: !!t.mute, solo: !!t.solo })) })], { type: 'application/json' }));
+    if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
   $('#btnExport').onclick = exportSong;
   $('#btnExportPkg').onclick = exportProjectPackage;
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });

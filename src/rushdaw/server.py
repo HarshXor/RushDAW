@@ -26,7 +26,7 @@ SSE_PATH = "/sse"
 MESSAGES_PATH = "/messages"
 SSE_KEEPALIVE = 15.0  # seconds between keep-alive comments
 
-_PROJ = re.compile(r"^/api/projects/([0-9a-f]{32})(?:/(file|revisions|restore|rename|undelete|export))?$")
+_PROJ = re.compile(r"^/api/projects/([0-9a-f]{32})(?:/(file|revisions|restore|rename|undelete|export|mix))?$")
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -127,6 +127,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(st.rename_project(pid, self._json_body().get("name")))
                 if sub == "revisions" and method == "POST":
                     return self._json(st.save_revision(pid, self._body(), q.get("message", "")), 201)
+                if sub == "mix" and method == "POST":  # editor's live mute / solo (no revision)
+                    return self._json(st.set_live_mix(pid, self._json_body().get("tracks")))
                 if sub == "restore" and method == "POST":
                     return self._json(st.restore_revision(pid, int(q.get("rev", "0"))), 201)
                 if sub == "export" and method == "GET":  # project package of a saved revision

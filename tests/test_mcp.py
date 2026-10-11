@@ -171,6 +171,22 @@ class McpTest(unittest.TestCase):
             self.call("update_track", project_id=pid, track=n, solo=False, mute=False)
         self.assertTrue(all(t["audible"] for t in self.call("get_project", project_id=pid)["tracks"]))
 
+    def test_live_mix_from_editor(self):
+        """Unsaved mute / solo from the editor (POST /mix) are what MCP sees and what the project list shows."""
+        pid = self.call("create_project", name="Live mix", template="band")["project_id"]
+        tracks = self.call("get_project", project_id=pid)["tracks"]
+        live = [{"id": t["id"], "name": t["name"], "mute": False, "solo": i == 2} for i, t in enumerate(tracks)]
+        req = urllib.request.Request(f"{self.s.base}/api/projects/{pid}/mix", data=json.dumps({"tracks": live}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as r:
+            self.assertEqual(json.loads(r.read())["mix"]["audible"], [tracks[2]["name"]])
+        self.assertEqual([t["audible"] for t in self.call("get_project", project_id=pid)["tracks"]], [i == 2 for i in range(len(tracks))])
+        p = next(p for p in self.call("list_projects", query="Live mix", per_page=100)["projects"] if p["id"] == pid)
+        self.assertEqual(p["mix"]["audible"], [tracks[2]["name"]])
+        # an MCP edit keeps the editor's solo (it is saved into the new revision)
+        self.call("update_track", project_id=pid, track=tracks[0]["name"], volume=0.5)
+        self.assertEqual(self.call("list_revisions", project_id=pid)["revisions"][0]["mix"]["solo"], [tracks[2]["name"]])
+
     def test_protocol(self):
         init = self.rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})["result"]
         self.assertEqual(init["protocolVersion"], "2024-11-05")
