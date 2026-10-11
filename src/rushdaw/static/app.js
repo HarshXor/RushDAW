@@ -1011,6 +1011,36 @@ function seek(beat) {
   drawPlayhead();
 }
 
+/* --------------------------------------------------------- input monitoring
+   🎧 on an audio track = hear the microphone LIVE through that track (its insert FX, EQ, comp, volume, pan,
+   mute/solo, sends and the master), while recording or just while practising. It is a runtime switch, not saved
+   in the project (so opening a project never suddenly opens the mic). Use headphones to avoid feedback. */
+const monIds = new Set();
+let monState = null;  // { stream, src }
+async function updateMonitor() {
+  const tracks = P.tracks.filter(t => t.type === 'audio' && monIds.has(t.id));
+  for (const id of [...monIds]) if (!getTrack(id)) monIds.delete(id);
+  if (!tracks.length) {
+    if (monState) { try { monState.src.disconnect(); } catch {} monState.stream.getTracks().forEach(x => x.stop()); monState = null; }
+    return;
+  }
+  ensureCtx();
+  if (!monState) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, latency: 0 } });
+      if (!P.tracks.some(t => t.type === 'audio' && monIds.has(t.id))) { stream.getTracks().forEach(x => x.stop()); return; }  // switched off meanwhile
+      monState = { stream, src: ctx.createMediaStreamSource(stream) };
+    } catch (e) { monIds.clear(); status('Microphone unavailable: ' + e.message); render(); return; }
+  }
+  try { monState.src.disconnect(); } catch {}
+  P.tracks.filter(t => t.type === 'audio' && monIds.has(t.id)).forEach(t => monState.src.connect(trackNodes(rt, t).in));
+}
+function toggleMonitor(t) {
+  if (monIds.has(t.id)) monIds.delete(t.id); else monIds.add(t.id);
+  status(monIds.has(t.id) ? `Monitoring ON: you hear the mic live on ${t.name} (use headphones)` : `Monitoring OFF on ${t.name}`);
+  updateMonitor(); render();
+}
+
 /* --------------------------------------------------------------- recording */
 let recState = null;
 async function startRecording() {
@@ -1120,6 +1150,7 @@ function renderArrange() {
       el('div', { className: 'row' },
         el('input', { className: 'name', value: t.name, onchange: e => { t.name = e.target.value; renderMixer(); }, onclick: stop }),
         btn(t.mute ? '🔇' : '🔊', 'mute', 'mute'), btn('S', 'solo'), t.type === 'audio' ? btn('●', 'arm', 'arm') : null,
+        t.type === 'audio' ? el('button', { className: 'mon' + (monIds.has(t.id) ? ' on' : ''), title: 'Input monitoring: hear the microphone live on this track (on/off). Use headphones.', onclick: e => { e.stopPropagation(); toggleMonitor(t); } }, '🎧') : null,
         el('button', { title: 'Delete track', onclick: e => { stop(e); deleteTrack(t.id); } }, '✕')),
       el('div', { className: 'row' }, el('span', { className: 'kind' }, t.type === 'drum' ? 'Drum machine' : t.type === 'synth' ? (t.instrument === 'guitar' ? 'Guitar / MIDI' : t.instrument === 'bass' ? 'Bass / MIDI' : t.instrument === 'vocal' ? 'Vocal / MIDI' : 'Synth / MIDI') : 'Audio')),
       el('div', { className: 'row ctl' }, el('span', { className: 'lab' }, 'Vol'),
@@ -1957,7 +1988,7 @@ function applyTemplate(tpl) {
   selTrackId = d.id;
 }
 async function loadProjectData(j) {
-  ensureCtx(); resetState();
+  ensureCtx(); resetState(); monIds.clear(); updateMonitor();  // a project never opens with the mic live
   if (j.app !== 'rushdaw') throw new Error('not a RushDAW project');
   for (const [id, a] of Object.entries(j.audio || {})) {
     const bin = Uint8Array.from(atob(a.wav), ch => ch.charCodeAt(0));

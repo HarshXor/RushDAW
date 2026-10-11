@@ -27,6 +27,7 @@ input[type=range]{padding:0;accent-color:var(--acc)}
 .thead button.on{background:var(--acc);border-color:var(--acc)}
 .thead button.on,.strip .btns button.on,.tabs button.active{color:#000}
 .thead button.arm.on{background:#ff3b3b;border-color:#ff3b3b;color:#fff}
+.thead button.mon.on{background:var(--accent,#00e5ff);border-color:var(--accent,#00e5ff);color:#000}
 .thead .kind{font-size:10px;color:var(--mut);text-transform:uppercase}
 #timelineWrap{flex:1;overflow:auto;position:relative}
 #timeline{position:relative;min-height:100%}
