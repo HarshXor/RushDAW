@@ -221,3 +221,26 @@ button,select,input{touch-action:manipulation}
 .rollgrid .cell.on.nstart{border-top-left-radius:4px;border-bottom-left-radius:4px}
 .rollgrid .cell.on.ncont{opacity:.85}
 .rollgrid .cell.on.nend{border-top-right-radius:4px;border-bottom-right-radius:4px;box-shadow:inset -3px 0 0 rgba(255,255,255,.75);cursor:ew-resize}
+/* ---- modal dialogs (fade in/out, region export) ---- */
+.rdmodal .dlg-box{width:min(720px,100%)}
+.rdmodal .mbody{padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.rdmodal .mfoot{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid var(--line);flex-wrap:wrap}
+.rdmodal .mfoot button{min-width:84px}
+.rdmodal .ftimes{display:flex;justify-content:space-between;color:var(--mut);font-size:13px}
+.rdmodal .ftimes b{color:var(--acc);font-size:15px}
+.rdmodal .fwrap{position:relative;border:3px solid var(--acc);border-radius:8px;background:color-mix(in srgb,var(--c,#00e5ff) 28%,#050505);margin:0 12px;height:96px}
+.rdmodal .fprev{display:block;width:100%;height:100%}
+.rdmodal .fknob{position:absolute;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 0 8px rgba(0,229,255,.7);cursor:ew-resize;touch-action:none}
+.rdmodal .frow{display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px}
+.rdmodal .flbl{font-size:15px;font-weight:600}
+.rdmodal .fval{color:var(--acc);margin-left:4px}
+.rdmodal .fctl{display:flex;align-items:center;gap:8px}
+.rdmodal .fpair{display:flex;gap:24px;flex-wrap:wrap}
+.rdmodal input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--acc) var(--p,0%),#555 var(--p,0%))}
+.rdmodal input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px #000;cursor:pointer}
+.rdmodal input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:#fff;border:none}
+.rdmodal .fnum{width:70px;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 6px;text-align:right}
+.rdmodal .fnum:focus,.rdmodal .fname:focus{border-color:var(--acc);outline:none}
+.rdmodal .unit{color:var(--mut);width:14px}
+.rdmodal .mfield{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mut)}
+.rdmodal .fname{background:#000;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 8px}

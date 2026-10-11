@@ -892,8 +892,10 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
   const S = spb(), tOf = b => seg.t + (b - seg.b) * S;
   const keep = arr => { if (o.sources) o.sources.push(...arr); };
   for (const t of P.tracks) {
+    if (g.only && t.id !== g.only.trackId) continue;   // region export: just that region
     const tn = trackNodes(g, t);
     for (const clip of t.clips) {
+      if (g.only && clip.id !== g.only.clipId) continue;
       if (clip.kind === 'audio') {
         const buf = buffers.get(clip.buf); if (!buf) continue;
         const end = clip.start + clip.dur / S;
@@ -914,7 +916,8 @@ function scheduleRange(g, b0, b1, seg, o = {}) {
         if (to <= from) continue;
         // region fade: this chunk's notes go through a gain that follows the region's fade curve
         let dest = tn.in;
-        if (clip.fi > 0 || clip.fo > 0) { const fg = g.c.createGain(); applyFades(fg.gain, clip, tOf); fg.connect(tn.in); dest = fg; }
+        const rg = clip.gain ?? 1;  // region volume (fade modal)
+        if (clip.fi > 0 || clip.fo > 0 || rg !== 1) { const fg = g.c.createGain(); fg.gain.value = rg; applyFades(fg.gain, clip, tOf, rg); fg.connect(tn.in); dest = fg; }
         for (let k = Math.ceil((from - clip.start) * 4 - 1e-9); clip.start + k / 4 < to - 1e-9; k++) {
           if (k >= steps) break;                                         // linear region: nothing repeats
           const beat = clip.start + k / 4, i = k, when = tOf(beat);
@@ -1210,7 +1213,7 @@ function drawFades(g, c, W, H) {
   if (fo) { const x = W - fo * ppb; g.beginPath(); g.moveTo(W, 0); g.lineTo(x, 0); g.lineTo(W, H); g.closePath(); g.fill(); g.beginPath(); g.moveTo(x, 0); g.lineTo(W, H); g.stroke(); }
   g.restore();
 }
-const fmtFade = v => !v ? 'off' : `${+v.toFixed(2)} beat${v === 1 ? '' : 's'}` + (v >= P.sig ? ` (${+(v / P.sig).toFixed(2)} bar)` : '') + ` · ${(v * spb()).toFixed(2)} s`;
+const fmtFade = v => !v ? 'off' : `${(v * spb()).toFixed(1)} s`;
 function fadeDrag(e, t, c, d, key, place) {
   e.stopPropagation(); e.preventDefault(); if (e.button !== 0) return;
   selClipId = c.id; lastFocus = 'clip'; selectTrack(t.id, false);
@@ -1227,6 +1230,86 @@ function fadeDrag(e, t, c, d, key, place) {
   };
   const mu = () => { window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); window.removeEventListener('pointercancel', mu); };
   window.addEventListener('pointermove', mm); window.addEventListener('pointerup', mu); window.addEventListener('pointercancel', mu);
+}
+/* ---------------------------------------------------------- modal dialogs */
+function openModal(title, body, buttons = []) {
+  const close = () => { box.remove(); document.removeEventListener('keydown', esc, true); };
+  const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); onCancel(); } };
+  let onCancel = close;
+  const box = el('div', { className: 'dlg show rdmodal', onpointerdown: e => { if (e.target === box) onCancel(); } },
+    el('div', { className: 'dlg-box' },
+      el('div', { className: 'dlg-head' }, el('b', {}, title), el('button', { title: 'Close', onclick: () => onCancel() }, '✕')),
+      el('div', { className: 'mbody' }, body),
+      el('div', { className: 'mfoot' }, buttons.map(b => el('button', { className: b.primary ? 'primary' : '', onclick: () => b.run(close) }, b.label)))));
+  document.body.append(box); document.addEventListener('keydown', esc, true);
+  return { close, setCancel: f => { onCancel = () => { f(); close(); }; } };
+}
+const fmtClock = sec => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`;
+/* Fade in / fade out of ONE region (like mobile editors): preview with draggable handles, Volume, Fade in, Fade out.
+   Times are seconds, but stored in beats -> they follow the region (and the BPM); a fade can cover the full region. */
+function openFadeModal(t, c) {
+  const orig = { fi: c.fi, fo: c.fo, gain: c.gain };
+  const S = spb(), len = clipLenBeats(c), lenS = len * S;
+  const W = 640, cv = el('canvas', { className: 'fprev' }); cv.width = W; cv.height = 90; cv._scale = W / (len * pxB());
+  const hIn = el('div', { className: 'fknob in', title: 'Drag: fade in' }), hOut = el('div', { className: 'fknob out', title: 'Drag: fade out' });
+  const wrap = el('div', { className: 'fwrap', style: { '--c': t.color } }, cv, hIn, hOut);
+  const row = (label, cls) => { const val = el('b', { className: 'fval' }), rng = el('input', { type: 'range', min: 0, step: 'any' }), num = el('input', { type: 'number', min: 0, step: 0.1, className: 'fnum' });
+    return { val, rng, num, node: el('div', { className: 'frow ' + cls }, el('div', { className: 'flbl' }, label, ' ', val), el('div', { className: 'fctl' }, rng, num, el('span', { className: 'unit' }, cls === 'vol' ? '%' : 's'))) }; };
+  const vol = row('Volume', 'vol'), fin = row('Fade in', 'in'), fout = row('Fade out', 'out');
+  vol.rng.max = 200; vol.rng.step = 1; fin.num.step = fout.num.step = 0.01; vol.num.max = 200; vol.num.step = 1;
+  const sec = k => (+c[k] || 0) * S;
+  const setFade = (k, s) => { const other = k === 'fi' ? sec('fo') : sec('fi'); s = clamp(+s || 0, 0, Math.max(0, lenS - other)); if (s < 0.02) delete c[k]; else c[k] = +(s / S).toFixed(4); sync(); };
+  const sync = () => {
+    const a = sec('fi'), b = sec('fo'), g = Math.round((c.gain ?? 1) * 100);
+    fin.rng.max = fin.num.max = Math.max(0, lenS - b); fout.rng.max = fout.num.max = Math.max(0, lenS - a);  // exact: a fade can cover the full region
+    fin.rng.value = a; fout.rng.value = b; vol.rng.value = g;
+    if (document.activeElement !== fin.num) fin.num.value = +a.toFixed(2); if (document.activeElement !== fout.num) fout.num.value = +b.toFixed(2); if (document.activeElement !== vol.num) vol.num.value = g;
+    fin.val.textContent = a.toFixed(2) + ' s'; fout.val.textContent = b.toFixed(2) + ' s'; vol.val.textContent = g + '%';
+    [fin, fout].forEach((r, i) => r.rng.style.setProperty('--p', (100 * (i ? b : a) / Math.max(0.001, lenS)) + '%')); vol.rng.style.setProperty('--p', g / 2 + '%');
+    hIn.style.left = (a / lenS * 100) + '%'; hOut.style.left = (100 - b / lenS * 100) + '%';
+    drawClip(cv, t, c);
+  };
+  fin.rng.oninput = () => setFade('fi', fin.rng.value); fout.rng.oninput = () => setFade('fo', fout.rng.value);
+  fin.num.oninput = () => setFade('fi', fin.num.value); fout.num.oninput = () => setFade('fo', fout.num.value);
+  const setVol = v => { v = clamp(+v || 0, 0, 200); if (v === 100) delete c.gain; else c.gain = v / 100; sync(); };
+  vol.rng.oninput = () => setVol(vol.rng.value); vol.num.oninput = () => setVol(vol.num.value);
+  [fin.num, fout.num, vol.num].forEach(n => n.onblur = sync);
+  // drag the round handles on the preview (like the photo): left = fade in, right = fade out
+  [[hIn, 'fi'], [hOut, 'fo']].forEach(([h, k]) => h.addEventListener('pointerdown', e => {
+    e.preventDefault(); const r = cv.getBoundingClientRect();
+    const mv = ev => { const x = clamp((ev.clientX - r.left) / r.width, 0, 1); setFade(k, k === 'fi' ? x * lenS : (1 - x) * lenS); };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  }));
+  const name = c.kind === 'audio' ? (bufNames.get(c.buf) || 'Audio clip') : `${t.name} · bar ${Math.floor(c.start / P.sig) + 1}`;
+  const body = [
+    el('div', { className: 'ftimes' }, el('span', {}, name), el('span', {}, 'Region ', el('b', {}, fmtClock(lenS)))),
+    wrap, vol.node, el('div', { className: 'fpair' }, fin.node, fout.node),
+    el('p', { className: 'hint' }, 'Drag the round handles or the sliders, or type seconds. The maximum is the region length, so a fade can cover the whole region. Fades follow the region if the tempo changes.'),
+  ];
+  const m = openModal('Fade in / Fade out', body, [
+    { label: 'Reset', run: () => { delete c.fi; delete c.fo; delete c.gain; sync(); } },
+    { label: '▶ Preview', run: () => { if (T.playing) stopTransport(); seek(c.start); togglePlay(); } },
+    { label: 'Cancel', run: close => { Object.assign(c, orig); ['fi', 'fo', 'gain'].forEach(k => c[k] === undefined && delete c[k]); render(); close(); } },
+    { label: 'Done', primary: true, run: close => { render(); status(`Fade in ${fmtFade(+c.fi || 0)} · fade out ${fmtFade(+c.fo || 0)} · volume ${Math.round((c.gain ?? 1) * 100)}%`); close(); } },
+  ]);
+  m.setCancel(() => { Object.assign(c, orig); ['fi', 'fo', 'gain'].forEach(k => c[k] === undefined && delete c[k]); render(); });
+  requestAnimationFrame(sync);
+}
+/* Export ONE region (with its track's effects, mixer and the master chain) */
+function openRegionExport(t, c) {
+  const S = spb(), lenS = clipLenBeats(c) * S;
+  const nm = el('input', { className: 'fname', value: `${$('#title').value || 'RushDAW'} - ${t.name} - bar ${Math.floor(c.start / P.sig) + 1}` });
+  const fmt = el('select', {}, exportFormats().map(([v, l]) => el('option', { value: v, selected: v === ($('#exportFmt').value || 'wav') }, l)));
+  const info = el('p', { className: 'hint' }, `${t.name} · bar ${Math.floor(c.start / P.sig) + 1}–${Math.floor((c.start + clipLenBeats(c)) / P.sig)} · ${fmtClock(lenS)} · includes this track's effects, mixer and mastering, fades and region volume. Normalize: ${$('#normalize').checked ? 'on' : 'off'} (toolbar setting).`);
+  openModal('Export region', [el('label', { className: 'mfield' }, 'File name', nm), el('label', { className: 'mfield' }, 'Format', fmt), info], [
+    { label: 'Cancel', run: close => close() },
+    { label: '⬇ Export', primary: true, run: async close => {
+      close();
+      try { await renderAndDownload(fmt.value, nm.value.trim() || 'region', { only: { trackId: t.id, clipId: c.id } }); }
+      catch (e) { status('Region export failed: ' + e.message); }
+    } },
+  ]);
 }
 function clipMouseDown(e, t, c, d) {
   e.stopPropagation(); if (e.button !== 0) return;
@@ -1382,23 +1465,11 @@ function clipMenu(e, t, c) {
   if (c.kind === 'midi') renderEditor();
   const inside = currentBeat() > c.start && currentBeat() < c.start + clipLenBeats(c);
   const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
-  const fadeLbl = v => !v ? 'off' : v % P.sig === 0 ? `${v / P.sig} bar${v / P.sig > 1 ? 's' : ''}` : `${+(+v).toFixed(2)} beat${v > 1 ? 's' : ''}`;
-  const fadeMenu = (key, title) => () => {
-    const len = clipLenBeats(c), cur = +c[key] || 0;
-    const opts = [0, 0.5, 1, 2, P.sig, P.sig * 2, P.sig * 4].filter((v, i, a) => a.indexOf(v) === i && v <= len);
-    const items = opts.map(v => ({ label: (Math.abs(cur - v) < 1e-6 ? '✓ ' : '\u2003') + (v ? fadeLbl(v) : 'Off'),
-      run: () => { if (v) c[key] = v; else delete c[key]; render(); status(`${title}: ${fmtFade(v)}`); } }));
-    const custom = cur && !opts.some(v => Math.abs(cur - v) < 1e-6);
-    items.push('-', { label: (custom ? '✓ ' : '\u2003') + `Custom length… (beats)${custom ? ' – now ' + fadeLbl(cur) : ''}`, run: () => {
-      const other = +c[key === 'fi' ? 'fo' : 'fi'] || 0, v = parseFloat(prompt(`${title} length in beats (0 = off, max ${+(len - other).toFixed(2)}).\nTip: you can also drag the small handle at the top corner of the clip.`, cur || 1));
-      if (!Number.isFinite(v)) return; const x = clamp(v, 0, len - other); if (x < 0.05) delete c[key]; else c[key] = +x.toFixed(3); render(); status(`${title}: ${fmtFade(+c[key] || 0)}`);
-    } });
-    showCtxMenu(e.clientX, e.clientY, title + ' · drag the corner handle for any length', items);
-  };
+  const fs = v => (v * spb()).toFixed(1) + ' s';
   const fades = [
-    { label: `◢ Fade in… (${fadeLbl(+c.fi || 0)})`, run: fadeMenu('fi', 'Fade in') },
-    { label: `◣ Fade out… (${fadeLbl(+c.fo || 0)})`, run: fadeMenu('fo', 'Fade out') },
+    { label: `◢◣ Fade in / out…  (in ${fs(clipFades(c).fi)} · out ${fs(clipFades(c).fo)})`, run: () => openFadeModal(t, c) },
     { label: '✕ Remove fades', disabled: !(c.fi || c.fo), run: () => { delete c.fi; delete c.fo; render(); } },
+    { label: '⬇ Export this region…', run: () => openRegionExport(t, c) },
     '-',
   ];
   const items = c.kind === 'midi' ? [...fades,
@@ -1749,15 +1820,24 @@ function encodeWAV(buf, bits = 16) {
   }
   return new Blob([ab], { type: 'audio/wav' });
 }
-async function renderMix() {
+// opts.only = { trackId, clipId }: render just that region (its track's FX / mixer / master chain, from the
+// region start to its end + the reverb/delay tail), regardless of the track's mute/solo.
+async function renderMix(opts = {}) {
   ensureRegions();
   await samplesReady();
-  const end = songEndBeats(); if (end <= 0) throw new Error('Nothing to export – add some clips first');
-  const sr = ctx ? ctx.sampleRate : 48000, secs = end * spb() + 2.5;  // same sample rate as studio playback
+  let b0 = 0, end = songEndBeats(), tail = 2.5;
+  if (opts.only) { const [, c] = findClip(opts.only.clipId); if (!c) throw new Error('Region not found'); b0 = c.start; end = c.start + clipLenBeats(c); tail = 1.5; }
+  if (end - b0 <= 0) throw new Error('Nothing to export – add some clips first');
+  const sr = ctx ? ctx.sampleRate : 48000, secs = (end - b0) * spb() + tail;  // same sample rate as studio playback
   const oc = new OfflineAudioContext(2, Math.ceil(sr * secs), sr);
-  const g = createGraph(oc, false);
-  scheduleRange(g, 0, end, { t: 0, b: 0 }, { first: true });
-  const out = await oc.startRendering();
+  let saved = null;
+  if (opts.only) { saved = P.tracks.map(t => [t.mute, t.solo]); P.tracks.forEach(t => { t.mute = false; t.solo = false; }); }
+  let out;
+  try {
+    const g = createGraph(oc, false); g.only = opts.only || null;
+    scheduleRange(g, b0, end, { t: 0, b: b0 }, { first: true });
+    out = await oc.startRendering();
+  } finally { if (saved) P.tracks.forEach((t, i) => { [t.mute, t.solo] = saved[i]; }); }
   let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
   const target = dbToGain(Math.min(-0.3, P.master.ceiling));
   // Normalize: bring the peak to the ceiling. Without normalize: still never exceed the ceiling
@@ -1773,9 +1853,9 @@ function download(blob, name) {
 }
 // Render the project that is currently loaded (P = exactly what the studio plays: muted / soloed tracks,
 // saved or not) and download it in the given format.
-async function renderAndDownload(fmt, title) {
-  status('Rendering mixdown…');
-  const wav = encodeWAV(await renderMix());
+async function renderAndDownload(fmt, title, opts = {}) {
+  status(opts.only ? 'Rendering region…' : 'Rendering mixdown…');
+  const wav = encodeWAV(await renderMix(opts));
   if (fmt === 'wav') { download(wav, title + '.wav'); status('Exported WAV'); return; }
   status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
   const r = await fetch(`/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
@@ -2240,7 +2320,7 @@ function init() {
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); e.stopImmediatePropagation(); if (!$('#home').classList.contains('show')) saveRevision($('#revMsg').value); }
   }, true);
   window.addEventListener('keydown', e => {
-    if ($('#home').classList.contains('show') || $('#historyDlg').classList.contains('show')) return;
+    if ($('#home').classList.contains('show') || $('#historyDlg').classList.contains('show') || document.querySelector('.rdmodal')) return;  // no editor shortcuts behind a dialog
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home' || e.key === 'Enter') seek(0);
