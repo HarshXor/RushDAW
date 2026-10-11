@@ -2204,6 +2204,37 @@ async function saveRevision(message) {
   finally { saving = false; }
 }
 async function autoSave() { if (isDirty()) await saveRevision('Auto-save'); }
+/* Leaving the editor with unsaved changes (Projects button, browser Back/Forward / URL, History Open / Restore):
+   ask Save / Don't save / Cancel. Resolves true = go on (saved or discarded), false = stay. */
+let leaveDlg = null;
+function confirmLeave(where = 'leave') {
+  if (!isDirty()) return Promise.resolve(true);
+  if (leaveDlg) return leaveDlg;
+  stopTransport();
+  leaveDlg = new Promise(resolve => {
+    const name = ($('#title').value || currentProject?.name || 'this project').trim();
+    let done = false;
+    const finish = (ok, close) => { if (done) return; done = true; leaveDlg = null; close(); resolve(ok); };
+    const body = el('div', {},
+      el('p', {}, `“${name}” has unsaved changes.`),
+      el('p', { className: 'hint' }, `Save them as a new revision before you ${where}? “Don't save” throws away the changes since the last save (older revisions stay in History).`));
+    const m = openModal('Unsaved changes', body, [
+      { label: 'Cancel', run: close => finish(false, close) },
+      { label: "Don't save", run: close => { markClean(); finish(true, close); } },
+      { label: 'Save', primary: true, run: async close => {
+        const r = await saveRevision($('#revMsg').value || 'Saved before leaving');
+        if (r) finish(true, close); else status('Save failed – staying in the editor');
+      } },
+    ]);
+    m.setCancel(() => { if (!done) { done = true; leaveDlg = null; resolve(false); } });  // Esc / ✕ / click outside = Cancel
+    setTimeout(() => document.querySelector('.rdmodal .mfoot button.primary')?.focus(), 0);
+  });
+  return leaveDlg;
+}
+// fresh start after leaving the editor: the next page always reloads its data from the server
+function leaveEditor() {
+  stopTransport(); resetState(); currentProject = null; undoReset(); render();
+}
 
 function resetState() {
   stopTransport();
@@ -2246,7 +2277,12 @@ async function loadProjectData(j) {
   $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title;
   selTrackId = P.tracks[0]?.id || null; syncGraph(); render(); undoReset();  // a freshly opened project starts a new undo history
 }
-async function openProject(id, rev = null) {
+async function openProject(id, rev = null, { skipConfirm = false } = {}) {
+  if (!skipConfirm && currentProject && !$('#home').classList.contains('show')) {
+    if (!(await confirmLeave(currentProject.id === id ? 'load another revision' : 'open another project'))) {
+      history.replaceState(null, '', projectUrl(currentProject.id)); return false;
+    }
+  }
   try {
     status('Opening project…');
     const meta = await (await api(`/api/projects/${id}`)).json();
@@ -2277,10 +2313,15 @@ let showTrash = false;
 const fmtAgo = ts => { const s = Date.now() / 1000 - ts; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' h ago'; return new Date(ts * 1000).toLocaleString(); };
 const fmtSize = b => b == null ? '–' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 async function showHome() {
-  await autoSave();
-  stopTransport();
+  if (currentProject && !$('#home').classList.contains('show')) {
+    if (!(await confirmLeave('go back to the project list'))) {  // Cancel: stay in the editor (also undo a URL change)
+      history.replaceState(null, '', projectUrl(currentProject.id)); return false;
+    }
+    leaveEditor();
+  }
   $('#home').classList.add('show'); history.replaceState(null, '', location.pathname + '#/');
-  renderHome();
+  renderHome();  // always re-queried from the server
+  return true;
 }
 // URL routes: #/ = project manager, #/project/<id> = editor (old #p=<id> links still open)
 const projectUrl = id => location.pathname + '#/project/' + id;
@@ -2362,10 +2403,11 @@ async function openHistory(id = currentProject?.id, fromHome = false) {
       el('div', { className: 'hnum' }, 'r' + r.number),
       el('div', { className: 'hinfo' }, el('b', {}, r.message), el('span', { className: 'pmeta' }, `${new Date(r.created_at * 1000).toLocaleString()} · ${r.track_count} tracks · ${fmtSize(r.size)}${r.number === p.head_revision ? ' · latest' : ''}`)),
       el('div', { className: 'pbtns' },
-        el('button', { title: 'Load this revision into the editor', onclick: async () => { $('#historyDlg').classList.remove('show'); if (!fromHome) await autoSave(); openProject(id, r.number); } }, 'Open'),
+        el('button', { title: 'Load this revision into the editor', onclick: async () => { $('#historyDlg').classList.remove('show'); if (!fromHome && !(await confirmLeave('open revision ' + r.number))) return; openProject(id, r.number, { skipConfirm: true }); } }, 'Open'),
         r.number !== p.head_revision ? el('button', { title: 'Make this revision the latest (creates a new revision, nothing is lost)', onclick: async () => {
-          if (!fromHome) await autoSave();
-          await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); $('#historyDlg').classList.remove('show'); openProject(id);
+          $('#historyDlg').classList.remove('show');
+          if (!fromHome && !(await confirmLeave('restore revision ' + r.number))) return;
+          await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); openProject(id, null, { skipConfirm: true });
         } }, '↺ Restore') : null,
         el('a', { className: 'btnlink', href: `/api/projects/${id}/export?rev=${r.number}`, title: 'Export this revision as .zip (project.rushdaw + audio/ files)' }, '📦')))));
   } catch (e) { box.innerHTML = ''; box.append(el('p', { className: 'hint' }, 'Error: ' + e.message)); }
@@ -2602,7 +2644,7 @@ function init() {
       const msg = meta.revisions[0]?.message || '';
       if (!isDirty() && !T.playing && !T.recording) {
         const keepTab = document.querySelector('.tabs button.active')?.dataset.tab, keepTrack = selTrackId;
-        await openProject(currentProject.id);
+        await openProject(currentProject.id, null, { skipConfirm: true });
         if (getTrack(keepTrack)) { selTrackId = keepTrack; render(); }
         if (keepTab) showTab(keepTab);
         status(`Reloaded – updated outside the editor: r${meta.head_revision} “${msg}”`);
