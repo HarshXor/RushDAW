@@ -102,7 +102,7 @@ MASTER_DEFAULT = {'vol': 1, 'hpf': 20, 'eqLow': 0, 'eqLowF': 120, 'eqMid': 0, 'e
                   'eqHighF': 8000, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 30, 'compAtk': 0.01, 'compRel': 0.25,
                   'makeup': 3, 'sat': 0, 'width': 1, 'limRel': 0.08, 'ceiling': -1,
                   'trim': 0, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
-MASTER_PARAMS = {'vol': (0, 10), 'hpf': (20, 300), 'eqLow': (-12, 12), 'eqLowF': (30, 400), 'eqMid': (-12, 12),
+MASTER_PARAMS = {'vol': (0.1, 10), 'hpf': (20, 300), 'eqLow': (-12, 12), 'eqLowF': (30, 400), 'eqMid': (-12, 12),
                  'eqMidF': (200, 8000), 'eqMidQ': (0.3, 4), 'eqHigh': (-12, 12), 'eqHighF': (2000, 16000),
                  'compThr': (-50, 0), 'compRatio': (1, 20), 'compKnee': (0, 40), 'compAtk': (0.001, 0.2), 'compRel': (0.02, 1),
                  'makeup': (0, 18), 'sat': (0, 1), 'width': (0, 2), 'limRel': (0.01, 1), 'ceiling': (-12, 0),

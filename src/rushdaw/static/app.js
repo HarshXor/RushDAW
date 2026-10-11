@@ -102,7 +102,7 @@ const SYNTH_PRESETS = {
    MASTER_KEYS = the mastering chain stored by a preset; trim (input gain, set by 'Match loudness') and the send buses reverbSize/delayDiv/delayFb are not part of a preset. */
 const MASTER_KEYS = ["vol", "hpf", "eqLow", "eqLowF", "eqMid", "eqMidF", "eqMidQ", "eqHigh", "eqHighF", "compThr", "compRatio", "compKnee", "compAtk", "compRel", "makeup", "sat", "width", "limRel", "ceiling"];
 const MASTER_DEFAULTS = {"vol": 1, "hpf": 20, "eqLow": 0, "eqLowF": 120, "eqMid": 0, "eqMidF": 1200, "eqMidQ": 0.8, "eqHigh": 0, "eqHighF": 8000, "compThr": -18, "compRatio": 2.5, "compKnee": 30, "compAtk": 0.01, "compRel": 0.25, "makeup": 3, "sat": 0, "width": 1, "limRel": 0.08, "ceiling": -1, "trim": 0, "reverbSize": 2.5, "delayDiv": 0.75, "delayFb": 0.35};
-const MASTER_RANGES = {"vol": [0, 10], "hpf": [20, 300], "eqLow": [-12, 12], "eqLowF": [30, 400], "eqMid": [-12, 12], "eqMidF": [200, 8000], "eqMidQ": [0.3, 4], "eqHigh": [-12, 12], "eqHighF": [2000, 16000], "compThr": [-50, 0], "compRatio": [1, 20], "compKnee": [0, 40], "compAtk": [0.001, 0.2], "compRel": [0.02, 1], "makeup": [0, 18], "sat": [0, 1], "width": [0, 2], "limRel": [0.01, 1], "ceiling": [-12, 0], "trim": [-24, 12], "reverbSize": [0.3, 6], "delayDiv": [0.25, 2], "delayFb": [0, 0.9]};
+const MASTER_RANGES = {"vol": [0.1, 10], "hpf": [20, 300], "eqLow": [-12, 12], "eqLowF": [30, 400], "eqMid": [-12, 12], "eqMidF": [200, 8000], "eqMidQ": [0.3, 4], "eqHigh": [-12, 12], "eqHighF": [2000, 16000], "compThr": [-50, 0], "compRatio": [1, 20], "compKnee": [0, 40], "compAtk": [0.001, 0.2], "compRel": [0.02, 1], "makeup": [0, 18], "sat": [0, 1], "width": [0, 2], "limRel": [0.01, 1], "ceiling": [-12, 0], "trim": [-24, 12], "reverbSize": [0.3, 6], "delayDiv": [0.25, 2], "delayFb": [0, 0.9]};
 const MASTER_PRESETS = {
   'Default': {},
   'Flat (off)': {"eqLow": 0, "eqMid": 0, "eqHigh": 0, "compThr": 0, "compRatio": 1, "makeup": 0, "ceiling": -0.3},
@@ -1644,18 +1644,18 @@ function panControl(t) {
       title: 'Drag left/right · double-click = center', oninput: e => setPan(t, +e.target.value / 100, out), ondblclick: e => { e.target.value = 0; setPan(t, 0, out); } }),
     out);
 }
-// master output fader in dB: far left = off (-inf), then -60 .. +20 dB (stored as linear gain 0 .. 10).
+// master output fader in dB: -20 .. +20 dB, 0 dB in the centre (stored as linear gain 0.1 .. 10).
 // All master faders (mixer strip + Mastering tab) stay in sync via syncMasterVol() (also called by masterChanged).
-const mvolPos = g => g > 0 ? clamp(gainToDb(g), -60, 20) : -60.5;
-const mvolText = g => g > 0 ? ((gainToDb(g) > 0.05 ? '+' : '') + gainToDb(g).toFixed(1) + ' dB') : '-∞';
+const mvolPos = g => g > 0 ? clamp(gainToDb(g), -20, 20) : -20;
+const mvolText = g => { const d = g > 0 ? clamp(gainToDb(g), -20, 20) : -20; return (d > 0.05 ? '+' : '') + d.toFixed(1) + ' dB'; };
 function syncMasterVol(except) {
   document.querySelectorAll('input[data-mvol]').forEach(o => { if (o !== except) o.value = mvolPos(P.master.vol); if (o.nextElementSibling) o.nextElementSibling.textContent = mvolText(P.master.vol); });
 }
 function masterVolSlider(label) {
-  const inp = el('input', { type: 'range', min: -60.5, max: 20, step: 0.1, value: mvolPos(P.master.vol), 'data-mvol': 1, title: 'Double-click: 0 dB',
-    oninput: e => { const v = +e.target.value; P.master.vol = v <= -60.25 ? 0 : +dbToGain(v).toFixed(6); syncMasterVol(e.target); syncGraph(); masterChanged(); },
+  const inp = el('input', { type: 'range', min: -20, max: 20, step: 0.1, value: mvolPos(P.master.vol), 'data-mvol': 1, title: '-20 … +20 dB · double-click: 0 dB',
+    oninput: e => { const v = +e.target.value; P.master.vol = +dbToGain(v).toFixed(6); syncMasterVol(e.target); syncGraph(); masterChanged(); },
     ondblclick: e => { e.target.value = 0; e.target.dispatchEvent(new Event('input')); } });
-  return el('label', {}, label, inp, el('span', {}, mvolText(P.master.vol)));
+  return el('label', { className: 'mvol' }, label, inp, el('span', { className: 'mvolv' }, mvolText(P.master.vol)));
 }
 function renderMixer() {
   const m = $('#mixer'); m.innerHTML = '';
