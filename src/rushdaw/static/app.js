@@ -102,7 +102,7 @@ const SYNTH_PRESETS = {
    MASTER_KEYS = the mastering chain stored by a preset; trim (input gain, set by 'Match loudness') and the send buses reverbSize/delayDiv/delayFb are not part of a preset. */
 const MASTER_KEYS = ["vol", "hpf", "eqLow", "eqLowF", "eqMid", "eqMidF", "eqMidQ", "eqHigh", "eqHighF", "compThr", "compRatio", "compKnee", "compAtk", "compRel", "makeup", "sat", "width", "limRel", "ceiling"];
 const MASTER_DEFAULTS = {"vol": 1, "hpf": 20, "eqLow": 0, "eqLowF": 120, "eqMid": 0, "eqMidF": 1200, "eqMidQ": 0.8, "eqHigh": 0, "eqHighF": 8000, "compThr": -18, "compRatio": 2.5, "compKnee": 30, "compAtk": 0.01, "compRel": 0.25, "makeup": 3, "sat": 0, "width": 1, "limRel": 0.08, "ceiling": -1, "trim": 0, "reverbSize": 2.5, "delayDiv": 0.75, "delayFb": 0.35};
-const MASTER_RANGES = {"vol": [0, 1.5], "hpf": [20, 300], "eqLow": [-12, 12], "eqLowF": [30, 400], "eqMid": [-12, 12], "eqMidF": [200, 8000], "eqMidQ": [0.3, 4], "eqHigh": [-12, 12], "eqHighF": [2000, 16000], "compThr": [-50, 0], "compRatio": [1, 20], "compKnee": [0, 40], "compAtk": [0.001, 0.2], "compRel": [0.02, 1], "makeup": [0, 18], "sat": [0, 1], "width": [0, 2], "limRel": [0.01, 1], "ceiling": [-12, 0], "trim": [-24, 12], "reverbSize": [0.3, 6], "delayDiv": [0.25, 2], "delayFb": [0, 0.9]};
+const MASTER_RANGES = {"vol": [0, 10], "hpf": [20, 300], "eqLow": [-12, 12], "eqLowF": [30, 400], "eqMid": [-12, 12], "eqMidF": [200, 8000], "eqMidQ": [0.3, 4], "eqHigh": [-12, 12], "eqHighF": [2000, 16000], "compThr": [-50, 0], "compRatio": [1, 20], "compKnee": [0, 40], "compAtk": [0.001, 0.2], "compRel": [0.02, 1], "makeup": [0, 18], "sat": [0, 1], "width": [0, 2], "limRel": [0.01, 1], "ceiling": [-12, 0], "trim": [-24, 12], "reverbSize": [0.3, 6], "delayDiv": [0.25, 2], "delayFb": [0, 0.9]};
 const MASTER_PRESETS = {
   'Default': {},
   'Flat (off)': {"eqLow": 0, "eqMid": 0, "eqHigh": 0, "compThr": 0, "compRatio": 1, "makeup": 0, "ceiling": -0.3},
@@ -116,6 +116,12 @@ const MASTER_PRESETS = {
   'Acoustic / Natural': {"hpf": 25, "eqLow": 0.5, "eqHigh": 1, "compThr": -16, "compRatio": 2, "compKnee": 12, "compAtk": 0.03, "compRel": 0.3, "makeup": 2, "sat": 0.05, "width": 1.05, "ceiling": -1},
   'Vocal / Podcast': {"hpf": 80, "eqLow": -1, "eqMid": 2, "eqMidF": 3000, "eqMidQ": 1, "eqHigh": 1, "compThr": -24, "compRatio": 3.5, "compKnee": 10, "compAtk": 0.005, "compRel": 0.2, "makeup": 6, "width": 0.8, "ceiling": -1},
   'Lo-Fi Tape': {"hpf": 60, "eqLow": 1, "eqHigh": -6, "eqHighF": 6000, "compThr": -20, "compRatio": 3, "compKnee": 12, "makeup": 3, "sat": 0.6, "width": 0.9, "ceiling": -1},
+  'Atmospheric': {"hpf": 30, "eqLow": 1, "eqLowF": 100, "eqMid": -1.5, "eqMidF": 400, "eqMidQ": 0.8, "eqHigh": 2.5, "eqHighF": 9000, "compThr": -16, "compRatio": 2, "compKnee": 14, "compAtk": 0.03, "compRel": 0.4, "makeup": 3, "sat": 0.1, "width": 1.35, "limRel": 0.15, "ceiling": -1},
+  'Shoegaze': {"hpf": 30, "eqLow": 1.5, "eqLowF": 110, "eqMid": 1, "eqMidF": 800, "eqMidQ": 0.6, "eqHigh": 1.5, "eqHighF": 7000, "compThr": -20, "compRatio": 3, "compKnee": 12, "compAtk": 0.03, "compRel": 0.35, "makeup": 4.5, "sat": 0.4, "width": 1.4, "limRel": 0.12, "ceiling": -1},
+  'Melodic': {"hpf": 28, "eqLow": 1, "eqMid": -0.5, "eqMidF": 600, "eqHigh": 2, "compThr": -18, "compRatio": 2.5, "compKnee": 10, "compAtk": 0.02, "compRel": 0.25, "makeup": 3.5, "sat": 0.15, "width": 1.15, "ceiling": -1},
+  'Hardcore Punk': {"hpf": 40, "eqLow": 2.5, "eqLowF": 85, "eqMid": -1.5, "eqMidF": 400, "eqMidQ": 1, "eqHigh": 3, "eqHighF": 5000, "compThr": -22, "compRatio": 5, "compKnee": 4, "compAtk": 0.01, "compRel": 0.1, "makeup": 6.5, "sat": 0.4, "width": 1.05, "limRel": 0.04, "ceiling": -0.8},
+  'Punk': {"hpf": 35, "eqLow": 1.5, "eqLowF": 100, "eqMid": 1, "eqMidF": 1500, "eqHigh": 2, "eqHighF": 6000, "compThr": -20, "compRatio": 3.5, "compKnee": 8, "compAtk": 0.015, "compRel": 0.15, "makeup": 5, "sat": 0.3, "limRel": 0.06, "ceiling": -1},
+  'Rock': {"hpf": 30, "eqLow": 2, "eqLowF": 100, "eqMid": -1, "eqMidF": 500, "eqMidQ": 0.9, "eqHigh": 2, "eqHighF": 7000, "compThr": -20, "compRatio": 3, "compKnee": 8, "compAtk": 0.02, "compRel": 0.2, "makeup": 4.5, "sat": 0.2, "width": 1.15, "limRel": 0.06, "ceiling": -1},
 };
 const masterFull = p => Object.fromEntries(MASTER_KEYS.map(k => [k, (p && p[k] !== undefined) ? +p[k] : MASTER_DEFAULTS[k]]));
 const masterDiffers = (m, pp) => MASTER_KEYS.some(k => Math.abs(+(m[k] ?? MASTER_DEFAULTS[k]) - +(pp[k] ?? MASTER_DEFAULTS[k])) > 1e-6);
@@ -1638,6 +1644,19 @@ function panControl(t) {
       title: 'Drag left/right · double-click = center', oninput: e => setPan(t, +e.target.value / 100, out), ondblclick: e => { e.target.value = 0; setPan(t, 0, out); } }),
     out);
 }
+// master output fader in dB: far left = off (-inf), then -60 .. +20 dB (stored as linear gain 0 .. 10).
+// All master faders (mixer strip + Mastering tab) stay in sync via syncMasterVol() (also called by masterChanged).
+const mvolPos = g => g > 0 ? clamp(gainToDb(g), -60, 20) : -60.5;
+const mvolText = g => g > 0 ? ((gainToDb(g) > 0.05 ? '+' : '') + gainToDb(g).toFixed(1) + ' dB') : '-∞';
+function syncMasterVol(except) {
+  document.querySelectorAll('input[data-mvol]').forEach(o => { if (o !== except) o.value = mvolPos(P.master.vol); if (o.nextElementSibling) o.nextElementSibling.textContent = mvolText(P.master.vol); });
+}
+function masterVolSlider(label) {
+  const inp = el('input', { type: 'range', min: -60.5, max: 20, step: 0.1, value: mvolPos(P.master.vol), 'data-mvol': 1, title: 'Double-click: 0 dB',
+    oninput: e => { const v = +e.target.value; P.master.vol = v <= -60.25 ? 0 : +dbToGain(v).toFixed(6); syncMasterVol(e.target); syncGraph(); masterChanged(); },
+    ondblclick: e => { e.target.value = 0; e.target.dispatchEvent(new Event('input')); } });
+  return el('label', {}, label, inp, el('span', {}, mvolText(P.master.vol)));
+}
 function renderMixer() {
   const m = $('#mixer'); m.innerHTML = '';
   P.tracks.forEach(t => {
@@ -1666,7 +1685,7 @@ function renderMixer() {
   });
   m.append(el('div', { className: 'strip mst' }, el('div', { className: 't' }, 'MASTER'),
     el('div', { className: 'meter' }, el('div', { id: 'meter-master' })), el('div', { id: 'peak-master' }, '-∞ dB'),
-    slider('Vol', 0, 1.5, 0.01, P.master.vol, fmtDb, v => { P.master.vol = v; syncGraph(); masterChanged(); }),
+    masterVolSlider('Vol'),
     el('button', { onclick: () => showTab('master') }, 'Mastering →')));
 }
 
@@ -2043,6 +2062,7 @@ function findMasterPreset(name) {
 }
 function masterChanged() {
   if (rt) applyMaster(rt);
+  if (!document.activeElement?.matches?.('input[data-mvol]')) syncMasterVol();
   const M = P.master, lbl = document.getElementById('mpLabel');
   if (lbl) {
     const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams);
@@ -2249,7 +2269,7 @@ function renderMaster() {
       sl('Stereo width', 'width', 0.01, v => +v === 0 ? 'mono' : Math.round(v * 100) + '%')),
     el('div', { className: 'mstbox' }, el('h4', {}, 'Limiter / Output'),
       sl('Ceiling', 'ceiling', 0.1, v => (+v).toFixed(1) + ' dB'), sl('Release', 'limRel', 0.005, ms),
-      sl('Output', 'vol', 0.01, fmtDb)),
+      masterVolSlider('Output')),
     el('div', { className: 'mstbox' }, el('h4', {}, 'Loudness (BS.1770)'),
       sl('Input trim', 'trim', 0.1, v => (v > 0 ? '+' : '') + (+v).toFixed(1) + ' dB'),
       el('div', { className: 'mpbtns' },

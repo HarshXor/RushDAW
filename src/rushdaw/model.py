@@ -102,7 +102,7 @@ MASTER_DEFAULT = {'vol': 1, 'hpf': 20, 'eqLow': 0, 'eqLowF': 120, 'eqMid': 0, 'e
                   'eqHighF': 8000, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 30, 'compAtk': 0.01, 'compRel': 0.25,
                   'makeup': 3, 'sat': 0, 'width': 1, 'limRel': 0.08, 'ceiling': -1,
                   'trim': 0, 'reverbSize': 2.5, 'delayDiv': 0.75, 'delayFb': 0.35}
-MASTER_PARAMS = {'vol': (0, 1.5), 'hpf': (20, 300), 'eqLow': (-12, 12), 'eqLowF': (30, 400), 'eqMid': (-12, 12),
+MASTER_PARAMS = {'vol': (0, 10), 'hpf': (20, 300), 'eqLow': (-12, 12), 'eqLowF': (30, 400), 'eqMid': (-12, 12),
                  'eqMidF': (200, 8000), 'eqMidQ': (0.3, 4), 'eqHigh': (-12, 12), 'eqHighF': (2000, 16000),
                  'compThr': (-50, 0), 'compRatio': (1, 20), 'compKnee': (0, 40), 'compAtk': (0.001, 0.2), 'compRel': (0.02, 1),
                  'makeup': (0, 18), 'sat': (0, 1), 'width': (0, 2), 'limRel': (0.01, 1), 'ceiling': (-12, 0),
@@ -121,6 +121,12 @@ MASTER_PRESETS = {
     'Acoustic / Natural': {'hpf': 25, 'eqLow': 0.5, 'eqHigh': 1, 'compThr': -16, 'compRatio': 2, 'compKnee': 12, 'compAtk': 0.03, 'compRel': 0.3, 'makeup': 2, 'sat': 0.05, 'width': 1.05, 'ceiling': -1},
     'Vocal / Podcast': {'hpf': 80, 'eqLow': -1, 'eqMid': 2, 'eqMidF': 3000, 'eqMidQ': 1, 'eqHigh': 1, 'compThr': -24, 'compRatio': 3.5, 'compKnee': 10, 'compAtk': 0.005, 'compRel': 0.2, 'makeup': 6, 'width': 0.8, 'ceiling': -1},
     'Lo-Fi Tape': {'hpf': 60, 'eqLow': 1, 'eqHigh': -6, 'eqHighF': 6000, 'compThr': -20, 'compRatio': 3, 'compKnee': 12, 'makeup': 3, 'sat': 0.6, 'width': 0.9, 'ceiling': -1},
+    'Atmospheric': {'hpf': 30, 'eqLow': 1, 'eqLowF': 100, 'eqMid': -1.5, 'eqMidF': 400, 'eqMidQ': 0.8, 'eqHigh': 2.5, 'eqHighF': 9000, 'compThr': -16, 'compRatio': 2, 'compKnee': 14, 'compAtk': 0.03, 'compRel': 0.4, 'makeup': 3, 'sat': 0.1, 'width': 1.35, 'limRel': 0.15, 'ceiling': -1},
+    'Shoegaze': {'hpf': 30, 'eqLow': 1.5, 'eqLowF': 110, 'eqMid': 1, 'eqMidF': 800, 'eqMidQ': 0.6, 'eqHigh': 1.5, 'eqHighF': 7000, 'compThr': -20, 'compRatio': 3, 'compKnee': 12, 'compAtk': 0.03, 'compRel': 0.35, 'makeup': 4.5, 'sat': 0.4, 'width': 1.4, 'limRel': 0.12, 'ceiling': -1},
+    'Melodic': {'hpf': 28, 'eqLow': 1, 'eqMid': -0.5, 'eqMidF': 600, 'eqHigh': 2, 'compThr': -18, 'compRatio': 2.5, 'compKnee': 10, 'compAtk': 0.02, 'compRel': 0.25, 'makeup': 3.5, 'sat': 0.15, 'width': 1.15, 'ceiling': -1},
+    'Hardcore Punk': {'hpf': 40, 'eqLow': 2.5, 'eqLowF': 85, 'eqMid': -1.5, 'eqMidF': 400, 'eqMidQ': 1, 'eqHigh': 3, 'eqHighF': 5000, 'compThr': -22, 'compRatio': 5, 'compKnee': 4, 'compAtk': 0.01, 'compRel': 0.1, 'makeup': 6.5, 'sat': 0.4, 'width': 1.05, 'limRel': 0.04, 'ceiling': -0.8},
+    'Punk': {'hpf': 35, 'eqLow': 1.5, 'eqLowF': 100, 'eqMid': 1, 'eqMidF': 1500, 'eqHigh': 2, 'eqHighF': 6000, 'compThr': -20, 'compRatio': 3.5, 'compKnee': 8, 'compAtk': 0.015, 'compRel': 0.15, 'makeup': 5, 'sat': 0.3, 'limRel': 0.06, 'ceiling': -1},
+    'Rock': {'hpf': 30, 'eqLow': 2, 'eqLowF': 100, 'eqMid': -1, 'eqMidF': 500, 'eqMidQ': 0.9, 'eqHigh': 2, 'eqHighF': 7000, 'compThr': -20, 'compRatio': 3, 'compKnee': 8, 'compAtk': 0.02, 'compRel': 0.2, 'makeup': 4.5, 'sat': 0.2, 'width': 1.15, 'limRel': 0.06, 'ceiling': -1},
 }
 MASTER_PRESET_NAME_MAX = 60
 
