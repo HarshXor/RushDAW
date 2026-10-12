@@ -2892,7 +2892,7 @@ const projectUrl = id => location.pathname + '#/project/' + id;
 const hashProjectId = () => (location.hash.match(/^#\/project\/([0-9a-f]{32})\/?$/) || location.hash.match(/^#p=([0-9a-f]{32})$/) || [])[1] || null;
 function hideHome() { $('#home').classList.remove('show'); }
 // Project list: search, filters, sorting and pagination all run on the server (SQLite), only one page is loaded.
-const homeQ = { page: 1 };
+const homeQ = { page: 1, loading: false };
 function homeParams() {
   const v = id => $(id).value.trim(), pr = new URLSearchParams();
   const add = (k, val) => { if (val !== '' && val != null) pr.set(k, val); };
@@ -2926,60 +2926,87 @@ function confirmDeleteProject(p) {
   ]);
   setTimeout(() => document.querySelector('.rdmodal .mfoot button.primary')?.focus(), 0);
 }
+/* Infinite scroll: the list starts with page 1; when the bottom sentinel (#projPager) scrolls into view the next
+   page is fetched from the server and appended. Search / filters / Trash reset to page 1 (homeQ.page = 1);
+   rename / delete / restore reload the same number of pages so the list keeps its place. */
+function homeCard(p) {
+  const nameEl = el('div', { className: 'pname', title: 'Open' }, p.name);
+  const card = el('div', { className: 'pcard' },
+    nameEl,
+    el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
+    el('div', { className: 'pmeta', title: `Created ${new Date(p.created_at * 1000).toLocaleString()}` }, 'Updated ' + fmtAgo(p.updated_at)),
+    mixLine(p.mix),
+    el('div', { className: 'pbtns' }, showTrash
+      ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
+      : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
+        el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
+        ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
+          const b = el('button', { title: `Render the latest saved revision (rev ${p.head_revision}) and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
+          return [sel, b]; })(),
+        el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
+        el('button', { onclick: () => {
+          const inp = el('input', { value: p.name, className: 'pname-edit' });
+          const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
+          inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+          inp.onblur = () => done(true); nameEl.replaceWith(inp); inp.focus(); inp.select();
+        } }, '✎ Rename'),
+        el('button', { title: 'Delete: move to Trash (asks first, can be restored)', onclick: () => confirmDeleteProject(p) }, '🗑')]));
+  if (!showTrash) nameEl.onclick = () => openProject(p.id);
+  return card;
+}
+async function homeFetch(n) {
+  homeQ.page = n;
+  return (await api('/api/projects?' + homeParams())).json();
+}
+function homeFooter(data) {
+  const pager = $('#projPager'), shown = $('#projList').querySelectorAll('.pcard').length;
+  pager.innerHTML = '';
+  if (!data || !data.total) return;
+  const more = homeQ.page < data.pages;
+  pager.append(el('span', { className: 'pmeta' }, more ? `Showing ${shown} of ${data.total} · scroll for more` : `All ${data.total} shown`));
+  if (more) pager.append(el('button', { title: 'Load the next page now', onclick: () => homeLoadMore() }, homeQ.loading ? 'Loading…' : 'Load more'));
+}
+let homeLast = null;
 async function renderHome() {
-  const list = $('#projList'), pager = $('#projPager'), my = ++homeReq;
-  list.innerHTML = '<p class="hint">Loading…</p>';
+  const list = $('#projList'), my = ++homeReq, upTo = Math.max(1, homeQ.page);
+  homeQ.loading = true;
+  list.innerHTML = '<p class="hint">Loading…</p>'; $('#projPager').innerHTML = '';
   $('#homeTitle').textContent = showTrash ? 'Trash (deleted projects – files are kept)' : 'Projects';
   $('#btnTrash').textContent = showTrash ? '← Back to projects' : '🗑 Trash';
   try {
-    const data = await (await api('/api/projects?' + homeParams())).json();
-    if (my !== homeReq) return;  // a newer search is already running
-    if (data.page > data.pages && data.total) { homeQ.page = data.pages; return renderHome(); }
+    const cards = []; let data = null;
+    for (let n = 1; n <= upTo; n++) {  // reload as many pages as were loaded before (keeps the scroll place)
+      data = await homeFetch(n);
+      if (my !== homeReq) return;  // a newer search is already running
+      data.projects.forEach(p => cards.push(homeCard(p)));
+      if (n >= data.pages) break;
+    }
+    homeLast = data;
     $('#homePath').textContent = `Data: ${data.home}/db.sql  ·  files: ${data.home}/file/`;
     const filtered = !!(homeParams().get('q') || homeParams().get('from') || homeParams().get('to') || homeParams().get('bpm_min') || homeParams().get('bpm_max'));
     $('#homeCount').textContent = `${data.total} project${data.total === 1 ? '' : 's'}${filtered ? ' found' : ''}`;
-    const items = data.projects;
     list.innerHTML = '';
-    if (!items.length) list.append(el('p', { className: 'hint' }, filtered ? 'No project matches the search / filters.' : showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
-    items.forEach(p => {
-      const nameEl = el('div', { className: 'pname', title: 'Open' }, p.name);
-      const card = el('div', { className: 'pcard' },
-        nameEl,
-        el('div', { className: 'pmeta' }, `${Math.round(p.bpm)} BPM · ${p.sig}/4 · rev ${p.head_revision} · ${fmtSize(p.size)}`),
-        el('div', { className: 'pmeta', title: `Created ${new Date(p.created_at * 1000).toLocaleString()}` }, 'Updated ' + fmtAgo(p.updated_at)),
-        mixLine(p.mix),
-        el('div', { className: 'pbtns' }, showTrash
-          ? [el('button', { className: 'primary', onclick: async () => { await api(`/api/projects/${p.id}/undelete`, { method: 'POST' }); renderHome(); } }, '↺ Restore')]
-          : [el('button', { className: 'primary', onclick: () => openProject(p.id) }, 'Open'),
-            el('button', { onclick: () => openHistory(p.id, true) }, '🕘 History'),
-            ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
-              const b = el('button', { title: `Render the latest saved revision (rev ${p.head_revision}) and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
-              return [sel, b]; })(),
-            el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
-            el('button', { onclick: () => {
-              const inp = el('input', { value: p.name, className: 'pname-edit' });
-              const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
-              inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
-              inp.onblur = () => done(true); nameEl.replaceWith(inp); inp.focus(); inp.select();
-            } }, '✎ Rename'),
-            el('button', { title: 'Delete: move to Trash (asks first, can be restored)', onclick: () => confirmDeleteProject(p) }, '🗑')]));
-      if (!showTrash) nameEl.onclick = () => openProject(p.id);
-      list.append(card);
-    });
-    // pagination
-    pager.innerHTML = '';
-    if (data.pages > 1) {
-      const go = n => () => { homeQ.page = n; renderHome(); $('#home').scrollTo({ top: 0, behavior: 'smooth' }); };
-      const btn = (txt, n, dis, title) => el('button', { disabled: dis, title, onclick: go(n) }, txt);
-      const nums = []; const from = Math.max(1, data.page - 2), to = Math.min(data.pages, data.page + 2);
-      for (let n = from; n <= to; n++) nums.push(el('button', { className: n === data.page ? 'primary' : '', onclick: go(n) }, String(n)));
-      pager.append(btn('«', 1, data.page === 1, 'First page'), btn('‹ Prev', data.page - 1, data.page === 1, 'Previous page'), ...nums,
-        btn('Next ›', data.page + 1, data.page === data.pages, 'Next page'), btn('»', data.pages, data.page === data.pages, 'Last page'),
-        el('span', { className: 'pmeta' }, `Page ${data.page} of ${data.pages} · ${(data.page - 1) * data.per_page + 1}–${Math.min(data.total, data.page * data.per_page)} of ${data.total}`));
-    }
-  } catch (e) { if (my === homeReq) { list.innerHTML = ''; pager.innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); } }
+    if (!cards.length) list.append(el('p', { className: 'hint' }, filtered ? 'No project matches the search / filters.' : showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
+    list.append(...cards);
+    homeQ.loading = false; homeFooter(data); homeMaybeMore();
+  } catch (e) { if (my === homeReq) { homeQ.loading = false; list.innerHTML = ''; $('#projPager').innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); } }
 }
-
+async function homeLoadMore() {
+  if (homeQ.loading || !homeLast || homeQ.page >= homeLast.pages) return;
+  const my = homeReq; homeQ.loading = true; homeFooter(homeLast);
+  try {
+    const data = await homeFetch(homeQ.page + 1);
+    if (my !== homeReq) return;  // filters changed meanwhile
+    homeLast = data; $('#projList').append(...data.projects.map(homeCard));
+  } catch (e) { homeQ.page--; status('Loading more projects failed: ' + e.message); }
+  finally { if (my === homeReq) { homeQ.loading = false; homeFooter(homeLast); homeMaybeMore(); } }
+}
+// fetch the next page when the sentinel is (almost) visible - also right after a load if the page is short
+function homeMaybeMore() {
+  const home = $('#home'), pager = $('#projPager');
+  if (!home.classList.contains('show') || !homeLast || homeQ.page >= homeLast.pages) return;
+  if (pager.getBoundingClientRect().top < home.getBoundingClientRect().bottom + 300) setTimeout(homeLoadMore, 0);
+}
 /* revision history dialog */
 async function openHistory(id = currentProject?.id, fromHome = false) {
   if (!id) return;
@@ -3265,6 +3292,8 @@ function init() {
   ['#fBpmMin', '#fBpmMax'].forEach(id => { $(id).oninput = () => { clearTimeout(searchT); searchT = setTimeout(() => { homeQ.page = 1; renderHome(); }, 400); }; });
   $('#fReset').onclick = () => { ['#projSearch', '#fFrom', '#fTo', '#fBpmMin', '#fBpmMax'].forEach(id => { $(id).value = ''; }); $('#fDateField').value = 'updated'; $('#fSort').value = 'updated'; $('#fOrder').value = 'desc'; homeQ.page = 1; renderHome(); };
   $('#btnTrash').onclick = () => { showTrash = !showTrash; homeQ.page = 1; renderHome(); };
+  $('#home').addEventListener('scroll', homeMaybeMore, { passive: true });
+  window.addEventListener('resize', homeMaybeMore);
   setInterval(updateDirty, 1000);
   // pick up edits made from outside the browser (MCP tools create new revisions)
   let externalWarned = 0;
