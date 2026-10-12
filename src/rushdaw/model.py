@@ -275,6 +275,52 @@ FX_TYPES = {  # type: {param: (default, min, max)} or (default, [choices])
     'reverb': {'size': (2, 0.2, 8), 'tone': (8000, 1000, 16000), 'mix': (0.3, 0, 1)},
     'formant': {'vowel': ('a', ['a', 'e', 'i', 'o', 'u']), 'shift': (1, 0.6, 1.6), 'mix': (0.8, 0, 1)},  # vocal formant filter
 }
+
+# Built-in effect-chain presets (Effects tab "Chain presets") - must stay identical to FX_CHAIN_PRESETS in app.js
+FX_CHAIN_PRESETS = {
+    'Vocal': [['eq', {'low': -4, 'lowF': 120, 'mid': 1.5, 'midF': 2500, 'high': 3}], ['comp', {'thr': -24, 'ratio': 4, 'makeup': 6}], ['delay', {'time': 0.5, 'feedback': 0.25, 'mix': 0.12}], ['reverb', {'size': 2.2, 'mix': 0.25}]],
+    'Guitar Amp': [['dist', {'drive': 0.7, 'tone': 4200, 'level': 0.5}], ['eq', {'low': -2, 'mid': 2.5, 'midF': 1800, 'high': -1}], ['reverb', {'size': 1.2, 'mix': 0.15}]],
+    'Metal Guitar': [['filter', {'mode': 'highpass', 'freq': 90, 'q': 0.7}], ['dist', {'drive': 0.9, 'tone': 5000, 'level': 0.45}], ['eq', {'low': 2, 'lowF': 110, 'mid': -4, 'midF': 700, 'high': 3, 'highF': 4000}], ['comp', {'thr': -18, 'ratio': 3, 'makeup': 2}]],
+    'Drum Bus': [['comp', {'thr': -18, 'ratio': 4, 'attack': 0.02, 'release': 0.15, 'makeup': 4}], ['eq', {'low': 3, 'lowF': 80, 'high': 2, 'highF': 8000}], ['dist', {'drive': 0.15, 'mix': 0.3, 'level': 0.9}]],
+    'Bass': [['comp', {'thr': -20, 'ratio': 5, 'makeup': 4}], ['eq', {'low': 3, 'lowF': 80, 'mid': -2, 'midF': 400}], ['filter', {'mode': 'lowpass', 'freq': 6000, 'q': 0.7}]],
+    'Choir Space': [['eq', {'low': -3, 'lowF': 150, 'high': 2, 'highF': 7000}], ['chorus', {'rate': 0.4, 'depth': 0.005, 'mix': 0.35}], ['reverb', {'size': 3.5, 'mix': 0.35}]],
+    'Lo-Fi': [['filter', {'mode': 'lowpass', 'freq': 3200, 'q': 0.8}], ['dist', {'drive': 0.3, 'mix': 0.4}], ['chorus', {'rate': 0.6, 'depth': 0.006, 'mix': 0.4}]],
+    'Clear (no FX)': [],
+}
+FX_PRESET_NAME_MAX = 60
+
+
+def clean_fx_chain(chain):
+    """Validate an effect chain ([{type, params|p, on}] or [[type, params]]) -> [{type, on, p}] (no ids, full params)."""
+    if not isinstance(chain, list) or len(chain) > 32:
+        raise ModelError("chain must be a list of up to 32 effects")
+    out = []
+    for e in chain:
+        if isinstance(e, (list, tuple)) and len(e) == 2:
+            e = {'type': e[0], 'params': e[1]}
+        if not isinstance(e, dict) or 'type' not in e:
+            raise ModelError("each effect needs a 'type'")
+        fx = new_fx(e['type'], e.get('params', e.get('p')), e.get('on', True))
+        out.append({'type': fx['type'], 'on': fx['on'], 'p': fx['p']})
+    return out
+
+
+def fx_chain_instances(chain):
+    """A stored chain -> fresh effects with ids for a track."""
+    return [new_fx(e['type'], e.get('p') or e.get('params'), e.get('on', True)) for e in clean_fx_chain(chain)]
+
+
+def builtin_fx_presets():
+    return [{'name': n, 'chain': clean_fx_chain(c), 'builtin': True} for n, c in FX_CHAIN_PRESETS.items()]
+
+
+def clean_fx_preset_name(name):
+    name = " ".join(str(name or "").split())[:FX_PRESET_NAME_MAX]
+    if not name:
+        raise ModelError("preset name is required")
+    if name.lower() == "custom" or any(name.lower() == b.lower() for b in FX_CHAIN_PRESETS):
+        raise ModelError(f"'{name}' is a built-in preset name - choose another name")
+    return name
 CHOIR_FX = [('eq', {'low': -3, 'lowF': 150, 'high': 2, 'highF': 7000}), ('chorus', {'rate': 0.4, 'depth': 0.005, 'mix': 0.35}), ('reverb', {'size': 3.5, 'mix': 0.35})]
 KIT_DEFAULT = {'pitch': 0, 'decay': 1, 'level': 1}
 KIT_RANGES = {'pitch': (-24, 24), 'decay': (0.1, 4), 'level': (0, 2)}  # wide: ±2 octaves, 10-400% decay, 0-200% level

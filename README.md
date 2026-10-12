@@ -75,6 +75,7 @@ All data stays on your computer in `~/.rushdaw/` (change with `rushdaw --home PA
 - `db.sql` table `projects`: id, name, bpm, time signature, created/updated time, latest revision, deleted time (soft delete).
 - `db.sql` table `revisions`: project, revision number, note, file name, size, SHA-256, track count, time.
 - Project content (including audio) is **not** stored in the database. It lives in the `.rushdaw` files, written atomically.
+- **Your own presets (shared by all projects):** in the **Effects** tab, `💾 Save chain…` saves the selected track's effect chain as a preset; in **Mastering**, `💾 Save as…`. Your presets show a **CUSTOM** badge (built-in ones: BUILT-IN) and appear under “My presets · custom” in the preset menus. `☰ Presets…` opens the manager: **Use**, **✎ Rename**, **⟳ Update** (overwrite with the current values) and **🗑 Delete** – full CRUD, stored in SQLite (`fx_presets`, `master_presets`). API: `GET/POST /api/fx-presets`, `POST /api/fx-presets/rename`, `DELETE /api/fx-presets/<name>`, `POST /api/master-presets/rename`.
 - Deleting a project asks first (confirmation modal: Cancel is the default, Esc / click outside = Cancel) and only moves it to the Trash. Its files and history stay on disk.
 
 ## MCP (edit projects from an AI agent)
@@ -108,7 +109,7 @@ Example client config:
 
 | Group | Tools |
 |---|---|
-| Info / projects | `get_reference`, `list_projects` (search / date + BPM filters / sort / pagination, same as the Projects page), `export_project` (project package .zip with audio/ – written on the server + download URL), `import_project` (.zip or .rushdaw from a path or base64), `get_project`, `create_project`, `update_project` (title/BPM/time signature), `list_revisions`, `restore_revision`, `delete_project` (to Trash), `set_master` (preset by name incl. your saved ones, or params; returns the label “X” / “X (custom)” / “Custom”) |
+| Info / projects | `get_reference`, `list_projects` (search / date + BPM filters / sort / pagination, same as the Projects page), `export_project` (project package .zip with audio/ – written on the server + download URL), `import_project` (.zip or .rushdaw from a path or base64), `get_project`, `create_project`, `update_project` (title/BPM/time signature), `list_revisions`, `restore_revision`, `delete_project` (to Trash), `list_fx_presets`, `save_fx_preset`, `apply_fx_preset`, `rename_fx_preset`, `delete_fx_preset`, `rename_master_preset`, `set_master` (preset by name incl. your saved ones, or params; returns the label “X” / “X (custom)” / “Custom”) |
 | Mastering presets | `list_master_presets`, `save_master_preset` (from a project's master and/or params), `delete_master_preset`, `export_master_preset` (`.rushmaster.json` content, optional server path), `import_master_presets` (JSON or server path) |
 | Tracks / layers | `add_track` (audio/drum/synth/guitar), `update_track` (name, volume, pan, mute, solo, EQ, compressor, sends), `delete_track`, `duplicate_track`, `move_track` |
 | Effects | `set_track_effects`, `add_effect`, `update_effect` (params / bypass / remove) |

@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_revisions_project ON revisions(project_id, number);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS fx_presets (
+    name        TEXT PRIMARY KEY COLLATE NOCASE,
+    chain       TEXT NOT NULL,              -- JSON: [{type, on, p}] insert-effect chain (small)
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS master_presets (
     name        TEXT PRIMARY KEY COLLATE NOCASE,
     params      TEXT NOT NULL,              -- JSON: full mastering parameter set (small)
@@ -184,6 +190,59 @@ class Storage:
             else:
                 db.execute("UPDATE master_presets SET name = ?, params = ?, updated_at = ? WHERE name = ?", (name, blob, now, name))
         return self.get_master_preset(name)
+
+    def rename_master_preset(self, old, new):
+        return self._rename_preset("master_presets", "master preset", old, new, self.get_master_preset)
+
+    def _rename_preset(self, table, what, old, new, getter):
+        with self._lock, self._connect() as db:
+            if db.execute(f"SELECT 1 FROM {table} WHERE name = ?", (old,)).fetchone() is None:
+                raise StorageError(f"{what} '{old}' not found", 404)
+            clash = db.execute(f"SELECT name FROM {table} WHERE name = ?", (new,)).fetchone()
+            if clash is not None and clash[0].lower() != str(old).lower():
+                raise StorageError(f"{what} '{new}' already exists", 409)
+            db.execute(f"UPDATE {table} SET name = ?, updated_at = ? WHERE name = ?", (new, time.time(), old))
+        return getter(new)
+
+    # ------------------------------------------------------------ user effect-chain presets (shared by all projects)
+    def list_fx_presets(self):
+        with self._connect() as db:
+            rows = db.execute("SELECT name, chain, created_at, updated_at FROM fx_presets ORDER BY name COLLATE NOCASE").fetchall()
+        return [{"name": r["name"], "chain": json.loads(r["chain"]), "created_at": r["created_at"], "updated_at": r["updated_at"]} for r in rows]
+
+    def get_fx_preset(self, name):
+        with self._connect() as db:
+            r = db.execute("SELECT name, chain, created_at, updated_at FROM fx_presets WHERE name = ?", (name,)).fetchone()
+        if r is None:
+            raise StorageError(f"effect preset '{name}' not found", 404)
+        return {"name": r["name"], "chain": json.loads(r["chain"]), "created_at": r["created_at"], "updated_at": r["updated_at"]}
+
+    def fx_preset_exists(self, name):
+        with self._connect() as db:
+            return db.execute("SELECT 1 FROM fx_presets WHERE name = ?", (name,)).fetchone() is not None
+
+    def save_fx_preset(self, name, chain, overwrite=True):
+        now = time.time()
+        with self._lock, self._connect() as db:
+            old = db.execute("SELECT created_at FROM fx_presets WHERE name = ?", (name,)).fetchone()
+            if old is not None and not overwrite:
+                raise StorageError(f"effect preset '{name}' already exists", 409)
+            blob = json.dumps(chain)
+            if old is None:
+                db.execute("INSERT INTO fx_presets(name, chain, created_at, updated_at) VALUES(?, ?, ?, ?)", (name, blob, now, now))
+            else:
+                db.execute("UPDATE fx_presets SET chain = ?, updated_at = ? WHERE name = ?", (blob, now, name))
+        return self.get_fx_preset(name)
+
+    def rename_fx_preset(self, old, new):
+        return self._rename_preset("fx_presets", "effect preset", old, new, self.get_fx_preset)
+
+    def delete_fx_preset(self, name):
+        with self._lock, self._connect() as db:
+            n = db.execute("DELETE FROM fx_presets WHERE name = ?", (name,)).rowcount
+        if not n:
+            raise StorageError(f"effect preset '{name}' not found", 404)
+        return {"deleted": name}
 
     def delete_master_preset(self, name):
         with self._lock, self._connect() as db:

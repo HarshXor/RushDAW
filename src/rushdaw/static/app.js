@@ -2114,12 +2114,17 @@ function renderFx() {
   t.fx = t.fx || [];
   const changed = (structural) => { syncGraph(); if (structural) { renderFx(); renderMixer(); } };
   const addSel = el('select', { onchange: e => { const v = e.target.value; e.target.selectedIndex = 0; if (!v) return;
-      if (v.startsWith('preset:')) t.fx = FX_CHAIN_PRESETS[v.slice(7)].map(([ty, o]) => newFx(ty, o)); else t.fx.push(newFx(v));
+      if (v.startsWith('preset:')) { applyFxPreset(t, v.slice(7)); return; } else t.fx.push(newFx(v));
       changed(true); } },
     el('option', { value: '' }, '+ Add effect…'),
     el('optgroup', { label: 'Effects' }, Object.entries(FX_TYPES).map(([k, d]) => el('option', { value: k }, d.name))),
-    el('optgroup', { label: 'Chain presets (replace)' }, Object.keys(FX_CHAIN_PRESETS).map(k => el('option', { value: 'preset:' + k }, k))));
+    el('optgroup', { label: 'Chain presets (replace)' }, Object.keys(FX_CHAIN_PRESETS).map(k => el('option', { value: 'preset:' + k }, k))),
+    userFxPresets.length ? el('optgroup', { label: 'My presets · custom (replace)' }, userFxPresets.map(p => el('option', { value: 'preset:' + p.name }, '★ ' + p.name))) : null);
+  const cur = t.fxPreset ? findFxPreset(t.fxPreset) : null;
   box.append(el('div', { className: 'edtools' }, el('b', {}, 'Insert FX – ' + t.name), addSel,
+    t.fxPreset ? el('span', { className: 'fxpname', title: 'Last loaded chain preset' }, 'Preset: ' + t.fxPreset, presetBadge(cur ? !cur.builtin : true)) : null,
+    el('button', { title: 'Save this track\'s effect chain as a preset you can use in every project', onclick: () => openSaveFxPreset(t) }, '💾 Save chain…'),
+    el('button', { title: 'Your effect presets: use, rename, update, delete', onclick: () => openPresetManager('fx') }, '☰ Presets…'),
     el('span', { className: 'hint' }, 'Signal: input → effects (left → right) → channel EQ/comp → fader → pan → sends')));
   const chain = el('div', { className: 'fxchain' });
   if (!t.fx.length) chain.append(el('p', { className: 'hint' }, 'No effects yet. Add EQ, Compressor, Distortion, Filter, Chorus, Tremolo, Delay, or Reverb, or load a chain preset (Vocal, Guitar Amp, Metal Guitar, Drum Bus, Bass, Lo-Fi).'));
@@ -2146,6 +2151,106 @@ function renderFx() {
   box.append(chain);
 }
 
+/* ------------------------------------------------- effect-chain presets (user, shared by all projects)
+   Built-in chains = FX_CHAIN_PRESETS; your own chains live in SQLite (/api/fx-presets) and show a CUSTOM badge. */
+let userFxPresets = [];
+async function loadUserFxPresets() {
+  try { userFxPresets = (await (await api('/api/fx-presets')).json()).user || []; } catch (e) { userFxPresets = []; }
+  renderFx();
+}
+function findFxPreset(name) {
+  const lc = String(name || '').toLowerCase();
+  const b = Object.keys(FX_CHAIN_PRESETS).find(k => k.toLowerCase() === lc);
+  if (b) return { name: b, chain: FX_CHAIN_PRESETS[b].map(([type, p]) => ({ type, on: true, p })), builtin: true };
+  const u = userFxPresets.find(p => p.name.toLowerCase() === lc);
+  return u ? { name: u.name, chain: u.chain, builtin: false } : null;
+}
+const presetBadge = custom => el('span', { className: 'pbadge' + (custom ? ' custom' : '') }, custom ? 'CUSTOM' : 'BUILT-IN');
+const chainSummary = chain => chain.length ? chain.map(e => (FX_TYPES[e.type]?.name || e.type) + (e.on === false ? ' (off)' : '')).join(' → ') : 'no effects';
+function applyFxPreset(t, name) {
+  const p = findFxPreset(name); if (!t || !p) return;
+  t.fx = p.chain.map(e => { const f = newFx(e.type, e.p || {}); f.on = e.on !== false; return f; });
+  t.fxPreset = p.name; syncGraph(); renderFx(); renderMixer(); undoCaptureSoon();
+  status(`Effect preset “${p.name}” loaded on ${t.name}`);
+}
+const fxChainOf = t => (t.fx || []).map(f => ({ type: f.type, on: f.on !== false, params: { ...f.p } }));
+// small name dialog (Save as / Rename): onSave(name, overwrite) may throw; "already exists" -> press again to overwrite
+function openNameModal(title, initial, hint, onSave, { allowOverwrite = true } = {}) {
+  const name = el('input', { type: 'text', maxLength: 60, value: initial || '', placeholder: 'Preset name' });
+  const err = el('p', { className: 'hint merr' });
+  let overwrite = false;
+  const save = async close => {
+    const n = name.value.trim().replace(/\s+/g, ' ');
+    if (!n) { err.textContent = 'Enter a name.'; return; }
+    try { await onSave(n, overwrite); close(); }
+    catch (e) {
+      if (allowOverwrite && /already exists/.test(e.message)) { overwrite = true; err.textContent = `“${n}” already exists – press Save again to overwrite it.`; }
+      else err.textContent = e.message;
+    }
+  };
+  name.oninput = () => { overwrite = false; err.textContent = ''; };
+  name.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); save(m.close); } };
+  const m = openModal(title, el('div', { className: 'mform' }, el('label', {}, 'Name', name), hint ? el('p', { className: 'hint' }, hint) : null, err),
+    [{ label: 'Cancel', run: c => c() }, { label: 'Save', primary: true, run: save }]);
+  setTimeout(() => { name.focus(); name.select(); }, 0);
+}
+const jsonPost = (url, body) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function openSaveFxPreset(t) {
+  const cur = t.fxPreset && findFxPreset(t.fxPreset);
+  openNameModal('Save effect preset', cur && !cur.builtin ? cur.name : '', `Saves the ${t.fx.length} effect(s) of “${t.name}” (${chainSummary(fxChainOf(t))}). Available in every project.`,
+    async (n, overwrite) => {
+      const saved = await (await jsonPost('/api/fx-presets', { name: n, chain: fxChainOf(t), overwrite })).json();
+      t.fxPreset = saved.name; await loadUserFxPresets(); renderMixer(); status(`Saved effect preset “${saved.name}”`);
+    });
+}
+/* Preset manager (Effects + Mastering): every preset with a BUILT-IN / CUSTOM badge; custom ones: Use, Rename,
+   Update (= overwrite with the current values), Delete. */
+function openPresetManager(kind) {
+  const isFx = kind === 'fx', body = el('div', { className: 'pmlist' });
+  let modal = null;
+  const t = isFx ? getTrack(selTrackId) : null;
+  const items = () => isFx
+    ? [...Object.keys(FX_CHAIN_PRESETS).map(n => findFxPreset(n)), ...userFxPresets.map(p => ({ ...p, builtin: false }))]
+    : [...Object.keys(MASTER_PRESETS).map(n => ({ name: n, builtin: true })), ...userMasterPresets.map(p => ({ ...p, builtin: false }))];
+  const reload = async () => { if (isFx) await loadUserFxPresets(); else await loadUserMasterPresets(); draw(); };
+  const base = isFx ? '/api/fx-presets' : '/api/master-presets';
+  const use = p => { if (isFx) { if (!t) { status('Select a track first'); return; } applyFxPreset(t, p.name); } else chooseMasterPreset(p.name); modal?.close(); };
+  const rename = p => openNameModal('Rename preset', p.name, 'Renames your preset everywhere it is listed. Projects keep their values.', async n => {
+    const r = await (await jsonPost(base + '/rename', { from: p.name, to: n })).json();
+    if (isFx) P.tracks.forEach(x => { if (x.fxPreset === p.name) x.fxPreset = r.name; });
+    else if (P.master.preset === p.name) P.master.preset = r.name;
+    await reload(); if (!isFx) renderMaster(); status(`Renamed preset “${p.name}” → “${r.name}”`);
+  }, { allowOverwrite: false });
+  const update = async p => {
+    try {
+      if (isFx) { if (!t) { status('Select a track first'); return; } await jsonPost(base, { name: p.name, chain: fxChainOf(t), overwrite: true }); t.fxPreset = p.name; }
+      else { const s2 = await (await jsonPost(base, { name: p.name, params: masterFull(P.master), overwrite: true })).json(); applyMasterPreset(P.master, s2.name, s2.params); renderMaster(); }
+      await reload(); status(`Updated preset “${p.name}”`);
+    } catch (e) { status('Update failed: ' + e.message); }
+  };
+  const del = p => openModal('Delete preset', el('p', {}, `Delete your ${isFx ? 'effect' : 'mastering'} preset “${p.name}”? ${isFx ? 'Tracks keep their effects.' : 'Projects keep their values.'}`),
+    [{ label: 'Cancel', primary: true, run: c => c() }, { label: '🗑 Delete', danger: true, run: async c => {
+      try { await api(base + '/' + encodeURIComponent(p.name), { method: 'DELETE' }); c(); await reload(); status(`Deleted preset “${p.name}”`); }
+      catch (e) { c(); status('Delete failed: ' + e.message); } } }]);
+  const draw = () => {
+    body.innerHTML = '';
+    body.append(el('p', { className: 'hint' }, isFx ? (t ? `Use / Update work on the selected track “${t.name}”.` : 'Select a track to use or update a preset.') : 'Use / Update work on this project\'s mastering.'));
+    items().forEach(p => body.append(el('div', { className: 'pmrow' },
+      el('div', { className: 'pminfo' }, el('b', {}, p.name), presetBadge(!p.builtin), isFx ? el('span', { className: 'pmeta' }, chainSummary(p.chain)) : null),
+      el('div', { className: 'pmbtns' },
+        el('button', { className: 'primary', onclick: () => use(p) }, 'Use'),
+        p.builtin ? null : el('button', { title: 'Rename', onclick: () => rename(p) }, '✎ Rename'),
+        p.builtin ? null : el('button', { title: isFx ? 'Overwrite with the selected track\'s effects' : 'Overwrite with the current mastering values', onclick: () => update(p) }, '⟳ Update'),
+        p.builtin ? null : el('button', { title: 'Delete', onclick: () => del(p) }, '🗑')))));
+    const nUser = isFx ? userFxPresets.length : userMasterPresets.length;
+    if (!nUser) body.append(el('p', { className: 'hint' }, isFx ? 'No custom presets yet – use “💾 Save chain…” in the Effects tab.' : 'No custom presets yet – use “💾 Save as…”.'));
+  };
+  draw();
+  modal = openModal(isFx ? 'Effect presets' : 'Mastering presets', body, [
+    { label: isFx ? '💾 Save current chain…' : '💾 Save current as…', run: () => { if (isFx) { if (t) openSaveFxPreset(t); else status('Select a track first'); } else openSaveMasterPreset(); } },
+    { label: 'Close', primary: true, run: c => c() }]);
+}
+
 /* --------------------------------------------------------------- mastering
    The project remembers the chosen preset (P.master.preset + a snapshot of its values in presetParams):
    unchanged -> "Balanced", edited afterwards -> "Balanced (custom)", nothing chosen -> "Custom".
@@ -2167,6 +2272,7 @@ function masterChanged() {
   if (lbl) {
     const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams);
     lbl.innerHTML = ''; lbl.append(M.preset ? M.preset : 'Custom'); if (mod) lbl.append(el('em', {}, ' (custom)'));
+    const fp = M.preset && findMasterPreset(M.preset); if (fp && !fp.builtin) lbl.append(' ', presetBadge(true));
     lbl.title = masterLabel();
     const rv = document.getElementById('mpRevert'); if (rv) rv.disabled = !mod;
     const up = document.getElementById('mpUpdate'); if (up) up.disabled = !(mod && findMasterPreset(M.preset) && !findMasterPreset(M.preset).builtin);
@@ -2214,6 +2320,13 @@ function openSaveMasterPreset() {
     el('p', { className: 'hint' }, 'Saves all current mastering values (HPF, EQ, compressor, saturation, width, limiter, output). Reverb/delay send settings are not part of a preset. Saved presets are available in every project.'), err),
     [{ label: 'Cancel', run: c => c() }, { label: 'Save', primary: true, run: save }]);
   setTimeout(() => name.focus(), 0);
+}
+function openPresetManagerRename(name) {
+  openNameModal('Rename preset', name, 'Renames your mastering preset. Projects keep their values.', async n => {
+    const r = await (await jsonPost('/api/master-presets/rename', { from: name, to: n })).json();
+    if (P.master.preset === name) P.master.preset = r.name;
+    await loadUserMasterPresets(); renderMaster(); status(`Renamed preset “${name}” → “${r.name}”`);
+  }, { allowOverwrite: false });
 }
 function confirmDeleteMasterPreset(name) {
   openModal('Delete preset', el('p', {}, `Delete the mastering preset “${name}”? Projects that use it keep their values.`),
@@ -2336,7 +2449,7 @@ function renderMaster() {
   const sel = el('select', { id: 'mpSel', title: 'Choose a mastering preset', onchange: e => { const v = e.target.value; if (v) chooseMasterPreset(v.slice(2)); else setMasterCustom(); } },
     el('option', { value: '' }, M.preset && !cur ? `${M.preset} (deleted)` : 'Custom'),
     el('optgroup', { label: 'Built-in' }, Object.keys(MASTER_PRESETS).map(k => el('option', { value: 'b:' + k }, k))),
-    userMasterPresets.length ? el('optgroup', { label: 'My presets' }, userMasterPresets.map(p => el('option', { value: 'u:' + p.name }, p.name))) : null);
+    userMasterPresets.length ? el('optgroup', { label: 'My presets · custom' }, userMasterPresets.map(p => el('option', { value: 'u:' + p.name }, '★ ' + p.name))) : null);
   sel.value = selVal;
   const imp = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' }, onchange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importMasterPresetFile(f); } });
   const exportCurrent = () => { const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams), n = !M.preset ? 'Custom' : mod ? M.preset + ' custom' : M.preset;
@@ -2351,7 +2464,9 @@ function renderMaster() {
           try { const r = await api('/api/master-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: M.preset, params: masterFull(M), overwrite: true }) });
             const s = await r.json(); await loadUserMasterPresets(); applyMasterPreset(M, s.name, s.params); renderMaster(); undoCaptureSoon(); status(`Updated preset “${s.name}”`); } catch (e) { status('Update failed: ' + e.message); } } }, '⟳ Update'),
         el('button', { title: 'Save the current values as a new preset', onclick: openSaveMasterPreset }, '💾 Save as…'),
-        cur && !cur.builtin ? el('button', { title: 'Delete this saved preset', onclick: () => confirmDeleteMasterPreset(cur.name) }, '🗑') : null),
+        cur && !cur.builtin ? el('button', { title: 'Rename this saved preset', onclick: () => openPresetManagerRename(cur.name) }, '✎ Rename') : null,
+        cur && !cur.builtin ? el('button', { title: 'Delete this saved preset', onclick: () => confirmDeleteMasterPreset(cur.name) }, '🗑') : null,
+        el('button', { title: 'All mastering presets: use, rename, update, delete', onclick: () => openPresetManager('master') }, '☰ Presets…')),
       el('div', { className: 'mpbtns' },
         el('button', { title: 'Download the current mastering settings as a preset file (.rushmaster.json)', onclick: exportCurrent }, '⬇ Export'),
         userMasterPresets.length ? el('button', { title: 'Download all your saved presets in one file', onclick: () => exportMasterPresets(userMasterPresets, 'rushdaw-master-presets') }, '⬇ Export all mine') : null,
@@ -3035,6 +3150,7 @@ function init() {
   loadDrumSamples();  // recorded acoustic drum kit (~2 MB)
   loadAllSamples();  // real guitar/bass recordings (~1 MB) decoded in the background right away
   loadUserMasterPresets();  // saved mastering presets (SQLite)
+  loadUserFxPresets();      // saved effect-chain presets (SQLite)
   $('#btnPlay').onclick = togglePlay;
   $('#btnRewind').onclick = () => seek(0);
   $('#btnRecord').onclick = startRecording;

@@ -345,7 +345,7 @@ class RushDAWMCP:
               "Optionally also returns the current mastering state of a project.",
               _S(project_id=("string", "Optional project id: also return its current preset label and master values.")), True)
         def list_master_presets(a):
-            out = {"builtin": M.builtin_master_presets(), "user": self.st.list_master_presets(),
+            out = {"builtin": M.builtin_master_presets(), "user": [dict(p, custom=True) for p in self.st.list_master_presets()],
                    "keys": M.MASTER_KEYS, "ranges": {k: {"min": v[0], "max": v[1]} for k, v in M.MASTER_PARAMS.items()}}
             if a.get("project_id"):
                 doc, _, _ = self._load(a["project_id"])
@@ -385,6 +385,85 @@ class RushDAWMCP:
                 raise M.ModelError("built-in presets cannot be deleted")
             try:
                 return self.st.delete_master_preset(a["name"])
+            except StorageError as e:
+                raise ToolError(str(e))
+
+        @tool("rename_master_preset", "Rename a saved user mastering preset (built-in presets cannot be renamed).",
+              _S(name=("string", "Current user preset name.", True), new_name=("string", "New name (not a built-in name).", True)))
+        def rename_master_preset(a):
+            if any(str(a["name"]).lower() == n.lower() for n in M.MASTER_PRESETS):
+                raise M.ModelError("built-in presets cannot be renamed")
+            try:
+                return {"renamed": a["name"], "preset": self.st.rename_master_preset(a["name"], M.clean_preset_name(a["new_name"]))}
+            except StorageError as e:
+                raise ToolError(str(e))
+
+        # ---- effect-chain presets (Effects tab): built-in + the user's saved ones (SQLite, shared by all projects)
+        def _find_fx_preset(name):
+            for n, c in M.FX_CHAIN_PRESETS.items():
+                if n.lower() == str(name).lower():
+                    return n, M.clean_fx_chain(c), True
+            try:
+                p = self.st.get_fx_preset(name)
+            except StorageError:
+                names = list(M.FX_CHAIN_PRESETS) + [x["name"] for x in self.st.list_fx_presets()]
+                raise M.ModelError(f"unknown effect preset '{name}'. Presets: " + ", ".join(names))
+            return p["name"], p["chain"], False
+
+        @tool("list_fx_presets", "List effect-chain presets (Effects tab): built-in ones and the user's saved presets (custom = true), with every effect and its parameters.",
+              _S(), True)
+        def list_fx_presets(a):
+            return {"builtin": M.builtin_fx_presets(), "user": [dict(p, custom=True) for p in self.st.list_fx_presets()]}
+
+        @tool("save_fx_preset", "Save a user effect-chain preset (SQLite, usable in every project). Take the chain from a project's track "
+              "(project_id + track) or give it as effects [{type, params, on}].",
+              _S(name=("string", "Preset name (not a built-in name).", True), project_id=("string", "Take the chain from this project..."),
+                 track=(None, "...and this track (id, exact name or 1-based position).", False, {"type": ["string", "integer"]}),
+                 effects=("array", "Effect chain [{type, params, on}] (instead of a track).", False, {"items": {"type": "object"}}),
+                 overwrite=("boolean", "Replace an existing user preset with this name (default false).")))
+        def save_fx_preset(a):
+            name = M.clean_fx_preset_name(a["name"])
+            if a.get("effects") is not None:
+                chain = M.clean_fx_chain(a["effects"])
+            elif a.get("project_id") and a.get("track") is not None:
+                doc, _, _ = self._load(a["project_id"])
+                chain = M.clean_fx_chain(M.find_track(doc["project"], a["track"]).get("fx") or [])
+            else:
+                raise M.ModelError("give effects, or project_id + track")
+            try:
+                return {"saved": self.st.save_fx_preset(name, chain, bool(a.get("overwrite", False)))}
+            except StorageError as e:
+                raise ToolError(str(e))
+
+        @tool("apply_fx_preset", "Load an effect-chain preset (built-in or user) onto a track - replaces the track's insert effects.",
+              _S(project_id=PID, track=TRACK, preset=("string", "Preset name (see list_fx_presets).", True)))
+        def apply_fx_preset(a):
+            name, chain, builtin = _find_fx_preset(a["preset"])
+            def fn(proj, t):
+                t["fx"] = M.fx_chain_instances(chain)
+                t["fxPreset"] = name
+            out = self._track_edit(a, "effect preset " + name, fn)
+            if isinstance(out, dict):
+                out["preset"], out["custom"] = name, not builtin
+            return out
+
+        @tool("rename_fx_preset", "Rename a saved user effect-chain preset (built-in presets cannot be renamed).",
+              _S(name=("string", "Current user preset name.", True), new_name=("string", "New name (not a built-in name).", True)))
+        def rename_fx_preset(a):
+            if any(str(a["name"]).lower() == n.lower() for n in M.FX_CHAIN_PRESETS):
+                raise M.ModelError("built-in presets cannot be renamed")
+            try:
+                return {"renamed": a["name"], "preset": self.st.rename_fx_preset(a["name"], M.clean_fx_preset_name(a["new_name"]))}
+            except StorageError as e:
+                raise ToolError(str(e))
+
+        @tool("delete_fx_preset", "Delete a saved user effect-chain preset (built-in presets cannot be deleted). Tracks keep their effects.",
+              _S(name=("string", "User preset name.", True)))
+        def delete_fx_preset(a):
+            if any(str(a["name"]).lower() == n.lower() for n in M.FX_CHAIN_PRESETS):
+                raise M.ModelError("built-in presets cannot be deleted")
+            try:
+                return self.st.delete_fx_preset(a["name"])
             except StorageError as e:
                 raise ToolError(str(e))
 

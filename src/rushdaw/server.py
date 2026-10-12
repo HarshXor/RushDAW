@@ -112,6 +112,21 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(st.save_master_preset(name, M.clean_master_params(b.get("params") or {}), bool(b.get("overwrite", True))), 201)
             if u.path == "/api/master-presets/import" and method == "POST":
                 return self._json(M.import_master_presets(st, self._body()), 201)
+            if u.path == "/api/master-presets/rename" and method == "POST":
+                b = self._json_body()
+                return self._json(st.rename_master_preset(str(b.get("from") or ""), M.clean_preset_name(b.get("to"))))
+            if u.path == "/api/fx-presets":  # built-in + user effect-chain presets (user ones live in SQLite)
+                if method == "GET":
+                    return self._json({"builtin": M.builtin_fx_presets(), "user": st.list_fx_presets()})
+                if method == "POST":
+                    b = self._json_body()
+                    return self._json(st.save_fx_preset(M.clean_fx_preset_name(b.get("name")), M.clean_fx_chain(b.get("chain")),
+                                                        bool(b.get("overwrite", False))), 201)
+            if u.path == "/api/fx-presets/rename" and method == "POST":
+                b = self._json_body()
+                return self._json(st.rename_fx_preset(str(b.get("from") or ""), M.clean_fx_preset_name(b.get("to"))))
+            if u.path.startswith("/api/fx-presets/") and method == "DELETE":
+                return self._json(st.delete_fx_preset(unquote(u.path[len("/api/fx-presets/"):])))
             if u.path.startswith("/api/master-presets/") and method == "DELETE":
                 return self._json(st.delete_master_preset(unquote(u.path[len("/api/master-presets/"):])))
             m = _PROJ.match(u.path)
