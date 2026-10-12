@@ -126,7 +126,7 @@ const MASTER_PRESETS = {
 const masterFull = p => Object.fromEntries(MASTER_KEYS.map(k => [k, (p && p[k] !== undefined) ? +p[k] : MASTER_DEFAULTS[k]]));
 const masterDiffers = (m, pp) => MASTER_KEYS.some(k => Math.abs(+(m[k] ?? MASTER_DEFAULTS[k]) - +(pp[k] ?? MASTER_DEFAULTS[k])) > 1e-6);
 // 'Balanced' -> 'Balanced (custom)' once edited after choosing it -> 'Custom' when no preset is chosen
-function masterLabel(m = P.master) { return !m.preset || !m.presetParams ? 'Custom' : m.preset + (masterDiffers(m, m.presetParams) ? ' (custom)' : ''); }
+function masterLabel(m = P.master) { return !m.preset || !m.presetParams || masterDiffers(m, m.presetParams) ? 'Custom' : m.preset; }
 function applyMasterPreset(m, name, params) { const f = masterFull(params); Object.assign(m, f); m.preset = name; m.presetParams = { ...f }; return m; }
 function defaultMaster() { return applyMasterPreset({ ...MASTER_DEFAULTS }, 'Default', MASTER_PRESETS['Default']); }
 // older projects carry no preset info: recognise an exact built-in match, otherwise 'Custom'
@@ -2112,7 +2112,12 @@ function renderFx() {
   const t = getTrack(selTrackId);
   if (!t) { box.append(el('p', { className: 'hint' }, 'Select a track (drum, guitar, bass, vocal/audio…) to add insert effects.')); return; }
   t.fx = t.fx || [];
-  const changed = (structural) => { syncGraph(); if (structural) { renderFx(); renderMixer(); } };
+  // editing a loaded chain preset detaches it: the track's chain becomes "Custom" (saved only in the project, the preset is untouched)
+  const changed = (structural) => {
+    syncGraph();
+    if (t.fxPreset) { t.fxPreset = null; if (!structural) { const n = box.querySelector('.fxpname'); if (n) n.replaceWith(el('span', { className: 'fxpname', title: 'Edited chain – stored in this project only' }, 'Custom')); } renderMixer(); }
+    if (structural) { renderFx(); renderMixer(); }
+  };
   const addSel = el('select', { onchange: e => { const v = e.target.value; e.target.selectedIndex = 0; if (!v) return;
       if (v.startsWith('preset:')) { applyFxPreset(t, v.slice(7)); return; } else t.fx.push(newFx(v));
       changed(true); } },
@@ -2122,7 +2127,8 @@ function renderFx() {
     userFxPresets.length ? el('optgroup', { label: 'My presets · custom (replace)' }, userFxPresets.map(p => el('option', { value: 'preset:' + p.name }, '★ ' + p.name))) : null);
   const cur = t.fxPreset ? findFxPreset(t.fxPreset) : null;
   box.append(el('div', { className: 'edtools' }, el('b', {}, 'Insert FX – ' + t.name), addSel,
-    t.fxPreset ? el('span', { className: 'fxpname', title: 'Last loaded chain preset' }, 'Preset: ' + t.fxPreset, presetBadge(cur ? !cur.builtin : true)) : null,
+    t.fxPreset ? el('span', { className: 'fxpname', title: 'Loaded chain preset' }, 'Preset: ' + t.fxPreset, presetBadge(cur ? !cur.builtin : true))
+      : t.fx.length ? el('span', { className: 'fxpname', title: 'Edited chain – stored in this project only' }, 'Custom') : null,
     el('button', { title: 'Save this track\'s effect chain as a preset you can use in every project', onclick: () => openSaveFxPreset(t) }, '💾 Save chain…'),
     el('button', { title: 'Your effect presets: use, rename, update, delete', onclick: () => openPresetManager('fx') }, '☰ Presets…'),
     el('span', { className: 'hint' }, 'Signal: input → effects (left → right) → channel EQ/comp → fader → pan → sends')));
@@ -2269,6 +2275,11 @@ function masterChanged() {
   if (rt) applyMaster(rt);
   if (!document.activeElement?.matches?.('input[data-mvol]')) syncMasterVol();
   const M = P.master, lbl = document.getElementById('mpLabel');
+  // editing a chosen preset (built-in or custom) detaches it: the project just stores "Custom"; the preset itself is not changed
+  if (M.preset && M.presetParams && masterDiffers(M, M.presetParams)) {
+    M.preset = null; M.presetParams = null;
+    const sel = document.getElementById('mpSel'); if (sel) sel.value = '';
+  }
   if (lbl) {
     const mod = M.preset && M.presetParams && masterDiffers(M, M.presetParams);
     lbl.innerHTML = ''; lbl.append(M.preset ? M.preset : 'Custom'); if (mod) lbl.append(el('em', {}, ' (custom)'));

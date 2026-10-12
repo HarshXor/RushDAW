@@ -166,10 +166,17 @@ def master_differs(m, preset_params):
 
 
 def master_label(m):
-    """'Balanced' / 'Balanced (custom)' when edited after choosing a preset / 'Custom' when no preset."""
-    if not m.get('preset') or not isinstance(m.get('presetParams'), dict):
+    """'Balanced' while the chosen preset is untouched; 'Custom' once edited or when no preset is chosen."""
+    if not m.get('preset') or not isinstance(m.get('presetParams'), dict) or master_differs(m, m['presetParams']):
         return 'Custom'
-    return m['preset'] + (' (custom)' if master_differs(m, m['presetParams']) else '')
+    return m['preset']
+
+
+def detach_master_if_edited(m):
+    """Editing a chosen preset detaches it: the project keeps the values as 'Custom' (the preset itself is untouched)."""
+    if m.get('preset') and isinstance(m.get('presetParams'), dict) and master_differs(m, m['presetParams']):
+        m['preset'], m['presetParams'] = None, None
+    return m
 
 
 def apply_master_preset(m, name, params):
@@ -826,6 +833,7 @@ def track_summary(proj, t, detail=True):
            'volume': t['vol'], 'pan': t['pan'], 'mute': t['mute'], 'solo': t['solo'], 'audible': track_audible(proj, t),
            'eq': t['eq'], 'comp': t['comp'], 'reverb_send': t['rev'], 'delay_send': t['dly'],
            'fx': [{'id': f['id'], 'type': f['type'], 'on': f['on'], 'params': f['p']} for f in t.get('fx', [])],
+           'fx_preset': t.get('fxPreset') or ('Custom' if t.get('fx') else None),
            'clips': [{'id': c['id'], 'kind': c['kind'], 'start_beat': c['start'],
                       **({'length_beats': c['len']} if c['kind'] == 'midi' else {'duration_sec': c.get('dur'), 'offset_sec': c.get('offset')}),
                       **clip_fade_info(proj, c),

@@ -314,13 +314,13 @@ class RushDAWMCP:
 
         def _master_out(m):
             return {"preset_label": M.master_label(m), "preset": m.get("preset"),
-                    "modified": bool(m.get("preset")) and M.master_label(m).endswith("(custom)"),
                     "master": {k: m[k] for k in M.MASTER_PARAMS}}
 
         @tool("set_master", "Edit the master bus / mastering chain (HPF -> 3-band EQ with freq/Q -> bus compressor with knee -> "
               "saturation -> stereo width -> make-up -> limiter (ceiling, release) -> output). Apply a preset (built-in or a saved "
-              "user preset) and/or set parameters. The project remembers the chosen preset: editing parameters afterwards shows "
-              "'<preset> (custom)'; with no preset the name is 'Custom'. Use preset='Custom' to detach from the preset.",
+              "user preset) and/or set parameters. The project remembers the chosen preset only while its values are untouched: "
+              "editing any parameter afterwards turns the project's mastering into 'Custom' (stored in the project only; the "
+              "preset itself is never changed - use save_master_preset to keep it). preset='Custom' detaches explicitly.",
               _S(project_id=PID, preset=("string", "Preset name (see list_master_presets), or 'Custom' to keep the values but drop the preset name."),
                  params=("object", "Parameter values, e.g. {\"makeup\": 4, \"ceiling\": -1, \"sat\": 0.3, \"width\": 1.2}. "
                                    "Keys: " + ", ".join(M.MASTER_PARAMS) + ".")))
@@ -337,6 +337,7 @@ class RushDAWMCP:
                     if k not in M.MASTER_PARAMS:
                         raise M.ModelError(f"unknown master parameter '{k}'. Parameters: " + ", ".join(M.MASTER_PARAMS))
                     m[k] = M.num(v, k, *M.MASTER_PARAMS[k])
+                M.detach_master_if_edited(m)
                 doc["project"]["master"] = m
                 return _master_out(m)
             return self._edit(a["project_id"], "master " + (a.get("preset") or "params"), run)
@@ -480,7 +481,7 @@ class RushDAWMCP:
             if a.get("project_id"):
                 doc, _, _ = self._load(a["project_id"])
                 m = M.migrate_master(doc["project"].get("master"))
-                items.append({"name": M.master_label(m).replace(" (custom)", " custom") if m.get("preset") else "Custom",
+                items.append({"name": M.master_label(m),
                               "params": {k: m[k] for k in M.MASTER_KEYS}})
             if not items:
                 raise M.ModelError("give names and/or project_id")
@@ -609,6 +610,7 @@ class RushDAWMCP:
         def set_track_effects(a):
             def fn(proj, t):
                 t["fx"] = [M.new_fx(e.get("type"), e.get("params"), e.get("on", True)) for e in a["effects"]]
+                t["fxPreset"] = None  # hand-edited chain -> 'Custom' (project only; presets are never changed)
             return self._track_edit(a, "set effects", fn)
 
         @tool("add_effect", "Add one insert effect to a track (appended, or at a 1-based position).",
@@ -617,6 +619,7 @@ class RushDAWMCP:
         def add_effect(a):
             def fn(proj, t):
                 fx = M.new_fx(a["type"], a.get("params"))
+                t["fxPreset"] = None
                 pos = a.get("position")
                 t.setdefault("fx", []).insert(len(t["fx"]) if pos is None else int(M.clamp(int(pos), 1, len(t["fx"]) + 1)) - 1, fx)
                 return {"effect_id": fx["id"]}
@@ -630,6 +633,7 @@ class RushDAWMCP:
                 fx = next((f for f in t.get("fx", []) if f["id"] == a["effect_id"]), None)
                 if fx is None:
                     raise M.ModelError(f"effect '{a['effect_id']}' not found on track '{t['name']}'")
+                t["fxPreset"] = None  # editing a loaded preset chain makes it 'Custom'
                 if a.get("remove"):
                     t["fx"].remove(fx)
                     return {"removed": fx["id"]}

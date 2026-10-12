@@ -1,4 +1,4 @@
-"""Mastering: preset naming ("X" / "X (custom)" / "Custom"), user presets (SQLite) with export/import,
+"""Mastering: preset naming ("X" untouched / "Custom" once edited or none), user presets (SQLite) with export/import,
 the HTTP API, the MCP tools and the JS <-> Python constant sync."""
 import json
 import os
@@ -22,7 +22,7 @@ class MasterModelTest(unittest.TestCase):
         M.apply_master_preset(m, "Metal", M.MASTER_PRESETS["Metal"])
         self.assertEqual(M.master_label(m), "Metal")
         m["makeup"] = 3.5
-        self.assertEqual(M.master_label(m), "Metal (custom)")
+        self.assertEqual(M.master_label(m), "Custom")
         m["makeup"] = M.master_preset_full(M.MASTER_PRESETS["Metal"])["makeup"]
         self.assertEqual(M.master_label(m), "Metal")  # back to the preset values -> plain name again
         m["reverbSize"] = 5  # send bus is not part of a preset
@@ -122,10 +122,23 @@ class MasterMcpTest(T.McpTest):
         st = self.call("list_master_presets", project_id=pid)
         self.assertEqual(st["project"]["preset_label"], "Default")
         r = self.call("set_master", project_id=pid, preset="punk / crust")  # case-insensitive
-        self.assertEqual((r["preset_label"], r["modified"]), ("Punk / Crust", False))
+        self.assertEqual((r["preset_label"], r["preset"]), ("Punk / Crust", "Punk / Crust"))
+        before = [p for p in self.call("list_master_presets")["builtin"] if p["name"] == "Punk / Crust"]
         r = self.call("set_master", project_id=pid, params={"sat": 0.5})
-        self.assertEqual((r["preset_label"], r["modified"]), ("Punk / Crust (custom)", True))
-        self.assertEqual(self.call("get_project", project_id=pid, detail=False)["master_preset_label"], "Punk / Crust (custom)")
+        # edited -> detached: just "Custom", stored in the project only
+        self.assertEqual((r["preset_label"], r["preset"]), ("Custom", None))
+        self.assertEqual(self.call("get_project", project_id=pid, detail=False)["master_preset_label"], "Custom")
+        after = [p for p in self.call("list_master_presets")["builtin"] if p["name"] == "Punk / Crust"]
+        self.assertEqual(before, after)  # the preset itself is untouched
+        # effect chains: a loaded preset becomes "Custom" once edited, the saved preset stays as it was
+        self.call("save_fx_preset", name="FxKeep", effects=[{"type": "dist", "params": {"drive": 0.4}}])
+        self.call("apply_fx_preset", project_id=pid, track=1, preset="FxKeep")
+        tr = lambda: self.call("get_project", project_id=pid)["tracks"][0]
+        self.assertEqual(tr()["fx_preset"], "FxKeep")
+        self.call("add_effect", project_id=pid, track=1, type="reverb")
+        self.assertEqual(tr()["fx_preset"], "Custom")
+        kept = [p for p in self.call("list_fx_presets")["user"] if p["name"] == "FxKeep"][0]
+        self.assertEqual([e["type"] for e in kept["chain"]], ["dist"])
         saved = self.call("save_master_preset", name="Crusty", project_id=pid)
         self.assertEqual(saved["project"]["preset_label"], "Crusty")
         self.assertEqual(saved["saved"]["params"]["sat"], 0.5)
