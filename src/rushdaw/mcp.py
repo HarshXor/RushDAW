@@ -179,14 +179,14 @@ class RushDAWMCP:
                  sort=("string", "Sort key.", False, {"enum": ["updated", "created", "name", "bpm", "revisions"]}),
                  order=("string", "asc or desc (default desc).", False, {"enum": ["asc", "desc"]}),
                  offset=("integer", "Skip this many projects (default 0). Use next_offset from the previous call."),
-                 limit=("integer", "How many projects to return (default 24, max 100)."),
+                 limit=("integer", "How many projects to return (default 12, max 100)."),
                  page=("integer", "1-based page (alternative to offset)."), per_page=("integer", "Results per page (alternative to limit)."),
                  trash=("boolean", "List the Trash (deleted projects) instead.")), True)
         def list_projects(a):
             r = self.st.query_projects(q=a.get("query", ""), deleted=bool(a.get("trash")), date_field=a.get("date_field", "updated"),
                                        date_from=a.get("date_from"), date_to=a.get("date_to"), bpm_min=a.get("bpm_min"),
                                        bpm_max=a.get("bpm_max"), sort=a.get("sort", "updated"), order=a.get("order", "desc"),
-                                       page=a.get("page", 1), per_page=a.get("per_page", 24), offset=a.get("offset"), limit=a.get("limit"))
+                                       page=a.get("page", 1), per_page=a.get("per_page", 12), offset=a.get("offset"), limit=a.get("limit"))
             return {"total": r["total"], "offset": r["offset"], "limit": r["limit"], "next_offset": r["next_offset"], "has_more": r["has_more"],
                     "page": r["page"], "pages": r["pages"], "per_page": r["per_page"],
                     "projects": [{"id": p["id"], "name": p["name"], "bpm": p["bpm"], "time_signature": f"{p['sig']}/4",

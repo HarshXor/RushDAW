@@ -2892,7 +2892,7 @@ const projectUrl = id => location.pathname + '#/project/' + id;
 const hashProjectId = () => (location.hash.match(/^#\/project\/([0-9a-f]{32})\/?$/) || location.hash.match(/^#p=([0-9a-f]{32})$/) || [])[1] || null;
 function hideHome() { $('#home').classList.remove('show'); }
 // Project list: search, filters, sorting and pagination all run on the server (SQLite), only one page is loaded.
-const HOME_LIMIT = 24;  // projects per scroll step (offset / limit pagination, not shown in the UI)
+const HOME_LIMIT = 12;  // projects per scroll step (offset / limit pagination, not shown in the UI)
 const homeQ = { page: 1, loading: false, offset: 0, more: false };
 function homeParams() {
   const v = id => $(id).value.trim(), pr = new URLSearchParams();
@@ -2992,7 +2992,7 @@ async function renderHome() {
     list.innerHTML = '';
     if (!cards.length) list.append(el('p', { className: 'hint' }, filtered ? 'No project matches the search / filters.' : showTrash ? 'Trash is empty.' : 'No projects yet – create one above.'));
     list.append(...cards);
-    homeQ.loading = false; homeFooter(data); homeMaybeMore();
+    homeQ.loading = false; homeFooter(data);  // shows the first 12; the next ones load when you scroll down
   } catch (e) { if (my === homeReq) { homeQ.loading = false; list.innerHTML = ''; $('#projPager').innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); } }
 }
 async function homeLoadMore() {
@@ -3004,9 +3004,9 @@ async function homeLoadMore() {
     homeLast = data; homeQ.offset += data.projects.length; homeQ.more = !!data.has_more && data.projects.length > 0;
     $('#projList').append(...data.projects.map(homeCard));
   } catch (e) { status('Loading more projects failed: ' + e.message); }
-  finally { if (my === homeReq) { homeQ.loading = false; homeFooter(homeLast); homeMaybeMore(); } }
+  finally { if (my === homeReq) { homeQ.loading = false; homeFooter(homeLast); } }
 }
-// fetch the next page when the sentinel is (almost) visible - also right after a load if the page is short
+// fetch the next page when the user scrolls the sentinel (almost) into view
 function homeMaybeMore() {
   const home = $('#home'), pager = $('#projPager');
   if (!home.classList.contains('show') || !homeLast || !homeQ.more || homeQ.loading) return;
@@ -3298,7 +3298,7 @@ function init() {
   $('#fReset').onclick = () => { ['#projSearch', '#fFrom', '#fTo', '#fBpmMin', '#fBpmMax'].forEach(id => { $(id).value = ''; }); $('#fDateField').value = 'updated'; $('#fSort').value = 'updated'; $('#fOrder').value = 'desc'; homeQ.page = 1; renderHome(); };
   $('#btnTrash').onclick = () => { showTrash = !showTrash; homeQ.page = 1; renderHome(); };
   $('#home').addEventListener('scroll', homeMaybeMore, { passive: true });
-  window.addEventListener('resize', homeMaybeMore);
+  $('#home').addEventListener('wheel', e => { if (e.deltaY > 0) homeMaybeMore(); }, { passive: true });  // short lists have no scrollbar
   setInterval(updateDirty, 1000);
   // pick up edits made from outside the browser (MCP tools create new revisions)
   let externalWarned = 0;

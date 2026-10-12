@@ -92,7 +92,7 @@ class Handler(SimpleHTTPRequestHandler):
                     res = st.query_projects(q=q.get("q", ""), deleted=q.get("deleted") == "1", date_field=q.get("date_field", "updated"),
                                             date_from=q.get("from"), date_to=q.get("to"), bpm_min=q.get("bpm_min"),
                                             bpm_max=q.get("bpm_max"), sort=q.get("sort", "updated"), order=q.get("order", "desc"),
-                                            page=q.get("page", 1), per_page=q.get("per_page", 24),
+                                            page=q.get("page", 1), per_page=q.get("per_page", 12),
                                             offset=q.get("offset"), limit=q.get("limit"))
                     return self._json({"home": st.home, **res})
                 if method == "POST":

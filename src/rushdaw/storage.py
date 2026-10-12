@@ -388,7 +388,7 @@ class Storage:
              "revisions": "revision_count"}
 
     def query_projects(self, q="", deleted=False, date_field="updated", date_from=None, date_to=None,
-                       bpm_min=None, bpm_max=None, sort="updated", order="desc", page=1, per_page=24, offset=None, limit=None):
+                       bpm_min=None, bpm_max=None, sort="updated", order="desc", page=1, per_page=12, offset=None, limit=None):
         """Server-side project listing: text search (name + revision notes), date range on created/updated,
         BPM range, sorting and pagination. Dates are 'YYYY-MM-DD' (local time, both ends inclusive) or epoch seconds."""
         where, args = ["p.deleted_at IS NOT NULL" if deleted else "p.deleted_at IS NULL"], []
@@ -413,7 +413,7 @@ class Storage:
         if sort_sql is None:
             raise StorageError("sort must be one of: " + ", ".join(self.SORTS))
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
-        page, per_page = max(1, int(page or 1)), min(100, max(1, int(per_page or 24)))
+        page, per_page = max(1, int(page or 1)), min(100, max(1, int(per_page or 12)))
         if limit not in (None, ""):  # offset / limit pagination (infinite scroll) - wins over page / per_page
             per_page = min(100, max(1, int(limit)))
         off = max(0, int(offset)) if offset not in (None, "") else (page - 1) * per_page
