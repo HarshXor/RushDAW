@@ -1501,7 +1501,7 @@ function openModal(title, body, buttons = []) {
     el('div', { className: 'dlg-box' },
       el('div', { className: 'dlg-head' }, el('b', {}, title), el('button', { title: 'Close', onclick: () => onCancel() }, '✕')),
       el('div', { className: 'mbody' }, body),
-      el('div', { className: 'mfoot' }, buttons.map(b => el('button', { className: b.primary ? 'primary' : '', onclick: () => b.run(close) }, b.label)))));
+      el('div', { className: 'mfoot' }, buttons.map(b => el('button', { className: b.primary ? 'primary' : b.danger ? 'danger' : '', onclick: () => b.run(close) }, b.label)))));
   document.body.append(box); document.addEventListener('keydown', esc, true);
   return { close, setCancel: f => { onCancel = () => { f(); close(); }; } };
 }
@@ -2740,6 +2740,22 @@ function mixLine(mix) {
   if (mix.mute.length) parts.push('Muted: ' + mix.mute.join(', '));
   return el('div', { className: 'pmeta pmix', title: 'Download plays: ' + (mix.audible.join(', ') || 'nothing (all silent)') }, parts.join(' · '));
 }
+// Delete a project = move it to the Trash, only after a confirmation modal (Cancel is the default button)
+function confirmDeleteProject(p) {
+  const body = el('div', {},
+    el('p', {}, `Delete “${p.name}”?`),
+    el('p', { className: 'hint' }, `It is moved to the Trash (${p.revision_count ?? p.head_revision} revision${(p.revision_count ?? p.head_revision) === 1 ? '' : 's'}, ${fmtSize(p.size)}). Open “🗑 Trash” → ↺ Restore to bring it back; nothing is erased from disk.`));
+  let busy = false;
+  openModal('Delete project', body, [
+    { label: 'Cancel', primary: true, run: close => close() },
+    { label: '🗑 Move to Trash', danger: true, run: async close => {
+      if (busy) return; busy = true;
+      try { await api(`/api/projects/${p.id}`, { method: 'DELETE' }); close(); status(`Moved “${p.name}” to the Trash`); renderHome(); }
+      catch (e) { busy = false; status('Delete failed: ' + e.message); }
+    } },
+  ]);
+  setTimeout(() => document.querySelector('.rdmodal .mfoot button.primary')?.focus(), 0);
+}
 async function renderHome() {
   const list = $('#projList'), pager = $('#projPager'), my = ++homeReq;
   list.innerHTML = '<p class="hint">Loading…</p>';
@@ -2776,7 +2792,7 @@ async function renderHome() {
               inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
               inp.onblur = () => done(true); nameEl.replaceWith(inp); inp.focus(); inp.select();
             } }, '✎ Rename'),
-            el('button', { title: 'Move to trash (can be restored)', onclick: async () => { await api(`/api/projects/${p.id}`, { method: 'DELETE' }); renderHome(); } }, '🗑')]));
+            el('button', { title: 'Delete: move to Trash (asks first, can be restored)', onclick: () => confirmDeleteProject(p) }, '🗑')]));
       if (!showTrash) nameEl.onclick = () => openProject(p.id);
       list.append(card);
     });

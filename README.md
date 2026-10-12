@@ -75,7 +75,7 @@ All data stays on your computer in `~/.rushdaw/` (change with `rushdaw --home PA
 - `db.sql` table `projects`: id, name, bpm, time signature, created/updated time, latest revision, deleted time (soft delete).
 - `db.sql` table `revisions`: project, revision number, note, file name, size, SHA-256, track count, time.
 - Project content (including audio) is **not** stored in the database. It lives in the `.rushdaw` files, written atomically.
-- Deleting a project only moves it to the Trash. Its files and history stay on disk.
+- Deleting a project asks first (confirmation modal: Cancel is the default, Esc / click outside = Cancel) and only moves it to the Trash. Its files and history stay on disk.
 
 ## MCP (edit projects from an AI agent)
 
