@@ -388,7 +388,7 @@ class Storage:
              "revisions": "revision_count"}
 
     def query_projects(self, q="", deleted=False, date_field="updated", date_from=None, date_to=None,
-                       bpm_min=None, bpm_max=None, sort="updated", order="desc", page=1, per_page=24):
+                       bpm_min=None, bpm_max=None, sort="updated", order="desc", page=1, per_page=24, offset=None, limit=None):
         """Server-side project listing: text search (name + revision notes), date range on created/updated,
         BPM range, sorting and pagination. Dates are 'YYYY-MM-DD' (local time, both ends inclusive) or epoch seconds."""
         where, args = ["p.deleted_at IS NOT NULL" if deleted else "p.deleted_at IS NULL"], []
@@ -414,6 +414,10 @@ class Storage:
             raise StorageError("sort must be one of: " + ", ".join(self.SORTS))
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
         page, per_page = max(1, int(page or 1)), min(100, max(1, int(per_page or 24)))
+        if limit not in (None, ""):  # offset / limit pagination (infinite scroll) - wins over page / per_page
+            per_page = min(100, max(1, int(limit)))
+        off = max(0, int(offset)) if offset not in (None, "") else (page - 1) * per_page
+        page = off // per_page + 1
         base = " FROM projects p WHERE " + " AND ".join(where)
         with self._connect() as db:
             total = db.execute("SELECT COUNT(*)" + base, args).fetchone()[0]
@@ -422,7 +426,7 @@ class Storage:
                           (SELECT size FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS size,
                           (SELECT mix FROM revisions r WHERE r.project_id = p.id AND r.number = p.head_revision) AS mix"""
                 + base + f" ORDER BY {sort_sql} {direction}, p.updated_at DESC LIMIT ? OFFSET ?",
-                args + [per_page, (page - 1) * per_page]).fetchall()
+                args + [per_page, off]).fetchall()
         pages = max(1, -(-total // per_page))
         projects = []
         for r in rows:
@@ -434,7 +438,9 @@ class Storage:
             if d["mix"] is None and d.get("head_revision"):
                 d["mix"] = self._backfill_mix(d["id"], d["head_revision"])
             projects.append(d)
-        return {"projects": projects, "total": total, "page": page, "per_page": per_page, "pages": pages}
+        nxt = off + len(projects)
+        return {"projects": projects, "total": total, "page": page, "per_page": per_page, "pages": pages,
+                "offset": off, "limit": per_page, "next_offset": nxt if nxt < total else None, "has_more": nxt < total}
 
 
 def _to_epoch(v, end=False):

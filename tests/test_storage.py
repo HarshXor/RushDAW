@@ -151,6 +151,20 @@ class PackageAndQueryTest(unittest.TestCase):
         doc = json.loads(unpack_package(nested.getvalue()))
         self.assertEqual(base64.b64decode(doc["audio"]["b2"]["wav"]), self.WAV + b"2")
 
+    def test_query_projects_offset_limit(self):
+        for i in range(30):
+            self.st.create_project(f"Scroll {i:02d}", bpm=100 + i)
+        seen, off, calls = [], 0, 0
+        while off is not None:  # what the infinite-scroll project list does: limit 24, follow next_offset
+            r = self.st.query_projects(q="Scroll", sort="name", order="asc", offset=off, limit=24)
+            seen += [p["name"] for p in r["projects"]]
+            off, calls = r["next_offset"], calls + 1
+        self.assertEqual(calls, 2)
+        self.assertEqual(seen, [f"Scroll {i:02d}" for i in range(30)])  # every project once, in order
+        self.assertEqual((r["offset"], r["limit"], r["has_more"]), (24, 24, False))
+        self.assertEqual(len(self.st.query_projects(q="Scroll", offset=29, limit=24)["projects"]), 1)
+        self.assertEqual(self.st.query_projects(q="Scroll", limit=500)["limit"], 100)  # capped
+
     def test_query_projects_search_filters_pagination(self):
         ids = []
         for i, (name, bpm) in enumerate([("Crust One", 180), ("Doom Slow", 70), ("crust two", 190), ("Pop", 120), ("Punk", 200)]):

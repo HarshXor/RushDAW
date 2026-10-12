@@ -2892,13 +2892,14 @@ const projectUrl = id => location.pathname + '#/project/' + id;
 const hashProjectId = () => (location.hash.match(/^#\/project\/([0-9a-f]{32})\/?$/) || location.hash.match(/^#p=([0-9a-f]{32})$/) || [])[1] || null;
 function hideHome() { $('#home').classList.remove('show'); }
 // Project list: search, filters, sorting and pagination all run on the server (SQLite), only one page is loaded.
-const homeQ = { page: 1, loading: false };
+const HOME_LIMIT = 24;  // projects per scroll step (offset / limit pagination, not shown in the UI)
+const homeQ = { page: 1, loading: false, offset: 0, more: false };
 function homeParams() {
   const v = id => $(id).value.trim(), pr = new URLSearchParams();
   const add = (k, val) => { if (val !== '' && val != null) pr.set(k, val); };
   add('q', v('#projSearch')); add('date_field', v('#fDateField')); add('from', v('#fFrom')); add('to', v('#fTo'));
   add('bpm_min', v('#fBpmMin')); add('bpm_max', v('#fBpmMax')); add('sort', v('#fSort')); add('order', v('#fOrder'));
-  add('per_page', v('#fPerPage')); add('page', homeQ.page); if (showTrash) pr.set('deleted', '1');
+  if (showTrash) pr.set('deleted', '1');
   return pr;
 }
 let homeReq = 0;
@@ -2954,33 +2955,36 @@ function homeCard(p) {
   if (!showTrash) nameEl.onclick = () => openProject(p.id);
   return card;
 }
-async function homeFetch(n) {
-  homeQ.page = n;
-  return (await api('/api/projects?' + homeParams())).json();
+async function homeFetch(offset, limit = HOME_LIMIT) {
+  const pr = homeParams(); pr.set('offset', offset); pr.set('limit', limit);
+  return (await api('/api/projects?' + pr)).json();
 }
 function homeFooter(data) {
   const pager = $('#projPager'), shown = $('#projList').querySelectorAll('.pcard').length;
   pager.innerHTML = '';
   if (!data || !data.total) return;
-  const more = homeQ.page < data.pages;
+  const more = homeQ.more;
   pager.append(el('span', { className: 'pmeta' }, more ? `Showing ${shown} of ${data.total} · scroll for more` : `All ${data.total} shown`));
   if (more) pager.append(el('button', { title: 'Load the next page now', onclick: () => homeLoadMore() }, homeQ.loading ? 'Loading…' : 'Load more'));
 }
 let homeLast = null;
 async function renderHome() {
-  const list = $('#projList'), my = ++homeReq, upTo = Math.max(1, homeQ.page);
+  // homeQ.page = 1 (set by search / filters / Trash) starts at the top; otherwise reload what was already shown
+  const list = $('#projList'), my = ++homeReq, want = homeQ.page === 1 ? HOME_LIMIT : Math.max(HOME_LIMIT, homeQ.offset);
   homeQ.loading = true;
   list.innerHTML = '<p class="hint">Loading…</p>'; $('#projPager').innerHTML = '';
   $('#homeTitle').textContent = showTrash ? 'Trash (deleted projects – files are kept)' : 'Projects';
   $('#btnTrash').textContent = showTrash ? '← Back to projects' : '🗑 Trash';
   try {
     const cards = []; let data = null;
-    for (let n = 1; n <= upTo; n++) {  // reload as many pages as were loaded before (keeps the scroll place)
-      data = await homeFetch(n);
+    let off = 0;
+    do {  // reload as many projects as were shown before (keeps the scroll place), max 100 per request
+      data = await homeFetch(off, Math.min(100, want - off));
       if (my !== homeReq) return;  // a newer search is already running
       data.projects.forEach(p => cards.push(homeCard(p)));
-      if (n >= data.pages) break;
-    }
+      off += data.projects.length;
+    } while (data.has_more && off < want && data.projects.length);
+    homeQ.offset = off; homeQ.more = !!data.has_more; homeQ.page = 2;  // page != 1 -> later reloads keep the place
     homeLast = data;
     $('#homePath').textContent = `Data: ${data.home}/db.sql  ·  files: ${data.home}/file/`;
     const filtered = !!(homeParams().get('q') || homeParams().get('from') || homeParams().get('to') || homeParams().get('bpm_min') || homeParams().get('bpm_max'));
@@ -2992,19 +2996,20 @@ async function renderHome() {
   } catch (e) { if (my === homeReq) { homeQ.loading = false; list.innerHTML = ''; $('#projPager').innerHTML = ''; list.append(el('p', { className: 'hint' }, 'Cannot reach the RushDAW server: ' + e.message)); } }
 }
 async function homeLoadMore() {
-  if (homeQ.loading || !homeLast || homeQ.page >= homeLast.pages) return;
+  if (homeQ.loading || !homeLast || !homeQ.more) return;
   const my = homeReq; homeQ.loading = true; homeFooter(homeLast);
   try {
-    const data = await homeFetch(homeQ.page + 1);
+    const data = await homeFetch(homeQ.offset);
     if (my !== homeReq) return;  // filters changed meanwhile
-    homeLast = data; $('#projList').append(...data.projects.map(homeCard));
-  } catch (e) { homeQ.page--; status('Loading more projects failed: ' + e.message); }
+    homeLast = data; homeQ.offset += data.projects.length; homeQ.more = !!data.has_more && data.projects.length > 0;
+    $('#projList').append(...data.projects.map(homeCard));
+  } catch (e) { status('Loading more projects failed: ' + e.message); }
   finally { if (my === homeReq) { homeQ.loading = false; homeFooter(homeLast); homeMaybeMore(); } }
 }
 // fetch the next page when the sentinel is (almost) visible - also right after a load if the page is short
 function homeMaybeMore() {
   const home = $('#home'), pager = $('#projPager');
-  if (!home.classList.contains('show') || !homeLast || homeQ.page >= homeLast.pages) return;
+  if (!home.classList.contains('show') || !homeLast || !homeQ.more || homeQ.loading) return;
   if (pager.getBoundingClientRect().top < home.getBoundingClientRect().bottom + 300) setTimeout(homeLoadMore, 0);
 }
 /* revision history dialog */
@@ -3288,7 +3293,7 @@ function init() {
   // project list filters: everything is queried on the server; typing is debounced
   let searchT = null;
   $('#projSearch').oninput = () => { clearTimeout(searchT); searchT = setTimeout(() => { homeQ.page = 1; renderHome(); }, 300); };
-  ['#fDateField', '#fFrom', '#fTo', '#fSort', '#fOrder', '#fPerPage'].forEach(id => { $(id).onchange = () => { homeQ.page = 1; renderHome(); }; });
+  ['#fDateField', '#fFrom', '#fTo', '#fSort', '#fOrder'].forEach(id => { $(id).onchange = () => { homeQ.page = 1; renderHome(); }; });
   ['#fBpmMin', '#fBpmMax'].forEach(id => { $(id).oninput = () => { clearTimeout(searchT); searchT = setTimeout(() => { homeQ.page = 1; renderHome(); }, 400); }; });
   $('#fReset').onclick = () => { ['#projSearch', '#fFrom', '#fTo', '#fBpmMin', '#fBpmMax'].forEach(id => { $(id).value = ''; }); $('#fDateField').value = 'updated'; $('#fSort').value = 'updated'; $('#fOrder').value = 'desc'; homeQ.page = 1; renderHome(); };
   $('#btnTrash').onclick = () => { showTrash = !showTrash; homeQ.page = 1; renderHome(); };

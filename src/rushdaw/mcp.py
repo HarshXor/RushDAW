@@ -169,7 +169,8 @@ class RushDAWMCP:
 
         @tool("list_projects", "List / search projects with server-side filters and pagination (same as the Projects page): "
               "text search in names and revision notes, date range on updated or created (YYYY-MM-DD, inclusive), BPM range, "
-              "sort (updated|created|name|bpm|revisions, asc|desc), page / per_page (max 100). trash=true lists deleted projects. "
+              "sort (updated|created|name|bpm|revisions, asc|desc), pagination by offset / limit (max 100; next_offset is returned "
+              "while has_more) or page / per_page. trash=true lists deleted projects. "
               "Each project has 'mix' = {solo, mute, audible}: the layers a Download of the latest saved revision plays.",
               _S(query=("string", "Text to search in project names and revision notes."),
                  date_field=("string", "updated (default) or created.", False, {"enum": ["updated", "created"]}),
@@ -177,14 +178,17 @@ class RushDAWMCP:
                  bpm_min=("number", "Minimum BPM."), bpm_max=("number", "Maximum BPM."),
                  sort=("string", "Sort key.", False, {"enum": ["updated", "created", "name", "bpm", "revisions"]}),
                  order=("string", "asc or desc (default desc).", False, {"enum": ["asc", "desc"]}),
-                 page=("integer", "1-based page (default 1)."), per_page=("integer", "Results per page (default 24, max 100)."),
+                 offset=("integer", "Skip this many projects (default 0). Use next_offset from the previous call."),
+                 limit=("integer", "How many projects to return (default 24, max 100)."),
+                 page=("integer", "1-based page (alternative to offset)."), per_page=("integer", "Results per page (alternative to limit)."),
                  trash=("boolean", "List the Trash (deleted projects) instead.")), True)
         def list_projects(a):
             r = self.st.query_projects(q=a.get("query", ""), deleted=bool(a.get("trash")), date_field=a.get("date_field", "updated"),
                                        date_from=a.get("date_from"), date_to=a.get("date_to"), bpm_min=a.get("bpm_min"),
                                        bpm_max=a.get("bpm_max"), sort=a.get("sort", "updated"), order=a.get("order", "desc"),
-                                       page=a.get("page", 1), per_page=a.get("per_page", 24))
-            return {"total": r["total"], "page": r["page"], "pages": r["pages"], "per_page": r["per_page"],
+                                       page=a.get("page", 1), per_page=a.get("per_page", 24), offset=a.get("offset"), limit=a.get("limit"))
+            return {"total": r["total"], "offset": r["offset"], "limit": r["limit"], "next_offset": r["next_offset"], "has_more": r["has_more"],
+                    "page": r["page"], "pages": r["pages"], "per_page": r["per_page"],
                     "projects": [{"id": p["id"], "name": p["name"], "bpm": p["bpm"], "time_signature": f"{p['sig']}/4",
                                   "revision": p["head_revision"], "revisions": p["revision_count"], "size": p["size"],
                                   "created_at": p["created_at"], "updated_at": p["updated_at"], "mix": p.get("mix")} for p in r["projects"]]}
