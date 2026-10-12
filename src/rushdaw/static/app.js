@@ -1704,6 +1704,27 @@ function mergeSelected() {
   selClipSet.clear(); selClipId = nc.id; lastFocus = 'clip';
   render(); status(`Merged ${clips.length} ${clips[0].kind === 'midi' ? 'regions' : 'audio clips'} into one (${+((end - start) / P.sig).toFixed(2)} bar)`);
 }
+/* Denoise an audio clip (ffmpeg afftdn on the server, POST /api/denoise). The clip gets a NEW buffer id, so the
+   original audio stays for undo / other clips using it; can be applied again and again ("denoised ×N"). */
+let denoising = false;
+const dnBase = n => String(n || 'Audio').replace(/ · denoised ×\d+$/, '');
+const dnCount = n => +((String(n || '').match(/ · denoised ×(\d+)$/) || [])[1] || 0);
+async function denoiseClip(t, c, strength = 'medium') {
+  if (denoising || c.kind !== 'audio' || !buffers.has(c.buf)) return;
+  denoising = true; ensureCtx();
+  const src = c.buf, name = bufNames.get(src) || 'Audio';
+  try {
+    status(`Denoising “${dnBase(name)}” (${strength})…`);
+    const r = await api('/api/denoise?strength=' + encodeURIComponent(strength), { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: encodeWAV(buffers.get(src), 16) });
+    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+    if (c.buf !== src) throw new Error('clip changed while denoising');
+    const id = nid('b'); buffers.set(id, buf); peaksCache?.delete?.(id);
+    bufNames.set(id, `${dnBase(name)} · denoised ×${dnCount(name) + 1}`);
+    c.buf = id; render(); undoCaptureSoon();
+    status(`Denoised “${dnBase(name)}” (${strength}, pass ${dnCount(name) + 1}) – Ctrl/Cmd+Z to undo`);
+  } catch (e) { status('Denoise failed: ' + e.message); }
+  finally { denoising = false; }
+}
 function deleteSelectedClips() {
   const items = selectedClips(); if (!items.length) return;
   items.forEach(([t, c]) => { t.clips = t.clips.filter(x => x !== c); });
@@ -1869,6 +1890,10 @@ function clipMenu(e, t, c) {
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
     '-', { label: '🗑 Delete region', run: remove },
   ] : [...fades,
+    { label: '🔇 Denoise – light', run: () => denoiseClip(t, c, 'light') },
+    { label: '🔇 Denoise – medium', run: () => denoiseClip(t, c, 'medium') },
+    { label: '🔇 Denoise – strong', run: () => denoiseClip(t, c, 'strong') },
+    '-',
     { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
     '-', { label: '🗑 Delete clip', run: remove },

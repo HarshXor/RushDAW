@@ -71,3 +71,48 @@ def convert(wav_bytes, fmt, title="RushDAW"):
             raise RuntimeError(proc.stderr.decode("utf-8", "replace")[-800:] or "ffmpeg failed")
         with open(dst, "rb") as f:
             return f.read(), ext, mime
+
+
+def noise_floor_db(ffmpeg, path):
+    """Estimate the noise floor (dBFS) as the 10th-percentile RMS of 50 ms frames, clamped to afftdn's -80..-20 range."""
+    import array
+    import math
+    proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000",
+                           "-f", "s16le", "-"], capture_output=True, timeout=300)
+    a = array.array("h")
+    a.frombytes(proc.stdout[: len(proc.stdout) // 2 * 2])
+    n = 800  # 50 ms at 16 kHz
+    rms = sorted(math.sqrt(sum(x * x for x in a[i:i + n]) / n) / 32768 for i in range(0, len(a) - n + 1, n))
+    rms = [r for r in rms if r > 1e-6]  # ignore digital silence
+    if not rms:
+        return -80.0
+    return max(-80.0, min(-20.0, 20 * math.log10(rms[len(rms) // 10]) + 4))  # afftdn works best a few dB above the RMS
+
+
+DENOISE_LEVELS = {"light": 6, "medium": 12, "strong": 24}
+
+
+def denoise(wav_bytes, strength="medium"):
+    """Reduce steady background noise (hiss, hum, room tone) with ffmpeg's FFT denoiser (afftdn) with the noise floor
+    measured from the quietest 10% of the clip. Returns a new WAV (32-bit float, same rate/channels) - can be applied again for more reduction."""
+    if wav_bytes[:4] != b"RIFF":
+        raise ValueError("audio must be a WAV file")
+    nr = DENOISE_LEVELS.get(str(strength).lower()) if not isinstance(strength, (int, float)) else float(strength)
+    if nr is None:
+        raise ValueError("strength must be light | medium | strong or a number of dB (1-40)")
+    nr = max(1.0, min(40.0, float(nr)))
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not available; install imageio-ffmpeg or ffmpeg")
+    with tempfile.TemporaryDirectory(prefix="rushdaw_dn_") as tmp:
+        src, dst = os.path.join(tmp, "in.wav"), os.path.join(tmp, "out.wav")
+        with open(src, "wb") as f:
+            f.write(wav_bytes)
+        nf = noise_floor_db(ffmpeg, src)
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src,
+               "-af", f"afftdn=nr={nr:g}:nf={nf:.1f}", "-c:a", "pcm_f32le", dst]
+        proc = subprocess.run(cmd, capture_output=True, timeout=600)
+        if proc.returncode != 0 or not os.path.exists(dst):
+            raise RuntimeError("denoise failed: " + proc.stderr.decode("utf-8", "replace")[-400:])
+        with open(dst, "rb") as f:
+            return f.read()

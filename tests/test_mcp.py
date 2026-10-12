@@ -154,6 +154,65 @@ class McpTest(unittest.TestCase):
         self.assertEqual(json.loads(res["content"][0]["text"]), res["structuredContent"])
         return res["structuredContent"]
 
+    def test_denoise_clip(self):
+        import base64, io, math, random, struct, wave
+        sr = 22050
+        rnd = random.Random(1)
+        frames = [(0.25 * math.sin(2 * math.pi * 440 * i / sr) if i >= sr else 0.0) + rnd.uniform(-0.05, 0.05) for i in range(sr * 2)]
+        bio = io.BytesIO()
+        with wave.open(bio, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+            w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, x)) * 32767)) for x in frames))
+        wav = bio.getvalue()
+
+        def rms(wav_bytes, a, b):  # RMS of seconds a..b of a (int16 or float32) WAV
+            with wave.open(io.BytesIO(wav_bytes)) as w:
+                n, sw, raw = w.getnframes(), w.getsampwidth(), w.readframes(w.getnframes())
+            fmt = "<%dh" % n if sw == 2 else "<%df" % n
+            xs = struct.unpack(fmt, raw[: n * sw])
+            xs = [x / 32767 for x in xs] if sw == 2 else list(xs)
+            seg = xs[int(a * sr): int(b * sr)]
+            return math.sqrt(sum(x * x for x in seg) / len(seg))
+
+        # HTTP endpoint used by the editor's right-click -> Denoise (stdlib wave can't read float WAV -> check size/RIFF only)
+        req = urllib.request.Request(self.s.base + "/api/denoise?strength=medium", data=wav, method="POST")
+        out = urllib.request.urlopen(req).read()
+        self.assertEqual(out[:4], b"RIFF")
+        self.assertGreater(len(out), 44 + sr * 2)
+        # MCP: import a project with an audio clip, denoise it twice
+        proj = {"title": "Noisy", "bpm": 120, "sig": 4, "tracks": []}
+        tr = M.new_track(proj, "audio", "Vox")
+        tr["clips"] = [{"id": "cA", "kind": "audio", "buf": "bA", "start": 0, "offset": 0, "dur": 2, "gain": 1}]
+        doc = {"app": "rushdaw", "version": 1, "project": proj, "audio": {"bA": {"name": "take.wav", "wav": base64.b64encode(wav).decode()}}}
+        pid = self.call("import_project", data_base64=base64.b64encode(json.dumps(doc).encode()).decode())["project_id"]
+        self.call("denoise_clip", ok=False, project_id=pid, clip_id="cA", strength="nuclear")
+        r1 = self.call("denoise_clip", project_id=pid, clip_id="cA", strength="strong")
+        self.assertEqual(r1["name"], "take.wav · denoised ×1")
+        r2 = self.call("denoise_clip", project_id=pid, clip_id="cA", passes=2)
+        self.assertEqual(r2["name"], "take.wav · denoised ×3")  # repeatable, counts passes
+        self.assertEqual(r2["revision"], r1["revision"] + 1)
+        files = self.call("get_project", project_id=pid, detail=False)["audio_files"]
+        self.assertEqual(list(files.values()), ["take.wav · denoised ×3"])  # replaced audio is not kept in the head revision
+        # undo = restore the revision before the denoise -> original audio back
+        self.call("restore_revision", project_id=pid, revision=r1["revision"] - 1)
+        self.assertEqual(list(self.call("get_project", project_id=pid, detail=False)["audio_files"].values()), ["take.wav"])
+        # the denoised audio really is quieter in the noise-only part and keeps the tone
+        dn = wav
+        from rushdaw.export import denoise
+        for _ in range(2):
+            dn = denoise(dn, "strong")
+        import subprocess
+        from rushdaw.export import find_ffmpeg
+        raw = subprocess.run([find_ffmpeg(), "-loglevel", "error", "-i", "-", "-f", "s16le", "-ac", "1", "-"],
+                             input=dn, capture_output=True).stdout
+        ys = [v / 32767 for v in struct.unpack("<%dh" % (len(raw) // 2), raw[: len(raw) // 2 * 2])]
+
+        def rms_raw(a, b):
+            seg = ys[int(a * sr): int(b * sr)]
+            return math.sqrt(sum(x * x for x in seg) / len(seg))
+        self.assertLess(rms_raw(0.3, 0.9), rms(wav, 0.3, 0.9) / 4)          # noise-only part: > 12 dB quieter
+        self.assertGreater(rms_raw(1.3, 1.9), rms(wav, 1.3, 1.9) * 0.6)     # tone kept (within ~4 dB)
+
     def test_multi_solo_audible(self):
         pid = self.call("create_project", name="Solo rule", template="band")["project_id"]
         names = [t["name"] for t in self.call("get_project", project_id=pid)["tracks"]]
@@ -594,6 +653,7 @@ class ModelSyncTest(unittest.TestCase):
             "start": ("update_clip", "start_beat"), "len": ("update_clip", "length_beats"), "dur": ("update_clip", "duration_sec"),
             "notes": ("set_notes", "notes"), "bars": ("set_pattern_length", "bars"),
             "pattern": ("set_drum_pattern", "patterns"),   # merged region pads (merge_regions builds it)
+            "buf": ("denoise_clip", "strength"),           # audio replaced by a denoised copy
         }
         internal = {"id", "offset",                      # generated / derived (split keeps the audio offset)
                     "curve", "oversample", "linear"}      # Web Audio node properties of other objects named 'c'

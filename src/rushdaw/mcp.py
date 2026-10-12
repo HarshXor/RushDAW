@@ -21,6 +21,7 @@ import zipfile
 
 from . import __version__
 from . import model as M
+from .export import DENOISE_LEVELS, denoise as _denoise
 from .storage import StorageError
 
 PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18")  # first = default (HTTP+SSE era)
@@ -874,6 +875,47 @@ class RushDAWMCP:
                 t, nc = M.merge_regions(doc["project"], a.get("clip_ids"))
                 return {"clip_id": nc["id"], "track": t["name"], "start_beat": nc["start"], "length_beats": nc["len"]}
             return self._edit(a["project_id"], "merge regions", run)
+
+        @tool("denoise_clip", "Reduce steady background noise (hiss, hum, room tone) in an AUDIO clip (recording / imported file) "
+              "with an FFT denoiser. The clip gets a new audio file (the original stays in older revisions -> undo with "
+              "restore_revision); can be applied again for more reduction (name gets ' · denoised ×N'). Same as right-click -> "
+              "Denoise in the editor.",
+              _S(project_id=PID, clip_id=("string", "Audio clip id (from get_project).", True),
+                 strength=("string", "light | medium (default) | strong", False, {"enum": list(DENOISE_LEVELS)}),
+                 passes=("integer", "How many times to apply it (1-5, default 1).")))
+        def denoise_clip(a):
+            strength = a.get("strength") or "medium"
+            if strength not in DENOISE_LEVELS:
+                raise M.ModelError("strength must be light | medium | strong")
+            passes = int(M.clamp(int(a.get("passes") or 1), 1, 5))
+
+            def run(doc):
+                t, c = M.find_clip(doc["project"], a["clip_id"])
+                if c.get("kind") != "audio":
+                    raise M.ModelError("denoise works on audio clips only (recordings / imported audio), not MIDI regions")
+                audio = doc.setdefault("audio", {})
+                src = audio.get(c.get("buf"))
+                if not src or not src.get("wav"):
+                    raise M.ModelError("the audio of this clip is missing from the project")
+                wav = base64.b64decode(src["wav"])
+                try:
+                    for _ in range(passes):
+                        wav = _denoise(wav, strength)
+                except Exception as e:
+                    raise ToolError(str(e))
+                name = src.get("name") or "Audio"
+                base, n = name, 0
+                if " · denoised ×" in name:
+                    base, _, cnt = name.rpartition(" · denoised ×")
+                    n = int(cnt) if cnt.isdigit() else 0
+                new_id = "b" + os.urandom(6).hex()
+                audio[new_id] = {"name": f"{base} · denoised ×{n + passes}", "wav": base64.b64encode(wav).decode()}
+                old_id, c["buf"] = c.get("buf"), new_id
+                if not any(x.get("buf") == old_id for tr in doc["project"]["tracks"] for x in tr.get("clips", [])):
+                    audio.pop(old_id, None)  # unused now; still in older revisions (restore_revision = undo)
+                return {"clip_id": c["id"], "track": t["name"], "audio_id": new_id, "name": audio[new_id]["name"],
+                        "strength": strength, "passes": passes}
+            return self._edit(a["project_id"], f"denoise {strength} x{passes}", run)
 
         @tool("delete_clip", "Delete a clip or pattern region.", _S(project_id=PID, clip_id=("string", "Clip id.", True)))
         def delete_clip(a):

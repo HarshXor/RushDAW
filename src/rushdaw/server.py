@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import __version__
 from . import model as M
-from .export import available_formats, convert
+from .export import available_formats, convert, denoise
 from .mcp import RushDAWMCP
 from .storage import Storage, StorageError, build_package, safe_file_name
 
@@ -287,6 +287,20 @@ class Handler(SimpleHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == MESSAGES_PATH:
             return self._mcp_message({k: v[0] for k, v in parse_qs(u.query).items()})
+        if u.path == "/api/denoise":
+            q = parse_qs(u.query)
+            try:
+                out = denoise(self._body(), q.get("strength", ["medium"])[0])
+            except (StorageError, ValueError) as e:
+                return self._json({"error": str(e)}, 400)
+            except Exception as e:  # ffmpeg failure
+                return self._json({"error": str(e)}, 500)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            return
         if u.path != "/api/export":
             return self._route("POST")
         q = parse_qs(u.query)
