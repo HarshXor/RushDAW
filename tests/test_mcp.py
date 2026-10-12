@@ -213,6 +213,21 @@ class McpTest(unittest.TestCase):
         self.assertLess(rms_raw(0.3, 0.9), rms(wav, 0.3, 0.9) / 4)          # noise-only part: > 12 dB quieter
         self.assertGreater(rms_raw(1.3, 1.9), rms(wav, 1.3, 1.9) * 0.6)     # tone kept (within ~4 dB)
 
+        # only the chosen REGION is denoised: split the recording into two regions on one layer, denoise the 2nd
+        proj2 = {"title": "Split", "bpm": 120, "sig": 4, "tracks": []}
+        tr2 = M.new_track(proj2, "audio", "Vox")
+        tr2["clips"] = [{"id": "c1", "kind": "audio", "buf": "bA", "start": 0, "offset": 0, "dur": 1, "gain": 1},
+                        {"id": "c2", "kind": "audio", "buf": "bA", "start": 2, "offset": 1, "dur": 1, "gain": 1}]
+        doc2 = {"app": "rushdaw", "version": 1, "project": proj2, "audio": {"bA": {"name": "take.wav", "wav": base64.b64encode(wav).decode()}}}
+        pid2 = self.call("import_project", data_base64=base64.b64encode(json.dumps(doc2).encode()).decode())["project_id"]
+        r = self.call("denoise_clip", project_id=pid2, clip_id="c2")
+        clips = {c["id"]: c for c in self.call("get_project", project_id=pid2)["tracks"][0]["clips"]}
+        self.assertEqual((clips["c1"]["offset_sec"], clips["c2"]["offset_sec"], clips["c2"]["duration_sec"]), (0, 0, 1))
+        files = self.call("get_project", project_id=pid2, detail=False)["audio_files"]
+        self.assertEqual(sorted(files.values()), ["take.wav", "take.wav · denoised ×1"])  # original kept for region 1
+        part = denoise(wav, "medium", 1.0, 1.0)  # just the region's 1 s, 32-bit float mono
+        self.assertAlmostEqual((len(part) - 44) / 4 / sr, 1.0, delta=0.02)
+
     def test_multi_solo_audible(self):
         pid = self.call("create_project", name="Solo rule", template="band")["project_id"]
         names = [t["name"] for t in self.call("get_project", project_id=pid)["tracks"]]

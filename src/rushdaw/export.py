@@ -92,9 +92,10 @@ def noise_floor_db(ffmpeg, path):
 DENOISE_LEVELS = {"light": 6, "medium": 12, "strong": 24}
 
 
-def denoise(wav_bytes, strength="medium"):
+def denoise(wav_bytes, strength="medium", start=None, duration=None):
     """Reduce steady background noise (hiss, hum, room tone) with ffmpeg's FFT denoiser (afftdn) with the noise floor
-    measured from the quietest 10% of the clip. Returns a new WAV (32-bit float, same rate/channels) - can be applied again for more reduction."""
+    measured from the quietest 10% of the clip. start/duration (seconds) cut out just that part first (one region).
+    Returns a new WAV (32-bit float, same rate/channels) - can be applied again for more reduction."""
     if wav_bytes[:4] != b"RIFF":
         raise ValueError("audio must be a WAV file")
     nr = DENOISE_LEVELS.get(str(strength).lower()) if not isinstance(strength, (int, float)) else float(strength)
@@ -108,6 +109,15 @@ def denoise(wav_bytes, strength="medium"):
         src, dst = os.path.join(tmp, "in.wav"), os.path.join(tmp, "out.wav")
         with open(src, "wb") as f:
             f.write(wav_bytes)
+        if start is not None or duration is not None:  # only the region's part of the recording
+            cut = os.path.join(tmp, "cut.wav")
+            cc = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src, "-ss", f"{max(0.0, float(start or 0)):.6f}"]
+            if duration is not None:
+                cc += ["-t", f"{max(0.001, float(duration)):.6f}"]
+            proc = subprocess.run(cc + ["-c:a", "pcm_f32le", cut], capture_output=True, timeout=600)
+            if proc.returncode != 0:
+                raise RuntimeError("cut failed: " + proc.stderr.decode("utf-8", "replace")[-400:])
+            src = cut
         nf = noise_floor_db(ffmpeg, src)
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", src,
                "-af", f"afftdn=nr={nr:g}:nf={nf:.1f}", "-c:a", "pcm_f32le", dst]

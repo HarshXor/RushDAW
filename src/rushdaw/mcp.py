@@ -876,7 +876,8 @@ class RushDAWMCP:
                 return {"clip_id": nc["id"], "track": t["name"], "start_beat": nc["start"], "length_beats": nc["len"]}
             return self._edit(a["project_id"], "merge regions", run)
 
-        @tool("denoise_clip", "Reduce steady background noise (hiss, hum, room tone) in an AUDIO clip (recording / imported file) "
+        @tool("denoise_clip", "Reduce steady background noise (hiss, hum, room tone) in ONE audio region (recording / imported clip) - only the "
+              "part of the recording this clip plays; other clips on the layer stay as they are. "
               "with an FFT denoiser. The clip gets a new audio file (the original stays in older revisions -> undo with "
               "restore_revision); can be applied again for more reduction (name gets ' · denoised ×N'). Same as right-click -> "
               "Denoise in the editor.",
@@ -898,8 +899,9 @@ class RushDAWMCP:
                 if not src or not src.get("wav"):
                     raise M.ModelError("the audio of this clip is missing from the project")
                 wav = base64.b64decode(src["wav"])
-                try:
-                    for _ in range(passes):
+                try:  # only this region: the part of the recording the clip plays (offset .. offset+dur)
+                    wav = _denoise(wav, strength, float(c.get("offset") or 0), float(c.get("dur") or 0) or None)
+                    for _ in range(passes - 1):
                         wav = _denoise(wav, strength)
                 except Exception as e:
                     raise ToolError(str(e))
@@ -911,6 +913,7 @@ class RushDAWMCP:
                 new_id = "b" + os.urandom(6).hex()
                 audio[new_id] = {"name": f"{base} · denoised ×{n + passes}", "wav": base64.b64encode(wav).decode()}
                 old_id, c["buf"] = c.get("buf"), new_id
+                c["offset"] = 0
                 if not any(x.get("buf") == old_id for tr in doc["project"]["tracks"] for x in tr.get("clips", [])):
                     audio.pop(old_id, None)  # unused now; still in older revisions (restore_revision = undo)
                 return {"clip_id": c["id"], "track": t["name"], "audio_id": new_id, "name": audio[new_id]["name"],

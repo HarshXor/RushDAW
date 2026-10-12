@@ -1704,27 +1704,44 @@ function mergeSelected() {
   selClipSet.clear(); selClipId = nc.id; lastFocus = 'clip';
   render(); status(`Merged ${clips.length} ${clips[0].kind === 'midi' ? 'regions' : 'audio clips'} into one (${+((end - start) / P.sig).toFixed(2)} bar)`);
 }
-/* Denoise an audio clip (ffmpeg afftdn on the server, POST /api/denoise). The clip gets a NEW buffer id, so the
-   original audio stays for undo / other clips using it; can be applied again and again ("denoised ×N"). */
+/* Denoise ONE region (audio clip) - only the part of the recording that this clip plays (offset .. offset+dur) is
+   cut out, denoised (ffmpeg afftdn on the server, POST /api/denoise) and becomes the clip's new buffer (offset 0).
+   Other clips on the layer - even ones that use the same recording - stay untouched. Repeatable ("denoised ×N");
+   every call is one undo step (the original buffer + offset come back with Ctrl/Cmd+Z). */
 let denoising = false;
 const dnBase = n => String(n || 'Audio').replace(/ · denoised ×\d+$/, '');
 const dnCount = n => +((String(n || '').match(/ · denoised ×(\d+)$/) || [])[1] || 0);
-async function denoiseClip(t, c, strength = 'medium') {
-  if (denoising || c.kind !== 'audio' || !buffers.has(c.buf)) return;
+function clipSlice(c) {  // AudioBuffer with just the samples this clip plays
+  const b = buffers.get(c.buf), sr = b.sampleRate;
+  const s0 = Math.max(0, Math.floor(c.offset * sr)), n = Math.max(1, Math.min(b.length - s0, Math.round(c.dur * sr)));
+  const out = ctx.createBuffer(b.numberOfChannels, n, sr);
+  for (let ch = 0; ch < b.numberOfChannels; ch++) out.copyToChannel(b.getChannelData(ch).subarray(s0, s0 + n), ch);
+  return out;
+}
+async function denoiseOne(c, strength) {
+  const src = c.buf, off = c.offset, name = bufNames.get(src) || 'Audio';
+  const r = await api('/api/denoise?strength=' + encodeURIComponent(strength), { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: encodeWAV(clipSlice(c), 16) });
+  const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+  if (c.buf !== src || c.offset !== off) throw new Error('clip changed while denoising');
+  const id = nid('b'); buffers.set(id, buf); bufNames.set(id, `${dnBase(name)} · denoised ×${dnCount(name) + 1}`);
+  c.buf = id; c.offset = 0; c.dur = Math.min(c.dur, buf.duration);
+  return dnCount(name) + 1;
+}
+async function denoiseClips(clips, strength = 'medium') {
+  clips = clips.filter(c => c.kind === 'audio' && buffers.has(c.buf));
+  if (denoising || !clips.length) return;
   denoising = true; ensureCtx();
-  const src = c.buf, name = bufNames.get(src) || 'Audio';
   try {
-    status(`Denoising “${dnBase(name)}” (${strength})…`);
-    const r = await api('/api/denoise?strength=' + encodeURIComponent(strength), { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: encodeWAV(buffers.get(src), 16) });
-    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
-    if (c.buf !== src) throw new Error('clip changed while denoising');
-    const id = nid('b'); buffers.set(id, buf); peaksCache?.delete?.(id);
-    bufNames.set(id, `${dnBase(name)} · denoised ×${dnCount(name) + 1}`);
-    c.buf = id; render(); undoCaptureSoon();
-    status(`Denoised “${dnBase(name)}” (${strength}, pass ${dnCount(name) + 1}) – Ctrl/Cmd+Z to undo`);
-  } catch (e) { status('Denoise failed: ' + e.message); }
+    for (const [i, c] of clips.entries()) {
+      status(`Denoising region ${i + 1}/${clips.length} (${strength})…`);
+      await denoiseOne(c, strength);
+    }
+    render(); undoCaptureSoon();  // all regions of this action = one undo step
+    status(`Denoised ${clips.length === 1 ? 'the selected region' : clips.length + ' selected regions'} (${strength}) – only that part of the audio; Ctrl/Cmd+Z to undo`);
+  } catch (e) { render(); status('Denoise failed: ' + e.message); }
   finally { denoising = false; }
 }
+const denoiseClip = (t, c, strength) => denoiseClips([c], strength);
 function deleteSelectedClips() {
   const items = selectedClips(); if (!items.length) return;
   items.forEach(([t, c]) => { t.clips = t.clips.filter(x => x !== c); });
@@ -1863,6 +1880,8 @@ function multiClipMenu(e) {
     { label: `⊕ Merge into one ${items[0][1].kind === 'midi' ? 'region' : 'audio clip'}` + (mErr ? `  (${mErr.toLowerCase()})` : ''), disabled: !!mErr, run: mergeSelected },
     { label: '⧉ Copy (Ctrl/Cmd+C)', run: () => { lastFocus = 'clip'; copySelection(false); } },
     { label: '✂ Cut (Ctrl/Cmd+X)', run: () => { lastFocus = 'clip'; copySelection(true); } },
+    ...(items.every(([, c]) => c.kind === 'audio') ? ['-',
+      ...['light', 'medium', 'strong'].map(k => ({ label: `🔇 Denoise ${items.length} regions – ${k}`, run: () => denoiseClips(items.map(([, c]) => c), k) })), '-'] : []),
     { label: '◻ Select only this clip', run: () => { const id = e.target.closest('.clip')?.dataset.clip; selClipSet.clear(); if (id) selClipId = id; refreshClipSelClasses(); } },
     '-', { label: `🗑 Delete ${items.length} clips`, run: deleteSelectedClips },
   ]);
@@ -1890,9 +1909,9 @@ function clipMenu(e, t, c) {
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
     '-', { label: '🗑 Delete region', run: remove },
   ] : [...fades,
-    { label: '🔇 Denoise – light', run: () => denoiseClip(t, c, 'light') },
-    { label: '🔇 Denoise – medium', run: () => denoiseClip(t, c, 'medium') },
-    { label: '🔇 Denoise – strong', run: () => denoiseClip(t, c, 'strong') },
+    { label: '🔇 Denoise this region – light', run: () => denoiseClip(t, c, 'light') },
+    { label: '🔇 Denoise this region – medium', run: () => denoiseClip(t, c, 'medium') },
+    { label: '🔇 Denoise this region – strong', run: () => denoiseClip(t, c, 'strong') },
     '-',
     { label: '⧉ Duplicate (Ctrl/Cmd+D)', run: duplicateClip },
     { label: '✂ Split at playhead (S)', disabled: !inside, run: splitClip },
