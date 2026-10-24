@@ -1507,6 +1507,32 @@ function openModal(title, body, buttons = []) {
   document.body.append(box); document.addEventListener('keydown', esc, true);
   return { close, setCancel: f => { onCancel = () => { f(); close(); }; } };
 }
+/* Volume of selected REGION(S) only (not the whole track): stored as clip.gain (linear, 1 = 100 %),
+   already used by playback, Download and merge. Works on one region or a multi-selection. */
+function openRegionVolume(clips) {
+  const orig = clips.map(c => c.gain);
+  const pct = () => Math.round((clips[0].gain ?? 1) * 100);
+  const db = p => p <= 0 ? '-∞ dB' : (20 * Math.log10(p / 100)).toFixed(1) + ' dB';
+  const val = el('b', { className: 'fval' }), rng = el('input', { type: 'range', min: 0, max: 200, step: 1 }),
+    num = el('input', { type: 'number', min: 0, max: 200, step: 1, className: 'fnum' });
+  const set = v => { v = clamp(Math.round(+v || 0), 0, 200); clips.forEach(c => { if (v === 100) delete c.gain; else c.gain = v / 100; }); sync(); render(); };
+  const sync = () => { const p = pct(); rng.value = p; if (document.activeElement !== num) num.value = p; val.textContent = `${p}% (${db(p)})`; rng.style.setProperty('--pf', p / 200); };
+  rng.oninput = () => set(rng.value); num.oninput = () => set(num.value); num.onblur = sync;
+  const quick = el('div', { className: 'fctl' }, ...[0, 50, 75, 100, 125, 150, 200].map(p => el('button', { onclick: () => set(p) }, p + '%')));
+  const restore = () => { clips.forEach((c, i) => { if (orig[i] === undefined) delete c.gain; else c.gain = orig[i]; }); render(); };
+  const title = clips.length > 1 ? `Volume of ${clips.length} regions` : 'Region volume';
+  const m = openModal(title, [
+    el('div', { className: 'frow vol' }, el('div', { className: 'flbl' }, 'Volume ', val), el('div', { className: 'fctl' }, rng, num, el('span', { className: 'unit' }, '%'))),
+    quick,
+    el('p', { className: 'hint' }, 'Only the selected region' + (clips.length > 1 ? 's change' : ' changes') + ' – the track fader stays as it is. 100% = original level.'),
+  ], [
+    { label: 'Reset', run: () => set(100) },
+    { label: 'Cancel', run: close => { restore(); close(); } },
+    { label: 'Done', primary: true, run: close => { render(); status(`${title}: ${pct()}% (${db(pct())})`); close(); } },
+  ]);
+  m.setCancel(restore);
+  requestAnimationFrame(sync);
+}
 const fmtClock = sec => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`;
 /* Fade in / fade out of ONE region (like mobile editors): preview with draggable handles, Volume, Fade in, Fade out.
    Times are seconds, but stored in beats -> they follow the region (and the BPM); a fade can cover the full region. */
@@ -1886,6 +1912,7 @@ function multiClipMenu(e) {
   const items = selectedClips(), mErr = mergeCheck();
   showCtxMenu(e.clientX, e.clientY, `${items.length} clips selected`, [
     { label: `⊕ Merge into one ${items[0][1].kind === 'midi' ? 'region' : 'audio clip'}` + (mErr ? `  (${mErr.toLowerCase()})` : ''), disabled: !!mErr, run: mergeSelected },
+    { label: `🔊 Volume of ${items.length} regions…`, run: () => openRegionVolume(items.map(([, c]) => c)) },
     { label: '⧉ Copy (Ctrl/Cmd+C)', run: () => { lastFocus = 'clip'; copySelection(false); } },
     { label: '✂ Cut (Ctrl/Cmd+X)', run: () => { lastFocus = 'clip'; copySelection(true); } },
     ...(items.every(([, c]) => c.kind === 'audio') ? ['-',
@@ -1904,6 +1931,7 @@ function clipMenu(e, t, c) {
   const remove = () => { t.clips = t.clips.filter(x => x !== c); selClipId = null; render(); };
   const fs = v => (v * spb()).toFixed(1) + ' s';
   const fades = [
+    { label: `🔊 Region volume…  (${Math.round((c.gain ?? 1) * 100)}%)`, run: () => openRegionVolume([c]) },
     { label: `◢◣ Fade in / out…  (in ${fs(clipFades(c).fi)} · out ${fs(clipFades(c).fo)})`, run: () => openFadeModal(t, c) },
     { label: '✕ Remove fades', disabled: !(c.fi || c.fo), run: () => { delete c.fi; delete c.fo; render(); } },
     { label: '⬇ Export this region…', run: () => openRegionExport(t, c) },
