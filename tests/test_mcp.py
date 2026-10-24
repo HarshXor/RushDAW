@@ -447,6 +447,13 @@ class McpTest(unittest.TestCase):
         self.assertAlmostEqual(c["fade_out_sec"], 0.5, places=2)
         self.assertAlmostEqual(c["fade_in_beats"], 1.5 * bpm / 60, places=3)
         self.assertEqual(c["volume_percent"], 80)
+        # region volume goes up to +20 dB (1000 %, gain 10); beyond that is rejected
+        self.call("update_clip", project_id=pid, clip_id=region, volume_percent=1000)
+        c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)
+        self.assertEqual(c["volume_percent"], 1000)
+        with self.assertRaises(Exception):
+            self.call("update_clip", project_id=pid, clip_id=region, gain=10.5)
+        self.call("update_clip", project_id=pid, clip_id=region, volume_percent=80)
         # a fade can cover the whole region, but never overlap the other fade
         self.call("update_clip", project_id=pid, clip_id=region, fade_out_sec=0, fade_in_sec=9999)
         c = next(c for t in self.call("get_project", project_id=pid, detail=False)["tracks"] for c in t["clips"] if c["id"] == region)

@@ -1512,13 +1512,18 @@ function openModal(title, body, buttons = []) {
 function openRegionVolume(clips) {
   const orig = clips.map(c => c.gain);
   const pct = () => Math.round((clips[0].gain ?? 1) * 100);
-  const db = p => p <= 0 ? '-∞ dB' : (20 * Math.log10(p / 100)).toFixed(1) + ' dB';
-  const val = el('b', { className: 'fval' }), rng = el('input', { type: 'range', min: 0, max: 200, step: 1 }),
-    num = el('input', { type: 'number', min: 0, max: 200, step: 1, className: 'fnum' });
-  const set = v => { v = clamp(Math.round(+v || 0), 0, 200); clips.forEach(c => { if (v === 100) delete c.gain; else c.gain = v / 100; }); sync(); render(); };
-  const sync = () => { const p = pct(); rng.value = p; if (document.activeElement !== num) num.value = p; val.textContent = `${p}% (${db(p)})`; rng.style.setProperty('--pf', p / 200); };
-  rng.oninput = () => set(rng.value); num.oninput = () => set(num.value); num.onblur = sync;
-  const quick = el('div', { className: 'fctl' }, ...[0, 50, 75, 100, 125, 150, 200].map(p => el('button', { onclick: () => set(p) }, p + '%')));
+  // slider works in dB (-60 = off .. +20 dB) so quiet and loud settings are equally easy; the number box is %
+  const DB_MIN = -60, DB_MAX = 20, P_MAX = 1000;  // +20 dB = 1000 %
+  const db = p => p <= 0 ? '-∞ dB' : ((v => (v > 0 ? '+' : '') + v.toFixed(1))(20 * Math.log10(p / 100))) + ' dB';
+  const toDb = p => p <= 0 ? DB_MIN : clamp(20 * Math.log10(p / 100), DB_MIN, DB_MAX);
+  const fromDb = d => d <= DB_MIN ? 0 : 100 * Math.pow(10, d / 20);
+  const val = el('b', { className: 'fval' }), rng = el('input', { type: 'range', min: DB_MIN, max: DB_MAX, step: 0.1 }),
+    num = el('input', { type: 'number', min: 0, max: P_MAX, step: 1, className: 'fnum' });
+  const set = v => { v = clamp(+v || 0, 0, P_MAX); v = Math.abs(v - 100) < 0.05 ? 100 : +v.toFixed(1); clips.forEach(c => { if (v === 100) delete c.gain; else c.gain = +(v / 100).toFixed(4); }); sync(); render(); };
+  const sync = () => { const p = +((clips[0].gain ?? 1) * 100).toFixed(1); rng.value = toDb(p); if (document.activeElement !== num) num.value = p; val.textContent = `${p}% (${db(p)})`; rng.style.setProperty('--pf', (toDb(p) - DB_MIN) / (DB_MAX - DB_MIN)); };
+  rng.oninput = () => set(fromDb(+rng.value)); num.oninput = () => set(num.value); num.onblur = sync;
+  const quick = el('div', { className: 'fctl' }, ...[['Off', 0], ['-6 dB', -6], ['-3 dB', -3], ['0 dB', 0.0001], ['+3 dB', 3], ['+6 dB', 6], ['+12 dB', 12], ['+20 dB', 20]]
+    .map(([l, d]) => el('button', { onclick: () => set(l === 'Off' ? 0 : l === '0 dB' ? 100 : fromDb(d)) }, l)));
   const restore = () => { clips.forEach((c, i) => { if (orig[i] === undefined) delete c.gain; else c.gain = orig[i]; }); render(); };
   const title = clips.length > 1 ? `Volume of ${clips.length} regions` : 'Region volume';
   const m = openModal(title, [
@@ -1545,7 +1550,7 @@ function openFadeModal(t, c) {
   const row = (label, cls) => { const val = el('b', { className: 'fval' }), rng = el('input', { type: 'range', min: 0, step: 'any' }), num = el('input', { type: 'number', min: 0, step: 0.1, className: 'fnum' });
     return { val, rng, num, node: el('div', { className: 'frow ' + cls }, el('div', { className: 'flbl' }, label, ' ', val), el('div', { className: 'fctl' }, rng, num, el('span', { className: 'unit' }, cls === 'vol' ? '%' : 's'))) }; };
   const vol = row('Volume', 'vol'), fin = row('Fade in', 'in'), fout = row('Fade out', 'out');
-  vol.rng.max = 200; vol.rng.step = 1; fin.num.step = fout.num.step = 0.01; vol.num.max = 200; vol.num.step = 1;
+  vol.rng.max = 1000; vol.rng.step = 1; fin.num.step = fout.num.step = 0.01; vol.num.max = 1000; vol.num.step = 1;
   const sec = k => (+c[k] || 0) * S;
   const setFade = (k, s) => { const other = k === 'fi' ? sec('fo') : sec('fi'); s = clamp(+s || 0, 0, Math.max(0, lenS - other)); if (s < 0.02) delete c[k]; else c[k] = +(s / S).toFixed(4); sync(); };
   const sync = () => {
@@ -1557,13 +1562,13 @@ function openFadeModal(t, c) {
     if (document.activeElement !== fin.num) fin.num.value = +a.toFixed(2); if (document.activeElement !== fout.num) fout.num.value = +b.toFixed(2); if (document.activeElement !== vol.num) vol.num.value = g;
     fin.val.textContent = a.toFixed(2) + ' s'; fout.val.textContent = b.toFixed(2) + ' s'; vol.val.textContent = g + '%';
     // fill fraction 0..1 of the slider's own range -> the aqua fill ends exactly under the thumb (CSS compensates the thumb width)
-    [fin, fout].forEach((r, i) => r.rng.style.setProperty('--pf', clamp((i ? b : a) / Math.max(0.001, lenS), 0, 1))); vol.rng.style.setProperty('--pf', clamp(g / 200, 0, 1));
+    [fin, fout].forEach((r, i) => r.rng.style.setProperty('--pf', clamp((i ? b : a) / Math.max(0.001, lenS), 0, 1))); vol.rng.style.setProperty('--pf', clamp(g / 1000, 0, 1));
     hIn.style.left = (a / lenS * 100) + '%'; hOut.style.left = (100 - b / lenS * 100) + '%';
     drawClip(cv, t, c);
   };
   fin.rng.oninput = () => setFade('fi', fin.rng.value); fout.rng.oninput = () => setFade('fo', fout.rng.value);
   fin.num.oninput = () => setFade('fi', fin.num.value); fout.num.oninput = () => setFade('fo', fout.num.value);
-  const setVol = v => { v = clamp(+v || 0, 0, 200); if (v === 100) delete c.gain; else c.gain = v / 100; sync(); };
+  const setVol = v => { v = clamp(+v || 0, 0, 1000); if (v === 100) delete c.gain; else c.gain = v / 100; sync(); };
   vol.rng.oninput = () => setVol(vol.rng.value); vol.num.oninput = () => setVol(vol.num.value);
   [fin.num, fout.num, vol.num].forEach(n => n.onblur = sync);
   // drag the round handles on the preview (like the photo): left = fade in, right = fade out

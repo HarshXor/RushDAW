@@ -825,7 +825,7 @@ class RushDAWMCP:
                  length_beats=("number", "New length (MIDI regions), changes the END: longer = empty steps added, shorter = end cut."),
                  trim_start_beats=("number", "Resize from the FRONT (like dragging the left edge): > 0 cuts that many beats off the start, "
                                              "< 0 extends the clip backwards (MIDI: empty steps; audio: reveals earlier audio). Pads/notes/audio keep their song position."), duration_sec=("number", "New duration in seconds (audio clips, trims the end)."),
-                 gain=("number", "Clip / region volume as linear gain 0..2 (1 = 100%)."), volume_percent=("number", "Clip / region volume 0..200 % (100 = default)."),
+                 gain=("number", "Clip / region volume as linear gain 0..10 (1 = 100% = 0 dB, 10 = +20 dB)."), volume_percent=("number", "Clip / region volume 0..1000 % (100 = default, 1000 = +20 dB)."),
                  fade_in_sec=("number", "Fade-in length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
                  fade_out_sec=("number", "Fade-out length in seconds (0 = off). Clamped so fade in + fade out <= region length."),
                  fade_in_beats=("number", "Fade-in length in beats (alternative to fade_in_sec)."),
@@ -848,7 +848,7 @@ class RushDAWMCP:
                         raise M.ModelError("duration_sec is for audio clips")
                     c["dur"] = M.num(a["duration_sec"], "duration_sec", 0.05, 100000)
                 if "gain" in a or "volume_percent" in a:  # region volume (UI fade dialog 'Volume')
-                    g = M.num(a["gain"], "gain", 0, 2) if "gain" in a else M.num(a["volume_percent"], "volume_percent", 0, 200) / 100
+                    g = M.num(a["gain"], "gain", 0, 10) if "gain" in a else M.num(a["volume_percent"], "volume_percent", 0, 1000) / 100
                     if abs(g - 1) < 1e-9:
                         c.pop("gain", None)
                     else:
