@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rushdaw"
-version = "0.1.38"
+version = "0.1.39"
 description = "RushDAW - web based DAW (mixing, recording, mastering, drum machine, synth) inspired by BandLab"
 readme = "README.md"
 requires-python = ">=3.8"

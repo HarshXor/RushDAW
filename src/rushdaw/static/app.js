@@ -1845,7 +1845,13 @@ function showCtxMenu(x, y, title, items) {
 document.addEventListener('pointerdown', e => { if (!e.target.closest || !e.target.closest('#ctxmenu')) closeCtxMenu(); }, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
 window.addEventListener('blur', closeCtxMenu);
-const clipFits = (t, cb) => cb && ((cb.kind === 'clip' && cb.data.trackType === t.type) || (cb.kind === 'clips' && cb.data.some(x => x.trackType === t.type)));
+const clipKindOf = x => x.trackKind || x.trackType;
+const clipFits = (t, cb) => cb && (
+  (cb.kind === 'clip' && clipKindOf(cb.data) === trackKind(t)) ||
+  // multi-row paste anchored at t: every copied row must line up with a same-kind layer below t
+  (cb.kind === 'clips' && cb.data.every(x => x.row === undefined
+    ? cb.data.some(y => trackKind(t) === clipKindOf(y))
+    : (P.tracks[P.tracks.indexOf(t) + x.row] && trackKind(P.tracks[P.tracks.indexOf(t) + x.row]) === clipKindOf(x)))));
 function pasteAt(t, beat) { selTrackId = t.id; T.pos = beat; pasteClipboard(); }
 function pickAudioFile(t, beat) {
   const inp = el('input', { type: 'file', accept: 'audio/*,video/*', multiple: true, style: { display: 'none' } });
@@ -3051,6 +3057,9 @@ let clipboard = null;        // { kind, data, buffers: Map }
 let selPart = null;          // { trackId, row } – selected drum part in the editor
 let lastFocus = null;        // 'clip' | 'track' | 'part'
 const deepCopy = o => JSON.parse(JSON.stringify(o));
+// A layer's "kind" for copy/paste matching: audio & drum by type, synth split by instrument (guitar/bass/vocal/synth).
+const trackKind = t => t.type === 'synth' ? (t.instrument || 'synth') : t.type;
+const KIND_LABEL = k => ({ audio: 'Audio', drum: 'Drum', synth: 'Synth', guitar: 'Guitar', bass: 'Bass', vocal: 'Vocal' }[k] || k);
 function buffersFor(clips) {
   const m = new Map();
   clips.forEach(c => { if (c.kind === 'audio' && buffers.has(c.buf)) m.set(c.buf, { buf: buffers.get(c.buf), name: bufNames.get(c.buf) }); });
@@ -3069,7 +3078,8 @@ function copySelection(cut = false) {
   const multi = selectedClips();
   if (lastFocus === 'clip' && multi.length > 1) {  // several clips: keep their spacing (and tracks)
     const base = multi[0][1].start;
-    clipboard = { kind: 'clips', data: multi.map(([t, c]) => ({ clip: deepCopy(c), trackType: t.type, trackId: t.id, dOff: c.start - base })), buffers: buffersFor(multi.map(([, c]) => c)) };
+    const idxs = multi.map(([t]) => P.tracks.indexOf(t)), top = Math.min(...idxs);
+    clipboard = { kind: 'clips', data: multi.map(([t, c]) => ({ clip: deepCopy(c), trackType: t.type, trackKind: trackKind(t), trackId: t.id, row: P.tracks.indexOf(t) - top, dOff: c.start - base })), buffers: buffersFor(multi.map(([, c]) => c)) };
     if (cut) { multi.forEach(([t, c]) => { t.clips = t.clips.filter(x => x !== c); }); selClipSet.clear(); selClipId = null; render(); }
     status(`${cut ? 'Cut' : 'Copied'} ${multi.length} clips`); return;
   }
@@ -3102,16 +3112,30 @@ function pasteClipboard() {
     render(); status(`Pasted “${cb.data.name}” into ${DRUMS[row].name} on ${t.name}`); return;
   }
   if (cb.kind === 'clips') {
-    // all from one track -> onto the selected track if it is the same type; from several tracks -> back to their own tracks
-    const at = snapBeat(T.pos, 0.25), oneTrack = new Set(cb.data.map(x => x.trackId)).size === 1, sel = getTrack(selTrackId);
-    const made = [];
-    cb.data.forEach(x => {
-      let t = oneTrack && sel && sel.type === x.trackType ? sel : getTrack(x.trackId);
-      if (!t || t.type !== x.trackType) t = P.tracks.find(y => y.type === x.trackType) || newTrack(x.trackType);
+    // Rows keep their layout relative to the selected row: copying rows 3+4 and pasting on row 1 -> rows 1+2.
+    // Every target row must be the SAME kind of layer (audio / drum / guitar / bass / vocal / synth) as its
+    // source row; if any doesn't match, nothing is pasted. Without a selected row, clips go back to their own tracks.
+    const at = snapBeat(T.pos, 0.25), sel = getTrack(selTrackId), made = [];
+    const kindOf = x => x.trackKind || x.trackType;
+    let targets;
+    if (sel && cb.data.every(x => x.row !== undefined)) {
+      const base = P.tracks.indexOf(sel);
+      targets = cb.data.map(x => P.tracks[base + x.row]);
+      const bad = cb.data.findIndex((x, i) => !targets[i] || trackKind(targets[i]) !== kindOf(x));
+      if (bad >= 0) {
+        const rows = [...new Set(cb.data.map(x => x.row))].sort((a, b) => a - b);
+        const need = rows.map(r => `row ${base + r + 1} must be ${KIND_LABEL(kindOf(cb.data.find(x => x.row === r)))}`).join(', ');
+        status(`Can't paste here – the layers don't line up: ${need}`); return;
+      }
+    } else {
+      targets = cb.data.map(x => { const t = getTrack(x.trackId); return t && trackKind(t) === kindOf(x) ? t : null; });
+    }
+    cb.data.forEach((x, i) => {
+      const t = targets[i]; if (!t) return;
       const nc = { ...deepCopy(x.clip), id: nid('c'), start: at + x.dOff }; t.clips.push(nc); made.push(nc.id);
     });
     selClipId = made[0]; selClipSet.clear(); made.slice(1).forEach(id => selClipSet.add(id)); lastFocus = 'clip';
-    render(); status(`Pasted ${made.length} clips at bar ${Math.floor(at / P.sig) + 1}`); return;
+    render(); status(`Pasted ${made.length} clip${made.length === 1 ? '' : 's'} at bar ${Math.floor(at / P.sig) + 1}`); return;
   }
   if (cb.kind === 'clip') {
     const want = cb.data.trackType;
