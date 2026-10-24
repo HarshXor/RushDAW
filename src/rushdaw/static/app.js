@@ -1604,7 +1604,7 @@ function openRegionExport(t, c) {
     { label: '⬇ Export', primary: true, run: async close => {
       close();
       try { await renderAndDownload(fmt.value, nm.value.trim() || 'region', { only: { trackId: t.id, clipId: c.id } }); }
-      catch (e) { status('Region export failed: ' + e.message); }
+      catch (e) { if (!isAbort(e)) status('Region export failed: ' + e.message); }
     } },
   ]);
 }
@@ -2619,7 +2619,8 @@ function frame() {
 }
 
 /* ------------------------------------------------------------- wav / export */
-function encodeWAV(buf, bits = 16) {
+// One WAV writer for both the instant (sync) and the chunked (progress) encoder -> byte-identical output.
+function wavWriter(buf, bits = 16) {
   const nCh = buf.numberOfChannels, len = buf.length, bps = bits / 8, data = len * nCh * bps;
   const ab = new ArrayBuffer(44 + data), v = new DataView(ab); let o = 0;
   const str = s => { for (const ch of s) v.setUint8(o++, ch.charCodeAt(0)); };
@@ -2627,12 +2628,117 @@ function encodeWAV(buf, bits = 16) {
   str('RIFF'); u32(36 + data); str('WAVE'); str('fmt '); u32(16); u16(1); u16(nCh); u32(buf.sampleRate); u32(buf.sampleRate * nCh * bps); u16(nCh * bps); u16(bits);
   str('data'); u32(data);
   const chs = [...Array(nCh).keys()].map(i => buf.getChannelData(i));
-  for (let i = 0; i < len; i++) for (let c = 0; c < nCh; c++) {
-    const s = clamp(chs[c][i], -1, 1);
-    if (bits === 16) { v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
-    else { const x = Math.round(s < 0 ? s * 0x800000 : s * 0x7fffff); v.setUint8(o, x & 255); v.setUint8(o + 1, (x >> 8) & 255); v.setUint8(o + 2, (x >> 16) & 255); o += 3; }
+  const write = (i0, i1) => {
+    for (let i = i0; i < i1; i++) for (let c = 0; c < nCh; c++) {
+      const s = clamp(chs[c][i], -1, 1);
+      if (bits === 16) { v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2; }
+      else { const x = Math.round(s < 0 ? s * 0x800000 : s * 0x7fffff); v.setUint8(o, x & 255); v.setUint8(o + 1, (x >> 8) & 255); v.setUint8(o + 2, (x >> 16) & 255); o += 3; }
+    }
+  };
+  return { len, write, blob: () => new Blob([ab], { type: 'audio/wav' }) };
+}
+function encodeWAV(buf, bits = 16) { const w = wavWriter(buf, bits); w.write(0, w.len); return w.blob(); }
+// Same bytes as encodeWAV, written in slices so the page stays responsive and the dialog can show the progress.
+async function encodeWAVAsync(buf, bits = 16, onProgress = null, signal = null) {
+  const w = wavWriter(buf, bits), step = Math.max(4096, buf.sampleRate * 2);
+  for (let i = 0; i < w.len; i += step) {
+    if (signal && signal.aborted) throw abortErr();
+    w.write(i, Math.min(w.len, i + step));
+    if (onProgress) onProgress(Math.min(1, (i + step) / w.len));
+    await new Promise(r => setTimeout(r, 0));
   }
-  return new Blob([ab], { type: 'audio/wav' });
+  return w.blob();
+}
+
+/* ------------------------------------------------- export progress dialog */
+// Real-time progress for Download / Export / region export (studio and project list). Every stage reports real
+// numbers: offline render position, WAV encode, upload bytes, ffmpeg out_time (server job), download bytes.
+const abortErr = () => { const e = new Error('Cancelled'); e.name = 'AbortError'; return e; };
+const isAbort = e => e && e.name === 'AbortError';
+const newJobId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
+function progressDialog(title, fileName, stages) {  // stages: [[key, label, weight], ...]
+  const ac = new AbortController(), t0 = performance.now();
+  const total = stages.reduce((s, x) => s + x[2], 0);
+  const state = Object.fromEntries(stages.map(([k]) => [k, { frac: 0, status: 'wait' }]));
+  let cur = null, finished = false, cancelHooks = [];
+  const fill = el('div', { className: 'pgfill' }), bar = el('div', { className: 'pgbar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100 }, fill);
+  const stageTxt = el('span', { className: 'pgstage' }, 'Starting…'), pctTxt = el('b', { className: 'pgpct' }, '0%');
+  const meta = el('div', { className: 'pgmeta' }, '');
+  const chips = Object.fromEntries(stages.map(([k, label]) => [k, el('li', { className: 'pgchip' }, el('i', {}), el('span', {}, label))]));
+  const msg = el('div', { className: 'pgmsg' });
+  const body = [
+    el('div', { className: 'pgname', title: fileName }, fileName),
+    bar, el('div', { className: 'pgrow' }, stageTxt, pctTxt),
+    el('ol', { className: 'pgsteps' }, Object.values(chips)), meta, msg,
+  ];
+  const doCancel = () => { if (finished) return; finished = true; ac.abort(); cancelHooks.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); };
+  const m = openModal(title, body, [{ label: 'Cancel', run: close => { doCancel(); close(); } }]);
+  m.setCancel(doCancel);
+  const box = document.body.lastElementChild; box.classList.add('pgdlg', 'pgdelay');
+  const btn = box.querySelector('.mfoot button');
+  const showT = setTimeout(() => box.classList.remove('pgdelay'), 250);  // very short jobs never flash a dialog
+  const fmtT = s => s >= 60 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s` : `${Math.max(0, Math.round(s))}s`;
+  const overall = () => stages.reduce((s, [k, , w]) => s + w * (state[k].status === 'done' ? 1 : state[k].frac || 0), 0) / total;
+  const paint = () => {
+    const p = clamp(overall(), 0, 1), pc = Math.floor(p * 100);
+    fill.style.width = (p * 100).toFixed(2) + '%'; pctTxt.textContent = pc + '%'; bar.setAttribute('aria-valuenow', pc);
+    const st = cur && state[cur];
+    bar.classList.toggle('busy', !!(st && st.frac === null));
+    const el2 = (performance.now() - t0) / 1000;
+    meta.textContent = `Elapsed ${fmtT(el2)}` + (p > 0.04 && p < 1 ? ` · about ${fmtT(el2 / p * (1 - p))} left` : '');
+    stages.forEach(([k]) => { chips[k].className = 'pgchip ' + state[k].status; });
+  };
+  const tick = setInterval(() => { if (!finished) paint(); }, 500);
+  const end = () => { clearInterval(tick); clearTimeout(showT); };
+  return {
+    signal: ac.signal,
+    onCancel(f) { cancelHooks.push(f); },
+    stage(key, frac, detail) {  // frac 0..1, or null = working, amount unknown (animated)
+      if (finished || !state[key]) return;
+      stages.forEach(([k]) => { if (k === key) return; if (stages.findIndex(s => s[0] === k) < stages.findIndex(s => s[0] === key) && state[k].status !== 'skip') state[k].status = 'done'; });
+      cur = key; Object.assign(state[key], { frac: frac === null ? null : clamp(frac, 0, 1), status: 'run' });
+      const label = stages.find(s => s[0] === key)[1];
+      stageTxt.textContent = label + (frac === null ? '…' : ` ${Math.floor(clamp(frac, 0, 1) * 100)}%`) + (detail ? ` · ${detail}` : '');
+      paint();
+    },
+    skip(key) { if (state[key]) { state[key].status = 'skip'; paint(); } },
+    done(text) {
+      if (finished) return; finished = true; end();
+      if (box.classList.contains('pgdelay')) { m.close(); return; }  // finished before the dialog appeared: no flash
+      stages.forEach(([k]) => { if (state[k].status !== 'skip') state[k].status = 'done'; });
+      cur = null; paint(); fill.style.width = '100%'; pctTxt.textContent = '100%'; stageTxt.textContent = 'Done';
+      box.classList.add('ok'); msg.textContent = text || ''; btn.textContent = 'Close'; btn.className = 'primary';
+      btn.onclick = () => m.close(); m.setCancel(() => {});
+      setTimeout(() => { if (document.body.contains(box)) m.close(); }, 1600);
+    },
+    fail(text) {
+      end(); finished = true; box.classList.remove('pgdelay'); box.classList.add('err');
+      if (cur) state[cur].status = 'fail'; paint(); bar.classList.remove('busy');
+      stageTxt.textContent = 'Failed'; msg.textContent = text; btn.textContent = 'Close'; btn.onclick = () => m.close(); m.setCancel(() => {});
+    },
+    close() { end(); finished = true; m.close(); },
+  };
+}
+// XMLHttpRequest with real upload / download progress (fetch can't report upload progress).
+function xhrTransfer({ method = 'POST', url, body, type, signal, onUpload, onUploaded, onDownload }) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest(); x.open(method, url); x.responseType = 'blob';
+    if (type) x.setRequestHeader('Content-Type', type);
+    if (onUpload) x.upload.onprogress = e => { if (e.lengthComputable) onUpload(e.loaded / e.total); };
+    x.upload.onload = () => onUploaded && onUploaded();
+    let downloading = false;
+    x.onprogress = e => { if (x.readyState >= 3 && e.loaded > 0) { if (!downloading) { downloading = true; } if (onDownload) onDownload(e.lengthComputable ? e.loaded / e.total : null); } };
+    x.onload = async () => {
+      if (x.status >= 200 && x.status < 300) return resolve(x.response);
+      let m = x.statusText || 'HTTP ' + x.status; try { m = JSON.parse(await x.response.text()).error || m; } catch (e) { /* ignore */ }
+      if (x.status === 499) return reject(abortErr());
+      reject(new Error(m));
+    };
+    x.onerror = () => reject(new Error('Network error'));
+    x.onabort = () => reject(abortErr());
+    if (signal) { if (signal.aborted) { reject(abortErr()); return; } signal.addEventListener('abort', () => x.abort(), { once: true }); }
+    x.send(body);
+  });
 }
 // opts.only = { trackId, clipId }: render just that region (its track's FX / mixer / master chain, from the
 // region start to its end + the reverb/delay tail), regardless of the track's mute/solo.
@@ -2650,7 +2756,24 @@ async function renderMix(opts = {}) {
   try {
     const g = createGraph(oc, false); g.only = opts.only || null;
     scheduleRange(g, b0, end, { t: 0, b: b0 }, { first: true });
-    out = await oc.startRendering();
+    // Progress: pause the offline render every ~1% of the song, read the position, resume. Suspending only stops
+    // the clock at a render-quantum boundary - nothing in the graph is touched, so the audio is bit-identical.
+    if (opts.onProgress || opts.signal) {
+      const step = Math.max(0.25, secs / 100);
+      for (let t = step; t < secs - 0.01; t += step) {
+        const at = t;
+        oc.suspend(at).then(() => {
+          if (opts.signal && opts.signal.aborted) return;  // stay suspended: a cancelled render stops using CPU
+          if (opts.onProgress) opts.onProgress(at / secs);
+          oc.resume();
+        }).catch(() => { /* two suspends in one render quantum: skip */ });
+      }
+    }
+    const rendering = oc.startRendering();
+    out = await (opts.signal ? Promise.race([rendering, new Promise((_, rej) => {
+      if (opts.signal.aborted) rej(abortErr()); opts.signal.addEventListener('abort', () => rej(abortErr()), { once: true });
+    })]) : rendering);
+    if (opts.onProgress) opts.onProgress(1);
   } finally { if (saved) P.tracks.forEach((t, i) => { [t.mute, t.solo] = saved[i]; }); }
   let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; } }
   const target = dbToGain(Math.min(-0.3, P.master.ceiling));
@@ -2678,51 +2801,126 @@ function downloadName(title, opts = {}) {
   const mix = opts.only ? 'region' : sol.length ? 'solo ' + sol.join('+') : mut.length ? 'muted ' + mut.join('+') : 'full mix';
   return `${title} - ${mix} - ${stamp}`.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 150);
 }
+// Stages of an audio download (weights = rough share of the total time; MP4 video encoding is the slow one).
+function downloadStages(fmt, extra = []) {
+  const vid = fmt === 'mp4';
+  if (fmt === 'wav') return [...extra, ['render', 'Rendering mix', 80], ['encode', 'Encoding WAV', 20]];
+  return [...extra, ['render', 'Rendering mix', vid ? 32 : 50], ['encode', 'Encoding WAV', 8], ['upload', 'Sending to encoder', 7],
+    ['convert', `Converting to ${fmt.toUpperCase()}`, vid ? 48 : 28], ['download', 'Downloading file', 5]];
+}
+// opts.dlg: an already open progress dialog (project list adds a 'Loading project' stage before this)
 async function renderAndDownload(fmt, title, opts = {}) {
-  status(opts.only ? 'Rendering region…' : 'Rendering mixdown…');
+  const what = opts.only ? 'region' : 'mix';
   title = downloadName(title, opts);
-  const wav = encodeWAV(await renderMix(opts));
-  if (fmt === 'wav') { download(wav, title + '.wav'); status('Downloaded ' + title + '.wav'); return; }
-  status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
-  const r = await fetch(`/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
-  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch (e) { /* ignore */ } throw new Error(m); }
-  download(await r.blob(), `${title}.${fmt}`); status(`Downloaded ${title}.${fmt}`);
+  const file = `${title}.${fmt}`;
+  const dlg = opts.dlg || progressDialog(opts.only ? 'Export region' : 'Download', file, downloadStages(fmt));
+  const sig = dlg.signal;
+  try {
+    status(opts.only ? 'Rendering region…' : 'Rendering mixdown…');
+    dlg.stage('render', 0);
+    const buf = await renderMix({ ...opts, signal: sig, onProgress: f => dlg.stage('render', f) });
+    dlg.stage('encode', 0);
+    const wav = await encodeWAVAsync(buf, 16, f => dlg.stage('encode', f), sig);
+    if (fmt === 'wav') { download(wav, file); dlg.done(`Saved ${file} (${fmtSize(wav.size)})`); status('Downloaded ' + file); return; }
+    status('Encoding ' + fmt.toUpperCase() + ' with ffmpeg…');
+    const job = newJobId();
+    let poll = null, downloading = false;
+    const stopPoll = () => { if (poll) { clearInterval(poll); poll = null; } };
+    dlg.onCancel(() => { stopPoll(); fetch('/api/jobs/' + job, { method: 'DELETE' }).catch(() => {}); });
+    dlg.stage('upload', 0);
+    let out;
+    try {
+      out = await xhrTransfer({
+        url: `/api/export?format=${encodeURIComponent(fmt)}&title=${encodeURIComponent(title)}&job=${job}`, body: wav, type: 'audio/wav', signal: sig,
+        onUpload: f => dlg.stage('upload', f, `${fmtSize(f * wav.size)} / ${fmtSize(wav.size)}`),
+        onUploaded: () => {
+          dlg.stage('convert', 0);
+          poll = setInterval(async () => {
+            try {
+              const j = await (await fetch('/api/jobs/' + job)).json();
+              if (!downloading && j && typeof j.progress === 'number') dlg.stage('convert', j.progress);
+            } catch (e) { /* next tick */ }
+          }, 300);
+        },
+        onDownload: f => { downloading = true; stopPoll(); dlg.stage('download', f); },
+      });
+    } finally { stopPoll(); }
+    download(out, file); dlg.done(`Saved ${file} (${fmtSize(out.size)})`); status(`Downloaded ${file}`);
+  } catch (e) {
+    if (isAbort(e)) { dlg.close(); status(`${what === 'region' ? 'Region export' : 'Download'} cancelled`); }
+    else dlg.fail(e.message);
+    throw e;
+  }
 }
 async function exportSong() {
   const fmt = $('#exportFmt').value, title = $('#title').value || 'RushDAW';
   const btn = $('#btnExport'); btn.disabled = true;
   try { await renderAndDownload(fmt, title); }
-  catch (e) { status('Download failed: ' + e.message); }
+  catch (e) { if (!isAbort(e)) status('Download failed: ' + e.message); }
   finally { btn.disabled = false; }
 }
 // Project list: render + download the latest saved revision without opening the editor.
 // (The open project was auto-saved when the list was shown, so "latest" = what the studio had.)
 async function downloadFromList(p, fmt, btn) {
   const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Rendering…';
+  const dlg = progressDialog('Download', `${p.name || 'RushDAW'}.${fmt}`, downloadStages(fmt, [['load', 'Loading saved revision', 6]]));
   try {
+    dlg.stage('load', null);
     const meta = await (await api(`/api/projects/${p.id}`)).json();
+    if (dlg.signal.aborted) throw abortErr();
     await loadProjectData(await (await api(`/api/projects/${p.id}/file`)).json());
+    if (dlg.signal.aborted) throw abortErr();
     P.title = meta.name; $('#title').value = meta.name; currentProject = meta; markClean();
     const sol = P.tracks.filter(t => t.solo).map(t => t.name), mut = P.tracks.filter(t => t.mute).map(t => t.name);
-    await renderAndDownload(fmt, meta.name || 'RushDAW');
+    await renderAndDownload(fmt, meta.name || 'RushDAW', { dlg });
     status(`Downloaded rev ${meta.head_revision}${sol.length ? ' · solo: ' + sol.join(', ') : ''}${mut.length ? ' · muted: ' + mut.join(', ') : ''}`);
-  } catch (e) { status('Download failed: ' + e.message); alert('Download failed: ' + e.message); }
+  } catch (e) {
+    if (isAbort(e)) { dlg.close(); status('Download cancelled'); }
+    else { dlg.fail(e.message); status('Download failed: ' + e.message); }
+  }
   finally { btn.disabled = false; btn.textContent = old; }
 }
 const exportFormats = () => [...$('#exportFmt').options].map(o => [o.value, o.textContent]);
+// Project list / History: the server builds the .zip from a SAVED revision; show its progress like the studio Export.
+async function exportSavedZip(url, name) {
+  const file = String(name || 'project').replace(/[^\w\- .()]+/g, '_') + '.rushdaw.zip';
+  const dlg = progressDialog('Export project', file, [['zip', 'Building zip on the server', 30], ['download', 'Downloading zip', 70]]);
+  try {
+    dlg.stage('zip', null);
+    const blob = await xhrTransfer({ method: 'GET', url, signal: dlg.signal, onDownload: f => dlg.stage('download', f) });
+    download(blob, file); dlg.done(`Saved ${file} (${fmtSize(blob.size)})`); status(`Exported ${file}`);
+  } catch (e) {
+    if (isAbort(e)) { dlg.close(); status('Export cancelled'); }
+    else { dlg.fail(e.message); status('Export failed: ' + e.message); }
+  }
+}
 /* Export = project package (.zip): project.rushdaw + audio/ folder with every recorded / imported audio file.
    Import it again (Projects > Import) and everything comes back in one go. Download = rendered song audio. */
 async function exportProjectPackage() {
   const btn = $('#btnExportPkg'); btn.disabled = true;
   const title = ($('#title').value || 'RushDAW').trim();
+  const file = title.replace(/[^\w\- .()]+/g, '_') + '.rushdaw.zip';
+  const dlg = progressDialog('Export project', file, [['pack', 'Packing audio files', 45], ['upload', 'Sending to server', 20],
+    ['zip', 'Building zip', 15], ['download', 'Downloading zip', 20]]);
   try {
     status('Exporting project package…');
-    const body = await serializeProject();  // the current state, saved or not
-    const r = await api('/api/package?name=' + encodeURIComponent(title), { method: 'POST', body });
-    const blob = await r.blob();
-    download(blob, title.replace(/[^\w\- .()]+/g, '_') + '.rushdaw.zip');
+    dlg.stage('pack', 0);
+    const body = await serializeProject((f, i, n) => dlg.stage('pack', f, `${i} / ${n}`), dlg.signal);  // the current state, saved or not
+    const size = new Blob([body]).size;
+    dlg.stage('upload', 0);
+    const blob = await xhrTransfer({
+      url: '/api/package?name=' + encodeURIComponent(title), body, type: 'application/json', signal: dlg.signal,
+      onUpload: f => dlg.stage('upload', f, `${fmtSize(f * size)} / ${fmtSize(size)}`),
+      onUploaded: () => dlg.stage('zip', null),
+      onDownload: f => dlg.stage('download', f),
+    });
+    download(blob, file);
+    dlg.done(`Saved ${file} (${fmtSize(blob.size)})`);
     status(`Exported ${title}.rushdaw.zip (${fmtSize(blob.size)}) – project.rushdaw + audio/ files; import it on the Projects page`);
-  } catch (e) { status('Export failed: ' + e.message); }
+  } catch (e) {
+    if (isAbort(e)) { dlg.close(); status('Export cancelled'); }
+    else { dlg.fail(e.message); status('Export failed: ' + e.message); }
+  }
   finally { btn.disabled = false; }
 }
 
@@ -2787,12 +2985,24 @@ function updateUndoButtons() {
 }
 function updateDirty() { const d = $('#dirtyDot'); if (d) d.classList.toggle('on', isDirty()); }
 
-async function serializeProject() {
+// onProgress(frac, i, n) / signal: used by the Export (.zip) progress dialog; Save calls it without them.
+async function serializeProject(onProgress = null, signal = null) {
   ensureRegions();
   P.title = $('#title').value;
   const used = new Set(); P.tracks.forEach(t => t.clips.forEach(c => c.kind === 'audio' && used.add(c.buf)));
-  const audio = {};
-  for (const id of used) if (buffers.has(id)) audio[id] = { name: bufNames.get(id) || '', wav: await blobToB64(encodeWAV(buffers.get(id))) };
+  const audio = {}, ids = [...used].filter(id => buffers.has(id));
+  const weight = ids.map(id => buffers.get(id).length || 1), total = weight.reduce((a, b) => a + b, 0) || 1;
+  let doneW = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (signal && signal.aborted) throw abortErr();
+    const wav = onProgress
+      ? await encodeWAVAsync(buffers.get(id), 16, f => onProgress((doneW + f * weight[i]) / total, i + 1, ids.length), signal)
+      : encodeWAV(buffers.get(id));
+    audio[id] = { name: bufNames.get(id) || '', wav: await blobToB64(wav) };
+    doneW += weight[i];
+    if (onProgress) onProgress(doneW / total, i + 1, ids.length);
+  }
   return JSON.stringify({ app: 'rushdaw', version: 1, project: P, audio });
 }
 async function saveRevision(message) {
@@ -2985,7 +3195,7 @@ function homeCard(p) {
         ...(() => { const sel = el('select', { className: 'pfmt', title: 'Download format (rendered audio)' }, exportFormats().map(([v, t]) => el('option', { value: v, selected: v === 'mp3' }, t)));
           const b = el('button', { title: `Render the latest saved revision (rev ${p.head_revision}) and download the song audio${p.mix ? ' – plays: ' + (p.mix.audible.join(', ') || 'nothing') : ''}`, onclick: () => downloadFromList(p, sel.value, b) }, '⬇ Download');
           return [sel, b]; })(),
-        el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go' }, '📦 Export'),
+        el('a', { className: 'btnlink', href: `/api/projects/${p.id}/export`, title: 'Export the project as .zip (project.rushdaw + audio/ files) – import it again in one go', onclick: e => { e.preventDefault(); exportSavedZip(`/api/projects/${p.id}/export`, p.name); } }, '📦 Export'),
         el('button', { onclick: () => {
           const inp = el('input', { value: p.name, className: 'pname-edit' });
           const done = async ok => { if (ok && inp.value.trim()) await api(`/api/projects/${p.id}/rename`, { method: 'POST', body: JSON.stringify({ name: inp.value }), headers: { 'Content-Type': 'application/json' } }); renderHome(); };
@@ -3071,7 +3281,7 @@ async function openHistory(id = currentProject?.id, fromHome = false) {
           if (!fromHome && !(await confirmLeave('restore revision ' + r.number))) return;
           await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); openProject(id, null, { skipConfirm: true });
         } }, '↺ Restore') : null,
-        el('a', { className: 'btnlink', href: `/api/projects/${id}/export?rev=${r.number}`, title: 'Export this revision as .zip (project.rushdaw + audio/ files)' }, '📦')))));
+        el('a', { className: 'btnlink', href: `/api/projects/${id}/export?rev=${r.number}`, title: 'Export this revision as .zip (project.rushdaw + audio/ files)', onclick: e => { e.preventDefault(); exportSavedZip(`/api/projects/${id}/export?rev=${r.number}`, `${p.name}-rev${r.number}`); } }, '📦')))));
   } catch (e) { box.innerHTML = ''; box.append(el('p', { className: 'hint' }, 'Error: ' + e.message)); }
 }
 async function importProjectFile(file) {

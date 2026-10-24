@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import __version__
 from . import model as M
-from .export import available_formats, convert, denoise
+from .export import Cancelled, available_formats, convert, denoise, job_cancel, job_get, job_start, job_set
 from .mcp import RushDAWMCP
 from .storage import Storage, StorageError, build_package, safe_file_name
 
@@ -98,6 +98,14 @@ class Handler(SimpleHTTPRequestHandler):
                 if method == "POST":
                     b = self._json_body()
                     return self._json(st.create_project(b.get("name"), b.get("bpm", 120), b.get("sig", 4)), 201)
+            if u.path.startswith("/api/jobs/"):  # export progress (download dialog) / cancel
+                jid = unquote(u.path[len("/api/jobs/"):])
+                if method == "GET":
+                    job = job_get(jid)
+                    return self._json(job) if job else self._json({"error": "unknown job"}, 404)
+                if method == "DELETE":
+                    ok = job_cancel(jid)
+                    return self._json({"cancelled": True}) if ok else self._json({"error": "invalid job id"}, 400)
             if u.path == "/api/package" and method == "POST":  # editor state (saved or not) -> project package zip
                 name = safe_file_name(q.get("name") or "project")
                 return self._send_file(build_package(self._body()), f"{name}.rushdaw.zip", "application/zip")
@@ -313,12 +321,19 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"error": str(e)}, 400)
         if data[:4] != b"RIFF":
             return self._json({"error": "body must be a WAV file"}, 400)
+        job = job_start(q.get("job", [""])[0])  # optional: progress dialog polls /api/jobs/<id>
         try:
-            out, ext, mime = convert(data, fmt, title)
+            out, ext, mime = convert(data, fmt, title, job)
+        except Cancelled:
+            job_set(job, stage="cancelled", done=True)
+            return self._json({"error": "cancelled"}, 499)
         except ValueError as e:
+            job_set(job, stage="error", done=True, error=str(e))
             return self._json({"error": str(e)}, 400)
         except Exception as e:  # ffmpeg failure
+            job_set(job, stage="error", done=True, error=str(e))
             return self._json({"error": str(e)}, 500)
+        job_set(job, stage="done", progress=1.0, done=True)
         self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(out)))

@@ -366,3 +366,43 @@ button,select,input{touch-action:manipulation}
 .pminfo{display:flex;flex-wrap:wrap;align-items:center;gap:2px 0;min-width:0}
 .pminfo .pmeta{flex-basis:100%;font-size:11px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pmbtns{display:flex;gap:6px;flex-shrink:0}
+
+/* ---------------------------------------------------- export progress dialog */
+.pgdlg .dlg-box{width:min(480px,100%)}
+.pgdlg.pgdelay{opacity:0;pointer-events:none}
+.pgdlg{transition:opacity .15s ease}
+.pgdlg .pgname{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pgdlg .pgbar{position:relative;height:12px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+.pgdlg .pgfill{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--acc),#7ff3ff);box-shadow:0 0 10px rgba(0,229,255,.55);transition:width .25s ease}
+.pgdlg .pgbar.busy::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-45deg,rgba(0,229,255,.22) 0 10px,transparent 10px 20px);background-size:28px 28px;animation:pgstripe .8s linear infinite}
+@keyframes pgstripe{from{background-position:0 0}to{background-position:28px 0}}
+.pgdlg .pgrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14px}
+.pgdlg .pgstage{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pgdlg .pgpct{color:var(--acc);font:700 18px ui-monospace,Menlo,monospace;flex:none}
+.pgdlg .pgsteps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.pgdlg .pgchip{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 7px}
+.pgdlg .pgchip i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--mut);flex:none}
+.pgdlg .pgchip.run{color:var(--txt);border-color:var(--acc)}
+.pgdlg .pgchip.run i{border-color:var(--acc);background:var(--acc);box-shadow:0 0 6px var(--acc);animation:pgpulse 1s ease-in-out infinite}
+.pgdlg .pgchip.done{color:var(--txt)}
+.pgdlg .pgchip.done i{border-color:var(--acc);background:var(--acc)}
+.pgdlg .pgchip.fail{color:#ff6b6b;border-color:#d32f2f}
+.pgdlg .pgchip.fail i{border-color:#ff3b3b;background:#ff3b3b}
+.pgdlg .pgchip.skip{opacity:.4}
+@keyframes pgpulse{50%{opacity:.35}}
+.pgdlg .pgmeta{font:12px ui-monospace,Menlo,monospace;color:var(--mut)}
+.pgdlg .pgmsg:empty{display:none}
+.pgdlg .pgmsg{font-size:13px;color:var(--acc);word-break:break-word}
+.pgdlg.err .pgmsg{color:#ff6b6b}
+.pgdlg.err .pgfill{background:#d32f2f;box-shadow:none}
+.pgdlg.ok .pgfill{background:var(--acc)}
+@media (max-width:640px){
+  .pgdlg{align-items:flex-end;padding:0}
+  .pgdlg .dlg-box{width:100%;border-radius:14px 14px 0 0;border-bottom:none;padding-bottom:env(safe-area-inset-bottom)}
+  .pgdlg .mfoot button{flex:1;min-height:44px}
+  .pgdlg .pgrow{font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){
+  .pgdlg .pgfill{transition:none}
+  .pgdlg .pgbar.busy::after,.pgdlg .pgchip.run i{animation:none}
+}
