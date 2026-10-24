@@ -1307,7 +1307,8 @@ async function importFiles(files, track = null, beat = null) {
 /* ------------------------------------------------------------------ render */
 function render() { ensureRegions(); renderArrange(); renderMixer(); renderEditor(); renderFx(); renderMaster(); if (typeof undoCaptureSoon === 'function') undoCaptureSoon(); }
 
-function timelineBeats() { return Math.max(64, Math.ceil((songEndBeats() + P.sig * 8) / P.sig) * P.sig); }
+const TAIL_BARS = 500;  // always keep ~500 empty bars of ruler/timeline past the last region
+function timelineBeats() { return Math.ceil(songEndBeats() / P.sig) * P.sig + P.sig * TAIL_BARS; }
 
 /* Reorder tracks (layers) by drag & drop on the header: grab the ⠿ handle (or the track-type row) and drop it
    between other tracks. Works with mouse and touch (pointer events); a small move threshold keeps clicks as clicks. */
@@ -1356,7 +1357,8 @@ function renderArrange() {
   ruler.style.backgroundRepeat = 'repeat-x'; ruler.style.backgroundPosition = 'left bottom';
   const sg = $('#snapGrid'); if (sg) sg.textContent = gridName();
   const every = barPx < 30 ? 4 : barPx < 60 ? 2 : 1;
-  for (let bar = 0; bar * P.sig < timelineBeats(); bar += every) ruler.append(el('span', { style: { left: bar * barPx + 'px' } }, String(bar + 1)));
+  // number bars across the WHOLE width, including the ~500px empty tail past the last region
+  for (let bar = 0; bar * barPx < W; bar += every) ruler.append(el('span', { style: { left: bar * barPx + 'px' } }, String(bar + 1)));
   P.tracks.forEach(t => {
     const sel = t.id === selTrackId;
     const titles = { mute: 'Mute this track (silence)', solo: 'Solo: hear only soloed tracks', arm: 'Arm for recording' };
@@ -3345,6 +3347,54 @@ function init() {
   });
   // sync header scroll with timeline
   $('#timelineWrap').addEventListener('scroll', e => { $('#trackHeaders').style.transform = `translateY(${-e.target.scrollTop}px)`; });
+  // Pinch-to-zoom over the timeline, anchored to the pointer so the beat under the
+  // cursor / between the fingers stays put. Three input paths:
+  //   • trackpad pinch and Ctrl+wheel  -> wheel event with ctrlKey
+  //   • touchscreen two-finger pinch   -> touchstart/move distance ratio
+  // Re-renders are batched with requestAnimationFrame so fast gestures stay smooth.
+  {
+    const tlwz = $('#timelineWrap'), zoomEl = $('#zoom');
+    const zMin = +zoomEl.min, zMax = +zoomEl.max;
+    // Set zoom to z1 while keeping the musical position under clientX fixed on screen.
+    const zoomTo = (z1, clientX) => {
+      z1 = clamp(z1, zMin, zMax);
+      const z0 = +zoomEl.value;
+      if (Math.abs(z1 - z0) < 1e-4) return;
+      const rect = tlwz.getBoundingClientRect();
+      const px = clientX - rect.left;                 // cursor offset inside the viewport
+      const beat = (tlwz.scrollLeft + px) / z0;        // musical position under the cursor
+      zoomEl.value = z1; renderArrange();
+      tlwz.scrollLeft = Math.max(0, beat * z1 - px);   // put that beat back under the cursor
+    };
+    // --- trackpad pinch / Ctrl+wheel (batched) ---
+    let raf = null, pendZ = null, pendX = 0;
+    tlwz.addEventListener('wheel', e => {
+      if (!e.ctrlKey) return;            // plain scroll is left untouched
+      e.preventDefault();
+      const base = pendZ != null ? pendZ : +zoomEl.value;
+      pendZ = clamp(base * Math.exp(-e.deltaY * 0.015), zMin, zMax);
+      pendX = e.clientX;
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = null; const z = pendZ; pendZ = null; zoomTo(z, pendX); });
+    }, { passive: false });
+    // --- touchscreen two-finger pinch ---
+    let pinch = null;
+    tlwz.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) {
+        const [a, b] = e.touches;
+        pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: +zoomEl.value };
+      }
+    }, { passive: true });
+    tlwz.addEventListener('touchmove', e => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const [a, b] = e.touches;
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      zoomTo(pinch.z * (d / pinch.d), (a.clientX + b.clientX) / 2);
+    }, { passive: false });
+    const endPinch = () => { pinch = null; };
+    tlwz.addEventListener('touchend', endPinch); tlwz.addEventListener('touchcancel', endPinch);
+  }
   // The header column (layer settings) follows the timeline; scrolling over it scrolls the timeline,
   // so both sides scroll vertically (mouse wheel / trackpad and touch drag).
   const hdrCol = $('#headers'), tlw = $('#timelineWrap');
