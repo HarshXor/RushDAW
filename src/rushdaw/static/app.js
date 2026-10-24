@@ -2740,6 +2740,41 @@ function xhrTransfer({ method = 'POST', url, body, type, signal, onUpload, onUpl
     x.send(body);
   });
 }
+// --- render progress probes (see renderMix) ---
+const PROBE_SRC = `class RdProgress extends AudioWorkletProcessor {
+  constructor(o) { super(); this.step = (o.processorOptions && o.processorOptions.step) || 4096; this.next = 0; }
+  process() { if (currentFrame >= this.next) { this.port.postMessage(currentFrame); this.next = currentFrame + this.step; } return true; }
+}
+registerProcessor('rd-progress', RdProgress);`;
+let probeUrl = null;
+async function attachRenderProbe(oc, onProgress) {
+  if (renderProbeOff || !oc.audioWorklet || typeof AudioWorkletNode === 'undefined') return false;
+  try {
+    probeUrl = probeUrl || URL.createObjectURL(new Blob([PROBE_SRC], { type: 'application/javascript' }));
+    await oc.audioWorklet.addModule(probeUrl);
+    const node = new AudioWorkletNode(oc, 'rd-progress', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { step: Math.max(128, Math.floor(oc.length / 200)) } });
+    const mute = oc.createGain(); mute.gain.value = 0;   // keeps the probe running; contributes exact zeros
+    node.connect(mute).connect(oc.destination);
+    node.port.onmessage = e => onProgress(Math.min(1, e.data / oc.length));
+    return true;
+  } catch (e) { return false; }
+}
+function attachSuspendProgress(oc, secs, opts) {
+  if (renderSuspendOff || typeof oc.suspend !== 'function' || typeof oc.resume !== 'function') return false;
+  const step = Math.max(0.25, secs / 100);
+  for (let t = step; t < secs - 0.01; t += step) {
+    const at = t;
+    let p; try { p = oc.suspend(at); } catch (e) { return t > step; }
+    p.then(() => {
+      if (opts.signal && opts.signal.aborted) return;  // stay suspended: a cancelled render stops using CPU
+      opts.onProgress(at / secs);
+      oc.resume();
+    }).catch(() => { /* two suspends in one render quantum: skip */ });
+  }
+  return true;
+}
+let renderProbeOff = false, renderSuspendOff = false;  // test switches: force the suspend / no-progress fallbacks
 // opts.only = { trackId, clipId }: render just that region (its track's FX / mixer / master chain, from the
 // region start to its end + the reverb/delay tail), regardless of the track's mute/solo.
 async function renderMix(opts = {}) {
@@ -2756,18 +2791,16 @@ async function renderMix(opts = {}) {
   try {
     const g = createGraph(oc, false); g.only = opts.only || null;
     scheduleRange(g, b0, end, { t: 0, b: b0 }, { first: true });
-    // Progress: pause the offline render every ~1% of the song, read the position, resume. Suspending only stops
-    // the clock at a render-quantum boundary - nothing in the graph is touched, so the audio is bit-identical.
-    if (opts.onProgress || opts.signal) {
-      const step = Math.max(0.25, secs / 100);
-      for (let t = step; t < secs - 0.01; t += step) {
-        const at = t;
-        oc.suspend(at).then(() => {
-          if (opts.signal && opts.signal.aborted) return;  // stay suspended: a cancelled render stops using CPU
-          if (opts.onProgress) opts.onProgress(at / secs);
-          oc.resume();
-        }).catch(() => { /* two suspends in one render quantum: skip */ });
-      }
+    // Render progress, best method the browser has (the audio is identical with every one of them):
+    //  1. AudioWorklet probe (Chrome, Edge, Firefox, Safari): a tiny node reports the frame being rendered; its
+    //     output is silent and reaches the destination through a gain of 0, so it adds exact zeros to the mix.
+    //  2. OfflineAudioContext.suspend()/resume() (Chrome / Safari without worklets): pause ~every 1 %, read, resume.
+    //  3. Neither (e.g. Firefox on a plain-http LAN address): the dialog shows an animated "working" bar.
+    // A missing feature must never break the Download itself.
+    if (opts.onProgress) {
+      opts.renderProgressMode = (await attachRenderProbe(oc, opts.onProgress)) ? 'worklet'
+        : attachSuspendProgress(oc, secs, opts) ? 'suspend' : 'none';
+      if (opts.renderProgressMode === 'none') opts.onProgress(null);
     }
     const rendering = oc.startRendering();
     out = await (opts.signal ? Promise.race([rendering, new Promise((_, rej) => {
