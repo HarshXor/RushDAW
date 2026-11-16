@@ -406,3 +406,4 @@ button,select,input{touch-action:manipulation}
   .pgdlg .pgfill{transition:none}
   .pgdlg .pgbar.busy::after,.pgdlg .pgchip.run i{animation:none}
 }
+.chlog{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}.chlog .hinfo{flex:1;min-width:0;display:flex;flex-direction:column}

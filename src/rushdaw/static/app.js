@@ -2982,16 +2982,44 @@ function markClean() { savedSnapshot = snapshot(); updateDirty(); }
    (punch-in recording cleanup checks undoKeepsBuffer). Opening a project starts a fresh history. */
 const UNDO_MAX = 100;
 let undoStack = [], redoStack = [], undoLast = null, undoBusy = false;
-function undoReset() { undoStack = []; redoStack = []; undoLast = JSON.stringify(P); updateUndoButtons(); }
+let histLog = [];   // session change log: [{t: ms, label, snap}] oldest first; snap = project state AFTER the change
+const HIST_NAMES = { fx: 'effects', fxPreset: 'effect preset', vol: 'volume', pan: 'pan', mute: 'mute', solo: 'solo', synth: 'synth settings', kit: 'drum kit', pattern: 'drum pattern', notes: 'notes', clips: 'regions', name: 'name', color: 'color', arm: 'record arm', send: 'sends', rev: 'reverb send', delay: 'delay send', eq: 'EQ' };
+function histDescribe(a, b) {
+  try {
+    const A = JSON.parse(a), B = JSON.parse(b), ta = A.tracks || [], tb = B.tracks || [], out = [];
+    const eq = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    if (tb.length > ta.length) return 'Added layer ' + (tb.find(x => !ta.some(y => y.id === x.id))?.name || '');
+    if (tb.length < ta.length) return 'Removed layer ' + (ta.find(x => !tb.some(y => y.id === x.id))?.name || '');
+    if (!eq(ta.map(x => x.id), tb.map(x => x.id))) out.push('Reordered layers');
+    for (const x of tb) {
+      const y = ta.find(z => z.id === x.id); if (!y) continue;
+      const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])].filter(k => !eq(x[k], y[k]));
+      if (!keys.length) continue;
+      const names = keys.map(k => k === 'clips' ? 'regions' : (HIST_NAMES[k] || k));
+      let d = names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : '');
+      if (keys.includes('fx') && (x.fx || []).length !== (y.fx || []).length) d = (x.fx.length > y.fx.length ? 'added' : 'removed') + ' effect';
+      out.push(x.name + ': ' + d);
+    }
+    for (const k of Object.keys(B.master || {})) if (!eq(B.master[k], (A.master || {})[k])) { out.push('Mastering: ' + k); break; }
+    const mk = Object.keys(B.master || {}).filter(k => !eq(B.master[k], (A.master || {})[k])).length;
+    if (mk > 1) out[out.length - 1] = 'Mastering: ' + mk + ' settings';
+    for (const [k, n] of [['bpm', 'Tempo'], ['sig', 'Time signature'], ['title', 'Title'], ['loop', 'Loop range']]) if (!eq(A[k], B[k])) out.push(n + (k === 'bpm' || k === 'sig' ? ' ' + A[k] + ' → ' + B[k] : ''));
+    for (const k of Object.keys(B)) if (!['tracks', 'master', 'bpm', 'sig', 'title', 'loop'].includes(k) && !eq(A[k], B[k])) out.push('Setting: ' + k);
+    const txt = out.join(' · ');
+    return txt ? (txt.length > 140 ? txt.slice(0, 140) + '…' : txt) : 'Changed project';
+  } catch (e) { return 'Change'; }
+}
+function undoReset() { undoStack = []; redoStack = []; undoLast = JSON.stringify(P); histLog = [{ t: Date.now(), label: 'Opened', snap: undoLast }]; updateUndoButtons(); }
 function undoCapture() {
   if (undoBusy || undoLast === null) return;
   const now = JSON.stringify(P);
   if (now === undoLast) return;
   undoStack.push(undoLast); if (undoStack.length > UNDO_MAX) undoStack.shift();
+  histLog.push({ t: Date.now(), label: histDescribe(undoLast, now), snap: now }); if (histLog.length > UNDO_MAX + 1) histLog.shift();
   redoStack = []; undoLast = now; updateUndoButtons();
 }
 const undoCaptureSoon = () => setTimeout(undoCapture, 0);
-function undoKeepsBuffer(id) { return (undoLast || '').includes(id) || undoStack.some(s => s.includes(id)) || redoStack.some(s => s.includes(id)); }
+function undoKeepsBuffer(id) { return (undoLast || '').includes(id) || undoStack.some(s => s.includes(id)) || redoStack.some(s => s.includes(id)) || histLog.some(h => h.snap.includes(id)); }
 function undoApply(from, to, label) {
   undoCapture();  // anything not captured yet becomes its own step first
   if (!from.length) { status(label === 'Undo' ? 'Nothing to undo' : 'Nothing to redo'); return; }
@@ -3008,6 +3036,40 @@ function undoApply(from, to, label) {
     syncGraph(); render(); updateDirty();
   } finally { undoLast = JSON.stringify(P); undoBusy = false; updateUndoButtons(); }
   status(`${label} (${undoStack.length} undo · ${redoStack.length} redo left)`);
+}
+function histJump(i) {  // go to a logged state; it becomes a new undo step, so nothing is lost
+  undoCapture();
+  const h = histLog[i]; if (!h || h.snap === undoLast) return;
+  undoStack.push(undoLast); if (undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack = []; undoBusy = true;
+  try {
+    const s = JSON.parse(h.snap);
+    for (const k of Object.keys(P)) delete P[k];
+    Object.assign(P, s);
+    $('#bpm').value = P.bpm; $('#sig').value = P.sig; $('#title').value = P.title || '';
+    if (!getTrack(selTrackId)) selTrackId = P.tracks[0]?.id || null;
+    if (selClipId && !findClip(selClipId)[1]) selClipId = null;
+    for (const id of [...selClipSet]) if (!findClip(id)[1]) selClipSet.delete(id);
+    syncGraph(); render(); updateDirty();
+  } finally { undoLast = JSON.stringify(P); undoBusy = false;
+    histLog.push({ t: Date.now(), label: 'Returned to ' + new Date(h.t).toLocaleTimeString(), snap: undoLast }); updateUndoButtons(); }
+  status('Returned to the version of ' + new Date(h.t).toLocaleString());
+}
+function openChangeLog() {
+  undoCapture();
+  const body = el('div', { className: 'chlog' });
+  const draw = () => {
+    body.innerHTML = '';
+    if (!histLog.length) body.append(el('p', { className: 'hint' }, 'No changes yet.'));
+    histLog.map((h, i) => [h, i]).reverse().forEach(([h, i]) => {
+      const cur = h.snap === undoLast;
+      body.append(el('div', { className: 'hrow' + (cur ? ' head' : '') },
+        el('div', { className: 'hinfo' }, el('b', {}, h.label), el('span', { className: 'pmeta' }, new Date(h.t).toLocaleString() + (cur ? ' · current' : ''))),
+        cur ? null : el('div', { className: 'pbtns' }, el('button', { title: 'Go back to this version (undoable)', onclick: () => { histJump(i); draw(); } }, '↺ Restore'))));
+    });
+  };
+  draw();
+  openModal('Change history (this session)', [el('p', { className: 'hint' }, 'Every change with date & time. Restore returns the project to that moment; you can still undo it. For versions across sessions use Projects → History (saved revisions).'), body], [{ label: 'Close', primary: true, run: c => c() }]);
 }
 const undo = () => undoApply(undoStack, redoStack, 'Undo');
 const redo = () => undoApply(redoStack, undoStack, 'Redo');
@@ -3579,6 +3641,7 @@ function init() {
   new ResizeObserver(markRowStarts).observe($('#topbar')); window.addEventListener('resize', markRowStarts); markRowStarts();
   $('#btnUndo').onclick = () => undo();
   $('#btnRedo').onclick = () => redo();
+  $('#btnChangeLog').onclick = () => openChangeLog();
   // undo checkpoints: one step per finished user action (slider drags merge into one step)
   for (const ev of ['pointerup', 'change', 'keyup', 'drop']) window.addEventListener(ev, undoCaptureSoon, true);
   $('#fileInput').onchange = e => { const t = getTrack(selTrackId); importFiles([...e.target.files], t, null); e.target.value = ''; };
