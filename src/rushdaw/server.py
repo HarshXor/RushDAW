@@ -151,6 +151,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(st.rename_project(pid, self._json_body().get("name")))
                 if sub == "revisions" and method == "POST":
                     return self._json(st.save_revision(pid, self._body(), q.get("message", "")), 201)
+                if sub == "revisions" and method == "DELETE":
+                    return self._json(st.delete_revision(pid, int(q.get("rev", "0"))))
                 if sub == "restore" and method == "POST":
                     return self._json(st.restore_revision(pid, int(q.get("rev", "0"))), 201)
                 if sub == "export" and method == "GET":  # project package of a saved revision

@@ -40,13 +40,28 @@ class StorageTest(unittest.TestCase):
         meta = self.st.get_project(p["id"])
         self.assertEqual(meta["head_revision"], 2)
         self.assertEqual(meta["name"], "Demo v2")
-        self.assertEqual([r["message"] for r in meta["revisions"]], ["Revision 2", "first"])
+        self.assertEqual([r["message"] for r in meta["revisions"]], [meta["revisions"][0]["message"], "first"])
+        self.assertRegex(meta["revisions"][0]["message"], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
         data, rev, _ = self.st.read_revision(p["id"], 1)
         self.assertEqual(rev["track_count"], 2)
         self.assertEqual(json.loads(data)["project"]["title"], "Demo")
         r3 = self.st.restore_revision(p["id"], 1)
         self.assertEqual(r3["number"], 3)
         self.assertEqual(json.loads(self.st.read_revision(p["id"])[0])["project"]["title"], "Demo")
+
+    def test_delete_revision(self):
+        p = self.st.create_project("Del")
+        for i in range(3):
+            self.st.save_revision(p["id"], project_bytes("Del", tracks=i + 1))
+        d = os.path.join(self.tmp.name, "file", p["id"])
+        self.assertEqual(self.st.delete_revision(p["id"], 2)["head_revision"], 3)
+        self.assertEqual(sorted(os.listdir(d)), ["rev-0001.rushdaw", "rev-0003.rushdaw"])
+        self.assertEqual(self.st.delete_revision(p["id"], 3)["head_revision"], 1)
+        self.assertEqual(self.st.get_project(p["id"])["head_revision"], 1)
+        with self.assertRaises(StorageError):
+            self.st.delete_revision(p["id"], 1)   # the only one
+        with self.assertRaises(StorageError):
+            self.st.delete_revision(p["id"], 9)
 
     def test_mix_summary_and_old_db_migration(self):
         def proj(**flags):

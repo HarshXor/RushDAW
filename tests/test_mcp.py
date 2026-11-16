@@ -495,7 +495,7 @@ class McpTest(unittest.TestCase):
         # every edit is a revision; restore works
         revs = self.call("list_revisions", project_id=pid)
         self.assertEqual(revs["latest"], len(revs["revisions"]))
-        self.assertTrue(all(r["message"].startswith("MCP: ") for r in revs["revisions"]))
+        self.assertTrue(all(re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$", r["message"]) for r in revs["revisions"]))
         self.call("restore_revision", project_id=pid, revision=1)
         self.assertEqual(len(self.call("get_project", project_id=pid)["tracks"]), 4)
         # stored file is a valid document the web UI can load

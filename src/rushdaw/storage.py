@@ -336,7 +336,7 @@ class Storage:
             db.execute(
                 "INSERT INTO revisions(project_id, number, message, file_name, size, sha256, track_count, created_at, mix) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (project_id, number, (message or "").strip()[:200] or f"Revision {number}", file_name, len(raw), digest,
+                (project_id, number, (message or "").strip()[:200] or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)), file_name, len(raw), digest,
                  len(proj.get("tracks") or []), now, json.dumps(self.mix_summary(proj))))
             db.execute(
                 "UPDATE projects SET head_revision = ?, updated_at = ?, name = ?, bpm = ?, sig = ? WHERE id = ?",
@@ -361,7 +361,28 @@ class Storage:
 
     def restore_revision(self, project_id, number):
         data, rev, _ = self.read_revision(project_id, number)
-        return self.save_revision(project_id, data, f"Restored from revision {rev['number']}")
+        return self.save_revision(project_id, data, "")
+
+    def delete_revision(self, project_id, number):
+        """Permanently delete one saved revision (its file too). The last remaining revision cannot be deleted;
+        deleting the latest one makes the newest remaining revision the head."""
+        p = self.get_project(project_id)
+        number = int(number)
+        rev = next((r for r in p["revisions"] if r["number"] == number), None)
+        if rev is None:
+            raise StorageError("revision not found", 404)
+        if len(p["revisions"]) <= 1:
+            raise StorageError("cannot delete the only revision of a project (delete the project instead)", 400)
+        with self._lock, self._connect() as db:
+            db.execute("DELETE FROM revisions WHERE project_id = ? AND number = ?", (project_id, number))
+            head = db.execute("SELECT MAX(number) FROM revisions WHERE project_id = ?", (project_id,)).fetchone()[0]
+            if number == p["head_revision"]:
+                db.execute("UPDATE projects SET head_revision = ?, updated_at = ? WHERE id = ?", (head, time.time(), project_id))
+        try:
+            os.remove(os.path.join(self._project_dir(project_id), rev["file_name"]))
+        except OSError:
+            pass
+        return {"project_id": project_id, "deleted_revision": number, "head_revision": head if number == p["head_revision"] else p["head_revision"]}
 
     def import_project(self, data, name=None):
         """Import a .rushdaw file (JSON, audio embedded) or an exported project package (.zip with

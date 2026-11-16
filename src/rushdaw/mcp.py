@@ -8,7 +8,7 @@ Auth: ``Authorization: Bearer <api key>`` on both endpoints, key given with
 it MCP is simply off.
 
 Every editing tool loads the latest revision of a project, applies the change
-and stores the result as a NEW revision (message ``MCP: ...``), so all MCP
+and stores the result as a NEW revision (named by its date and time), so all MCP
 edits appear in the project's history and can be restored/undone.
 """
 import base64
@@ -87,7 +87,7 @@ class RushDAWMCP:
             result = fn(doc)
             M.fill_regions(doc["project"])  # regions created by this edit get their own copy of the track pattern
             try:
-                saved = self.st.save_revision(pid, json.dumps(doc).encode(), ("MCP: " + message)[:200])
+                saved = self.st.save_revision(pid, json.dumps(doc).encode(), "")
             except StorageError as e:
                 raise ToolError(str(e))
         out = {"revision": saved["number"]}
@@ -254,7 +254,7 @@ class RushDAWMCP:
             self._apply_template(doc["project"], a.get("template", "metal"))
             M.fill_regions(doc["project"])  # each template region owns its pattern
             meta = self.st.create_project(doc["project"]["title"], bpm, sig)
-            self.st.save_revision(meta["id"], json.dumps(doc).encode(), "MCP: created")
+            self.st.save_revision(meta["id"], json.dumps(doc).encode(), "")
             return {"project_id": meta["id"], "revision": 1, **M.project_summary(doc, False)}
 
         @tool("update_project", "Change project title, tempo (BPM) or time signature.",
@@ -297,6 +297,14 @@ class RushDAWMCP:
             except StorageError as e:
                 raise ToolError(str(e))
             return {"revision": r["number"], "restored_from": int(a["revision"])}
+
+        @tool("delete_revision", "Permanently delete one saved revision from a project's history (not the last remaining one; deleting the latest makes the newest remaining revision the latest). Revisions are named by their date and time.",
+              _S(project_id=PID, revision=("integer", "Revision number to delete.", True)))
+        def delete_revision(a):
+            try:
+                return self.st.delete_revision(a["project_id"], int(a["revision"]))
+            except StorageError as e:
+                raise ToolError(str(e))
 
         @tool("delete_project", "Move a project to the Trash (soft delete; files and history are kept, restorable in the UI).", _S(project_id=PID))
         def delete_project(a):

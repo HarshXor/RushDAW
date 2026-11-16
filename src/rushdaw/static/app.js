@@ -3107,13 +3107,13 @@ async function saveRevision(message) {
     const body = await serializeProject();
     const r = await (await api(`/api/projects/${currentProject.id}/revisions?message=${encodeURIComponent(message || '')}`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })).json();
     currentProject.head_revision = r.number; currentProject.name = P.title;
-    markClean(); $('#revMsg').value = '';
+    markClean();
     status(`Saved revision ${r.number} (${(r.size / 1048576).toFixed(2)} MB) → ~/.rushdaw/file/${currentProject.id.slice(0, 8)}…/${r.file_name}`);
     return r;
   } catch (e) { status('Save failed: ' + e.message); return null; }
   finally { saving = false; }
 }
-async function autoSave() { if (isDirty()) await saveRevision('Auto-save'); }
+async function autoSave() { if (isDirty()) await saveRevision(); }
 /* Leaving the editor with unsaved changes (Projects button, browser Back/Forward / URL, History Open / Restore):
    ask Save / Don't save / Cancel. Resolves true = go on (saved or discarded), false = stay. */
 let leaveDlg = null;
@@ -3132,7 +3132,7 @@ function confirmLeave(where = 'leave') {
       { label: 'Cancel', run: close => finish(false, close) },
       { label: "Don't save", run: close => { markClean(); finish(true, close); } },
       { label: 'Save', primary: true, run: async close => {
-        const r = await saveRevision($('#revMsg').value || 'Saved before leaving');
+        const r = await saveRevision();
         if (r) finish(true, close); else status('Save failed – staying in the editor');
       } },
     ]);
@@ -3213,7 +3213,7 @@ async function createProject() {
     const meta = await (await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, bpm, sig: 4 }), headers: { 'Content-Type': 'application/json' } })).json();
     ensureCtx(); resetState(); P.bpm = bpm; P.title = name; $('#bpm').value = bpm; $('#sig').value = 4; $('#title').value = name;
     applyTemplate($('#npTpl').value); syncGraph(); render();
-    currentProject = meta; await saveRevision('Created');
+    currentProject = meta; await saveRevision();
     history.replaceState(null, '', projectUrl(meta.id)); hideHome();
   } catch (e) { status('Create failed: ' + e.message); }
 }
@@ -3368,7 +3368,7 @@ async function openHistory(id = currentProject?.id, fromHome = false) {
     box.innerHTML = '';
     p.revisions.forEach(r => box.append(el('div', { className: 'hrow' + (r.number === p.head_revision ? ' head' : '') },
       el('div', { className: 'hnum' }, 'r' + r.number),
-      el('div', { className: 'hinfo' }, el('b', {}, r.message), el('span', { className: 'pmeta' }, `${new Date(r.created_at * 1000).toLocaleString()} · ${r.track_count} tracks · ${fmtSize(r.size)}${r.number === p.head_revision ? ' · latest' : ''}`)),
+      el('div', { className: 'hinfo' }, el('b', {}, new Date(r.created_at * 1000).toLocaleString()), el('span', { className: 'pmeta' }, `r${r.number} · ${r.track_count} tracks · ${fmtSize(r.size)}${r.number === p.head_revision ? ' · latest' : ''}`)),
       el('div', { className: 'pbtns' },
         el('button', { title: 'Load this revision into the editor', onclick: async () => { $('#historyDlg').classList.remove('show'); if (!fromHome && !(await confirmLeave('open revision ' + r.number))) return; openProject(id, r.number, { skipConfirm: true }); } }, 'Open'),
         r.number !== p.head_revision ? el('button', { title: 'Make this revision the latest (creates a new revision, nothing is lost)', onclick: async () => {
@@ -3376,6 +3376,13 @@ async function openHistory(id = currentProject?.id, fromHome = false) {
           if (!fromHome && !(await confirmLeave('restore revision ' + r.number))) return;
           await api(`/api/projects/${id}/restore?rev=${r.number}`, { method: 'POST' }); openProject(id, null, { skipConfirm: true });
         } }, '↺ Restore') : null,
+        p.revisions.length > 1 ? el('button', { className: 'danger', title: 'Permanently delete this revision', onclick: () => {
+          openModal('Delete revision?', [el('p', {}, `Delete the revision of ${new Date(r.created_at * 1000).toLocaleString()} (r${r.number}) permanently? This cannot be undone.`)], [
+            { label: 'Cancel', run: c => c() },
+            { label: 'Delete', danger: true, run: async c => {
+              try { await api(`/api/projects/${id}/revisions?rev=${r.number}`, { method: 'DELETE' }); c(); openHistory(id, fromHome); if (fromHome) renderHome(); }
+              catch (e) { c(); status('Delete failed: ' + e.message); } } }]);
+        } }, '🗑') : null,
         el('a', { className: 'btnlink', href: `/api/projects/${id}/export?rev=${r.number}`, title: 'Export this revision as .zip (project.rushdaw + audio/ files)', onclick: e => { e.preventDefault(); exportSavedZip(`/api/projects/${id}/export?rev=${r.number}`, `${p.name}-rev${r.number}`); } }, '📦')))));
   } catch (e) { box.innerHTML = ''; box.append(el('p', { className: 'hint' }, 'Error: ' + e.message)); }
 }
@@ -3645,8 +3652,7 @@ function init() {
   // undo checkpoints: one step per finished user action (slider drags merge into one step)
   for (const ev of ['pointerup', 'change', 'keyup', 'drop']) window.addEventListener(ev, undoCaptureSoon, true);
   $('#fileInput').onchange = e => { const t = getTrack(selTrackId); importFiles([...e.target.files], t, null); e.target.value = ''; };
-  $('#btnSave').onclick = () => saveRevision($('#revMsg').value);
-  $('#revMsg').onkeydown = e => { if (e.key === 'Enter') saveRevision($('#revMsg').value); };
+  $('#btnSave').onclick = () => saveRevision();
   $('#btnHistory').onclick = () => openHistory();
   $('#btnProjects').onclick = showHome;
   $('#historyClose').onclick = () => $('#historyDlg').classList.remove('show');
@@ -3782,7 +3788,7 @@ function init() {
   window.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; hideDrop(); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files]); });
   // keyboard: Ctrl/Cmd+S always saves a revision (even while typing in a field)
   window.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); e.stopImmediatePropagation(); if (!$('#home').classList.contains('show')) saveRevision($('#revMsg').value); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); e.stopImmediatePropagation(); if (!$('#home').classList.contains('show')) saveRevision(); }
   }, true);
   window.addEventListener('keydown', e => {
     if ($('#home').classList.contains('show') || $('#historyDlg').classList.contains('show') || document.querySelector('.rdmodal')) return;  // no editor shortcuts behind a dialog
